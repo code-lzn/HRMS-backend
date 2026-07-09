@@ -169,7 +169,7 @@ PUT post_v1
 
 ```
 // 指定生成参数
-String packageName = "com.limou.springbootinit";
+String packageName = "com.limou.hrms";
 String dataName = "用户评论";
 String dataKey = "userComment";
 String upperDataKey = "UserComment";
