@@ -9,6 +9,9 @@
             <result property="username" column="username" />
             <result property="password" column="password" />
             <result property="realName" column="real_name" />
+            <result property="nickname" column="nickname" />
+            <result property="avatar" column="avatar" />
+            <result property="introduction" column="introduction" />
             <result property="phone" column="phone" />
             <result property="email" column="email" />
             <result property="roleId" column="role_id" />
@@ -20,8 +23,8 @@
     </resultMap>
 
     <sql id="Base_Column_List">
-        id,username,password,real_name,phone,email,
-        role_id,status,last_login_time,create_time,update_time,
-        is_deleted
+        id,username,password,real_name,nickname,avatar,
+        introduction,phone,email,role_id,status,
+        last_login_time,create_time,update_time,is_deleted
     </sql>
 </mapper>
