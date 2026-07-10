@@ -167,13 +167,9 @@ public class PositionServiceImpl extends ServiceImpl<PositionMapper, Position> i
         ThrowUtils.throwIf(position == null, ErrorCode.NOT_FOUND_ERROR, "职位不存在");
 
         // 校验无员工引用该职位
-        try {
-            long employeeCount = employeeMapper.countActiveByPositionId(id);
-            ThrowUtils.throwIf(employeeCount > 0,
-                    ErrorCode.OPERATION_ERROR, "该职位被 " + employeeCount + " 名员工引用，无法删除");
-        } catch (Exception e) {
-            log.warn("校验员工引用失败（employee表可能未初始化）: {}", e.getMessage());
-        }
+        long employeeCount = employeeMapper.countActiveByPositionId(id);
+        ThrowUtils.throwIf(employeeCount > 0,
+                ErrorCode.OPERATION_ERROR, "该职位被 " + employeeCount + " 名在职员工引用，无法删除");
 
         boolean removed = this.removeById(id);
         ThrowUtils.throwIf(!removed, ErrorCode.OPERATION_ERROR, "职位删除失败");

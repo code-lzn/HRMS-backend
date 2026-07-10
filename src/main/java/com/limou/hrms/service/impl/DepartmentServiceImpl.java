@@ -62,15 +62,25 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
                 .collect(Collectors.toSet());
         Map<Long, String> managerNameMap = getManagerNameMap(managerIds);
 
-        // 按 parentId 分组
+        // 收集所有存在的部门ID
+        Set<Long> allDeptIds = allDepts.stream().map(Department::getId).collect(Collectors.toSet());
+
+        // 按 parentId 分组，parentId 为 null 或父部门已删除的统一归为根节点
         Map<Long, List<Department>> parentIdMap = allDepts.stream()
                 .collect(Collectors.groupingBy(
-                        d -> d.getParentId() == null ? 0L : d.getParentId(),
+                        d -> (d.getParentId() != null && allDeptIds.contains(d.getParentId()))
+                                ? d.getParentId() : 0L,
                         LinkedHashMap::new,
                         Collectors.toList()
                 ));
 
-        // 构建树，根部门的 parentId 为 null
+        // 检测并告警孤儿子部门
+        allDepts.stream()
+                .filter(d -> d.getParentId() != null && !allDeptIds.contains(d.getParentId()))
+                .forEach(d -> log.warn("部门 [{}](id={}) 的上级部门 id={} 不存在或已删除，已移至根层级",
+                        d.getName(), d.getId(), d.getParentId()));
+
+        // 构建树
         List<Department> roots = parentIdMap.getOrDefault(0L, Collections.emptyList());
         return roots.stream()
                 .map(dept -> buildTreeVO(dept, parentIdMap, deptEmployeeCountMap, managerNameMap))
@@ -87,8 +97,10 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
         long codeCount = this.baseMapper.countByCodeIgnoreDelete(code);
         ThrowUtils.throwIf(codeCount > 0, ErrorCode.OPERATION_ERROR, "部门编码 " + code + " 已存在（含已删除部门，编码不可复用）");
 
-        // 2. 校验层级深度
+        // 2. 校验上级部门存在且未被删除
         if (parentId != null) {
+            Department parentDept = this.getById(parentId);
+            ThrowUtils.throwIf(parentDept == null, ErrorCode.NOT_FOUND_ERROR, "上级部门不存在或已被删除");
             int parentDepth = calculateDepth(parentId);
             ThrowUtils.throwIf(parentDepth + 1 > OrgConstant.MAX_DEPT_DEPTH,
                     ErrorCode.OPERATION_ERROR, "已达到最大层级深度 " + OrgConstant.MAX_DEPT_DEPTH + " 级");
@@ -201,12 +213,7 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
         sourceDeptIdSet.add(sourceDeptId);
 
         // 4. 批量转移员工
-        long transferredEmployees = 0;
-        try {
-            transferredEmployees = employeeMapper.batchUpdateDeptId(sourceDeptIdSet, targetDeptId);
-        } catch (Exception e) {
-            log.warn("员工转移失败（employee表可能未初始化）: {}", e.getMessage());
-        }
+        long transferredEmployees = employeeMapper.batchUpdateDeptId(sourceDeptIdSet, targetDeptId);
 
         // 5. 批量转移子部门
         List<Department> childDepts = this.list(new LambdaQueryWrapper<Department>()
