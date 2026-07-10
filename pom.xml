@@ -17,6 +17,7 @@
     <name>HRMS-backend</name>
     <properties>
         <java.version>1.8</java.version>
+        <lombok.version>1.18.34</lombok.version>
     </properties>
     <dependencies>
         <dependency>
