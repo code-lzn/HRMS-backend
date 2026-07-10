@@ -3,65 +3,77 @@ package com.limou.hrms.model.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
-import java.io.Serializable;
 import java.util.Date;
 import lombok.Data;
 
 /**
- * 用户
-
+ * 用户表
+ * @TableName user
  */
-@TableName(value = "user")
+@TableName(value ="user")
 @Data
-public class User implements Serializable {
-
+public class User {
     /**
-     * id
+     * 主键ID
      */
-    @TableId(type = IdType.ASSIGN_ID)
+    @TableId(type = IdType.AUTO)
     private Long id;
 
     /**
-     * 用户账号
+     * 用户名（登录账号）
      */
-    private String userAccount;
+    private String username;
 
     /**
-     * 用户密码
+     * 加密密码
      */
-    private String userPassword;
+    private String password;
 
     /**
-     * 开放平台id
+     * 真实姓名
      */
-    private String unionId;
+    private String realName;
 
     /**
-     * 公众号openId
+     * 昵称（显示名称，为空则显示真实姓名）
      */
-    private String mpOpenId;
+    private String nickname;
 
     /**
-     * 用户昵称
+     * 头像URL
      */
-    private String userName;
+    private String avatar;
 
     /**
-     * 用户头像
+     * 个人简介
      */
-    private String userAvatar;
+    private String introduction;
 
     /**
-     * 用户简介
+     * 手机号
      */
-    private String userProfile;
+    private String phone;
 
     /**
-     * 用户角色：user/admin/ban
+     * 邮箱
      */
-    private String userRole;
+    private String email;
+
+    /**
+     * 角色ID（关联 role.id）
+     */
+    private Long roleId;
+
+    /**
+     * 状态：1=启用 2=禁用
+     */
+    private Integer status;
+
+    /**
+     * 最后登录时间
+     */
+    private Date lastLoginTime;
 
     /**
      * 创建时间
@@ -74,11 +86,7 @@ public class User implements Serializable {
     private Date updateTime;
 
     /**
-     * 是否删除
+     * 逻辑删除：0=否 1=是
      */
-    @TableLogic
-    private Integer isDelete;
-
-    @TableField(exist = false)
-    private static final long serialVersionUID = 1L;
+    private Integer isDeleted;
 }
