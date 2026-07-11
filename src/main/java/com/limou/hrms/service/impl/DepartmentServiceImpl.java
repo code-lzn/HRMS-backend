@@ -4,7 +4,6 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.constant.OrgConstant;
-import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.exception.ThrowUtils;
 import com.limou.hrms.mapper.DepartmentMapper;
 import com.limou.hrms.mapper.EmployeeMapper;
@@ -89,11 +88,14 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
         String name = request.getName().trim();
         Long parentId = request.getParentId();
 
-        // 1. 校验编码唯一（含已删除记录，编码删除后不可回收复用）
+        // 1. 校验部门名称不为空
+        ThrowUtils.throwIf(name.isEmpty(), ErrorCode.PARAMS_ERROR, "部门名称不能为空");
+
+        // 2. 校验编码唯一（含已删除记录，编码删除后不可回收复用）
         long codeCount = this.baseMapper.countByCodeIgnoreDelete(code);
         ThrowUtils.throwIf(codeCount > 0, ErrorCode.OPERATION_ERROR, "部门编码 " + code + " 已存在（含已删除部门，编码不可复用）");
 
-        // 2. 校验上级部门存在且未被删除
+        // 3. 校验上级部门存在且未被删除
         if (parentId != null) {
             Department parentDept = this.getById(parentId);
             ThrowUtils.throwIf(parentDept == null, ErrorCode.NOT_FOUND_ERROR, "上级部门不存在或已被删除");
@@ -102,10 +104,15 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
                     ErrorCode.OPERATION_ERROR, "已达到最大层级深度 " + OrgConstant.MAX_DEPT_DEPTH + " 级");
         }
 
-        // 3. 校验同级部门名称不重复
-        long nameCount = this.count(new LambdaQueryWrapper<Department>()
-                .eq(parentId == null, Department::getParentId, parentId)
-                .eq(Department::getDeptName, name));
+        // 4. 校验同级部门名称不重复
+        LambdaQueryWrapper<Department> nameWrapper = new LambdaQueryWrapper<Department>()
+                .eq(Department::getDeptName, name);
+        if (parentId == null) {
+            nameWrapper.isNull(Department::getParentId);
+        } else {
+            nameWrapper.eq(Department::getParentId, parentId);
+        }
+        long nameCount = this.count(nameWrapper);
         ThrowUtils.throwIf(nameCount > 0, ErrorCode.OPERATION_ERROR, "同级部门名称 " + name + " 已存在");
 
         // 4. 校验部门负责人是否存在
@@ -131,17 +138,25 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
     }
 
     @Override
-    public void updateDepartment(Long id, DepartmentUpdateRequest request) {
-        Department dept = this.getById(id);
+    public void updateDepartment(DepartmentUpdateRequest request) {
+        Department dept = this.getById(request.getId());
         ThrowUtils.throwIf(dept == null, ErrorCode.NOT_FOUND_ERROR, "部门不存在");
 
         String name = request.getName().trim();
 
+        // 校验部门名称不为空
+        ThrowUtils.throwIf(name.isEmpty(), ErrorCode.PARAMS_ERROR, "部门名称不能为空");
+
         // 校验同级部门名称不重复（排除自身）
-        long nameCount = this.count(new LambdaQueryWrapper<Department>()
-                .eq(dept.getParentId() == null, Department::getParentId, dept.getParentId())
+        LambdaQueryWrapper<Department> nameWrapper = new LambdaQueryWrapper<Department>()
                 .eq(Department::getDeptName, name)
-                .ne(Department::getId, id));
+                .ne(Department::getId, request.getId());
+        if (dept.getParentId() == null) {
+            nameWrapper.isNull(Department::getParentId);
+        } else {
+            nameWrapper.eq(Department::getParentId, dept.getParentId());
+        }
+        long nameCount = this.count(nameWrapper);
         ThrowUtils.throwIf(nameCount > 0, ErrorCode.OPERATION_ERROR, "同级部门名称 " + name + " 已存在");
 
         // 校验部门负责人是否存在
@@ -248,9 +263,6 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
         try {
             Set<Long> deptIds = new HashSet<>(collectChildDeptIds(deptId));
             deptIds.add(deptId);
-            if (deptIds.isEmpty()) {
-                return 0;
-            }
             return employeeMapper.countActiveByDeptIds(deptIds);
         } catch (Exception e) {
             log.warn("查询员工数失败（employee表可能未初始化）: {}", e.getMessage());

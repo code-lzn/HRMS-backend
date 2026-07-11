@@ -1,6 +1,7 @@
 package com.limou.hrms.controller;
 
 import com.limou.hrms.common.BaseResponse;
+import com.limou.hrms.common.DeleteRequest;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.common.ResultUtils;
 import com.limou.hrms.exception.BusinessException;
@@ -13,7 +14,6 @@ import com.limou.hrms.model.vo.DepartmentTreeVO;
 import com.limou.hrms.service.DepartmentService;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
-import io.swagger.annotations.ApiParam;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
@@ -26,20 +26,17 @@ import java.util.Map;
  * 部门管理接口
  */
 @RestController
-@RequestMapping("/v1/departments")
+@RequestMapping("/departments")
 @Slf4j
-@Api(tags = "部门管理")
 public class DepartmentController {
-
 
     @Resource
     private DepartmentService departmentService;
 
     /**
-     * 获取部门树
+     * 获取部门树（含递归人数统计）
      */
     @GetMapping("/tree")
-    @ApiOperation("获取部门树（含递归人数统计）")
     public BaseResponse<List<DepartmentTreeVO>> getDepartmentTree() {
         List<DepartmentTreeVO> tree = departmentService.getDepartmentTree();
         return ResultUtils.success(tree);
@@ -48,8 +45,7 @@ public class DepartmentController {
     /**
      * 新增部门
      */
-    @PostMapping
-    @ApiOperation("新增部门")
+    @PostMapping("/add")
     public BaseResponse<Map<String, Long>> addDepartment(@RequestBody DepartmentAddRequest request) {
         if (request == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -61,36 +57,32 @@ public class DepartmentController {
     }
 
     /**
-     * 更新部门
+     * 更新部门（id 在请求体中）
      */
-    @PutMapping("/{id}")
-    @ApiOperation("更新部门")
+    @PutMapping("/update")
     public BaseResponse<Boolean> updateDepartment(
-            @ApiParam("部门ID") @PathVariable Long id,
             @RequestBody DepartmentUpdateRequest request) {
-        if (request == null || id == null) {
+        if (request == null || request.getId() == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        departmentService.updateDepartment(id, request);
+        departmentService.updateDepartment(request);
         return ResultUtils.success(true);
     }
 
     /**
-     * 删除部门
+     * 删除部门（校验无子部门且无在职员工）
      */
-    @DeleteMapping("/{id}")
-    @ApiOperation("删除部门（校验无子部门且无在职员工）")
-    public BaseResponse<Boolean> deleteDepartment(@ApiParam("部门ID") @PathVariable Long id) {
-        ThrowUtils.throwIf(id == null || id <= 0, ErrorCode.PARAMS_ERROR);
-        departmentService.deleteDepartment(id);
+    @PostMapping("/delete")
+    public BaseResponse<Boolean> deleteDepartment(@RequestBody DeleteRequest request) {
+        ThrowUtils.throwIf(request == null || request.getId() == null || request.getId() <= 0, ErrorCode.PARAMS_ERROR);
+        departmentService.deleteDepartment(request.getId());
         return ResultUtils.success(true);
     }
 
     /**
-     * 合并部门
+     * 合并部门（含员工批量转移）
      */
     @PostMapping("/merge")
-    @ApiOperation("合并部门（含员工批量转移）")
     public BaseResponse<DepartmentMergeResultVO> mergeDepartments(
             @RequestBody DepartmentMergeRequest request) {
         if (request == null) {
