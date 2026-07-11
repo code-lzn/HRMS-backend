@@ -1,9 +1,10 @@
-package generator.service.impl;
+package com.limou.hrms.service.impl;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.limou.hrms.mapper.EmployeeMapper;
 import com.limou.hrms.model.entity.Employee;
-import generator.service.EmployeeService;
-import generator.mapper.EmployeeMapper;
+
+import com.limou.hrms.service.EmployeeService;
 import org.springframework.stereotype.Service;
 
 /**
@@ -13,7 +14,7 @@ import org.springframework.stereotype.Service;
 */
 @Service
 public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
-    implements EmployeeService{
+    implements EmployeeService {
 
 }
 
