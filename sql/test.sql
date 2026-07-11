@@ -62,6 +62,7 @@ create table  if not exists employee
     phone   varchar(32)                            null comment '联系人电话',
     departmentId   bigint                                 null comment '部门ID',
     positionId     bigint                                 null comment '职位ID',
+    salaryId       bigint                                 null comment '薪资ID',
     employmentType     VARCHAR(16)     NOT NULL                 COMMENT '录用类型: FULL_TIME=全职, PART_TIME=兼职, INTERN=实习',
     email                   varchar(256)                           null comment '邮箱',
     currentAddress          varchar(512)                           null comment '现居住地址',
@@ -72,6 +73,7 @@ create table  if not exists employee
     isDeleted      tinyint      default 0                 not null comment '是否删除'
 ) comment '员工' collate = utf8mb4_unicode_ci;
 
+ALTER TABLE employee ADD COLUMN salaryProfileId BIGINT DEFAULT NULL COMMENT '薪资ID';
 
 #部门表----与employee进行关联
 CREATE TABLE department (
