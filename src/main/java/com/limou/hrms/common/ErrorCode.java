@@ -13,7 +13,12 @@ public enum ErrorCode {
     NOT_FOUND_ERROR(40400, "请求数据不存在"),
     FORBIDDEN_ERROR(40300, "禁止访问"),
     SYSTEM_ERROR(50000, "系统内部异常"),
-    OPERATION_ERROR(50001, "操作失败");
+    OPERATION_ERROR(50001, "操作失败"),
+    ATTENDANCE_DUPLICATE_ERROR(50010, "今日已打卡，请勿重复打卡"),
+    ATTENDANCE_TIME_ERROR(50011, "不在打卡时间范围内"),
+    LEAVE_OVERLAP_ERROR(50012, "请假时间与已有请假记录重叠"),
+    LEAVE_DAYS_ERROR(50013, "请假天数不足"),
+    APPROVAL_NOT_PENDING_ERROR(50014, "该申请已审批，无法重复操作");
 
     /**
      * 状态码
