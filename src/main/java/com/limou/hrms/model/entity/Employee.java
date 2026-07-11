@@ -74,6 +74,10 @@ public class Employee {
      * 职位ID
      */
     private Long positionId;
+//    对应的薪资档案id
+
+    private Long salaryProfileId;
+
 
     /**
      * 录用类型: FULL_TIME=全职, PART_TIME=兼职, INTERN=实习

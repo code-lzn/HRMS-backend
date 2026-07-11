@@ -6,10 +6,12 @@ import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.mapper.EmployeeMapper;
 import com.limou.hrms.model.dto.employee.EmpProfileUpdateRequest;
+import com.limou.hrms.model.entity.EmpSalaryProfile;
 import com.limou.hrms.model.entity.Employee;
 import com.limou.hrms.model.entity.Position;
 import com.limou.hrms.model.vo.EmpProfileVO;
 import com.limou.hrms.service.DepartmentService;
+import com.limou.hrms.service.EmpSalaryProfileService;
 import com.limou.hrms.service.EmployeeService;
 import com.limou.hrms.model.entity.Department;
 import com.limou.hrms.service.PositionService;
@@ -27,6 +29,8 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
     private  DepartmentService departmentService;
     @Resource
     private PositionService positionService;
+    @Resource
+    private EmpSalaryProfileService salaryProfileService;
 
     /**
     * 可编辑的字段名集合（不在这个集合里的字段均为锁定状态，前端提示"如需修改请联系 HR"）
@@ -43,6 +47,8 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
         //需要查询到对应的部门和职位名称
         Department department = departmentService.getById(emp.getDepartmentId());
         Position position = positionService.getById(emp.getPositionId());
+        //调用薪资档案
+        EmpSalaryProfile salary = salaryProfileService.getById(emp.getSalaryProfileId());
         EmpProfileVO vo = new EmpProfileVO();
         BeanUtils.copyProperties(emp, vo);
         if(department!=null){
@@ -50,6 +56,8 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
         }
         if(position!=null)
             vo.setPositionName(position.getName());
+        if(salary!=null)
+            vo.setBaseSalary(salary.getBaseSalary());
         vo.setIdCard(maskIdCard(emp.getIdCard()));
         vo.setPhone(maskPhone(emp.getPhone()));
         vo.setEditableFields(EDITABLE_FIELDS);
@@ -78,6 +86,7 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
         }
     }
 
+
     private Employee getByUserId(Long userId) {
         QueryWrapper<Employee> wrapper = new QueryWrapper<>();
         wrapper.eq("userId", userId);
@@ -87,6 +96,7 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
         }
         return emp;
     }
+
 
     private String maskIdCard(String idCard) {
         if (idCard == null || idCard.length() < 8) {

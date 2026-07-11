@@ -1,8 +1,11 @@
 package com.limou.hrms.model.vo;
 
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.util.Date;
 import java.util.Set;
+
+import com.limou.hrms.model.entity.EmpSalaryProfile;
 import lombok.Data;
 
 /**
@@ -30,6 +33,13 @@ public class EmpProfileVO implements Serializable {
      * 职位名称
      */
     private String positionName;
+   /**
+     * 薪资
+     */
+    private BigDecimal baseSalary;
+    /**
+     * 当前地址
+     */
     private String currentAddress;
     private String emergencyContactName;
     private String emergencyContactPhone;

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="generator.mapper.EmpSalaryProfileMapper">
+
+    <resultMap id="BaseResultMap" type="generator.domain.EmpSalaryProfile">
+            <id property="id" column="id" />
+            <result property="employeeId" column="employeeId" />
+            <result property="accountSetId" column="accountSetId" />
+            <result property="baseSalary" column="baseSalary" />
+            <result property="allowanceBase" column="allowanceBase" />
+            <result property="performanceBase" column="performanceBase" />
+            <result property="socialInsuranceBase" column="socialInsuranceBase" />
+            <result property="housingFundBase" column="housingFundBase" />
+            <result property="probationSalaryRatio" column="probationSalaryRatio" />
+            <result property="bankAccount" column="bankAccount" />
+            <result property="bankName" column="bankName" />
+            <result property="effectiveDate" column="effectiveDate" />
+            <result property="createdTIme" column="createdTIme" />
+            <result property="updatedTime" column="updatedTime" />
+            <result property="isDeleted" column="isDeleted" />
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id,employeeId,accountSetId,baseSalary,allowanceBase,performanceBase,
+        socialInsuranceBase,housingFundBase,probationSalaryRatio,bankAccount,bankName,
+        effectiveDate,createdTIme,updatedTime,isDeleted
+    </sql>
+</mapper>
