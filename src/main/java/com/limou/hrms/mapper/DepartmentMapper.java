@@ -14,6 +14,6 @@ public interface DepartmentMapper extends BaseMapper<Department> {
      * 统计编码已用次数（含软删除记录，绕过@TableLogic）
      * 部门编码创建后不可回收复用
      */
-    @Select("SELECT COUNT(*) FROM department WHERE code = #{code}")
+    @Select("SELECT COUNT(*) FROM department WHERE deptCode = #{code}")
     long countByCodeIgnoreDelete(@Param("code") String code);
 }

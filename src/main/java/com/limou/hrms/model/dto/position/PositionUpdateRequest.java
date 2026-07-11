@@ -13,9 +13,6 @@ import java.io.Serializable;
 @ApiModel("职位更新请求")
 public class PositionUpdateRequest implements Serializable {
 
-    @ApiModelProperty(value = "职位ID", required = true)
-    private Long id;
-
     @ApiModelProperty(value = "职位名称", required = true, example = "Java开发工程师")
     private String name;
 

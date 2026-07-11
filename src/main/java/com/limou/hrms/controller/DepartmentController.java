@@ -31,6 +31,7 @@ import java.util.Map;
 @Api(tags = "部门管理")
 public class DepartmentController {
 
+
     @Resource
     private DepartmentService departmentService;
 
@@ -70,8 +71,7 @@ public class DepartmentController {
         if (request == null || id == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        request.setId(id);
-        departmentService.updateDepartment(request);
+        departmentService.updateDepartment(id, request);
         return ResultUtils.success(true);
     }
 

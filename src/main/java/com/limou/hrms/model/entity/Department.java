@@ -20,21 +20,18 @@ public class Department implements Serializable {
     private Long id;
 
     /** 部门名称 */
-    private String name;
+    private String deptName;
 
-    /** 部门编码，2位，用于工号生成 */
-    private String code;
+    /** 部门编码（2位，用于工号生成） */
+    private String deptCode;
 
-    /** 上级部门ID，空表示根部门 */
-    @TableField("parent_id")
+    /** 上级部门ID，NULL表示根部门 */
     private Long parentId;
 
-    /** 部门负责人ID */
-    @TableField("manager_id")
+    /** 部门负责人ID（关联员工表） */
     private Long managerId;
 
-    /** 排序序号，越小越靠前 */
-    @TableField("sort_order")
+    /** 排序序号（越小越靠前） */
     private Integer sortOrder;
 
     /** 部门描述 */
@@ -42,16 +39,13 @@ public class Department implements Serializable {
 
     /** 逻辑删除：0=否 1=是 */
     @TableLogic
-    @TableField("is_deleted")
     private Integer isDeleted;
 
     /** 创建时间 */
-    @TableField("create_time")
-    private LocalDateTime createTime;
+    private LocalDateTime createdTime;
 
     /** 更新时间 */
-    @TableField("update_time")
-    private LocalDateTime updateTime;
+    private LocalDateTime updatedTime;
 
     @TableField(exist = false)
     private static final long serialVersionUID = 1L;
