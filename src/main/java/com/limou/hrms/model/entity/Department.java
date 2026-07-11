@@ -1,9 +1,7 @@
 package com.limou.hrms.model.entity;
 
-import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableField;
-import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.*;
+
 import java.util.Date;
 import lombok.Data;
 
@@ -63,5 +61,8 @@ public class Department {
     /**
      * 逻辑删除：0=否 1=是
      */
+    @TableLogic
     private Integer isDeleted;
+    @TableField(exist = false)
+    private static final long serialVersionUID = 1L;
 }

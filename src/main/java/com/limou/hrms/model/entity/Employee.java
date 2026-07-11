@@ -114,8 +114,10 @@ public class Employee {
      */
     private Date updateTime;
 
-    /**
-     * 是否删除
-     */
+    /** 逻辑删除：0=否 1=是 */
+    @TableLogic
     private Integer isDeleted;
+
+    @TableField(exist = false)
+    private static final long serialVersionUID = 1L;
 }
