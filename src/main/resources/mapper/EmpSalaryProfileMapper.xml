@@ -2,9 +2,9 @@
 <!DOCTYPE mapper
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="generator.mapper.EmpSalaryProfileMapper">
+<mapper namespace="com.limou.hrms.mapper.EmpSalaryProfileMapper">
 
-    <resultMap id="BaseResultMap" type="generator.domain.EmpSalaryProfile">
+    <resultMap id="BaseResultMap" type="com.limou.hrms.model.entity.EmpSalaryProfile">
             <id property="id" column="id" />
             <result property="employeeId" column="employeeId" />
             <result property="accountSetId" column="accountSetId" />

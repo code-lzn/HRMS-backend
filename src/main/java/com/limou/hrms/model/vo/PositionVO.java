@@ -6,6 +6,7 @@ import lombok.Data;
 
 import java.io.Serializable;
 import java.time.LocalDateTime;
+import java.util.Date;
 
 /**
  * 职位VO
@@ -48,7 +49,7 @@ public class PositionVO implements Serializable {
     private String description;
 
     @ApiModelProperty("创建时间")
-    private LocalDateTime createTime;
+    private Date createTime;
 
     private static final long serialVersionUID = 1L;
 }
