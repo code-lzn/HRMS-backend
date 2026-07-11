@@ -8,72 +8,57 @@ import java.util.Date;
 import lombok.Data;
 
 /**
- * 用户表
+ * 用户
  * @TableName user
  */
 @TableName(value ="user")
 @Data
 public class User {
     /**
-     * 主键ID
+     * id
      */
     @TableId(type = IdType.AUTO)
     private Long id;
 
     /**
-     * 用户名（登录账号）
+     * 账号
      */
-    private String username;
+    private String userAccount;
 
     /**
-     * 加密密码
+     * 密码
      */
-    private String password;
+    private String userPassword;
 
     /**
-     * 真实姓名
+     * 用户昵称
      */
-    private String realName;
+    private String userName;
 
     /**
-     * 昵称（显示名称，为空则显示真实姓名）
+     * 用户头像
      */
-    private String nickname;
+    private String userAvatar;
 
     /**
-     * 头像URL
+     * 用户简介
      */
-    private String avatar;
+    private String userProfile;
 
     /**
-     * 个人简介
+     * 用户角色：user/admin/ban
      */
-    private String introduction;
+    private String userRole;
 
     /**
-     * 手机号
-     */
-    private String phone;
-
-    /**
-     * 邮箱
-     */
-    private String email;
-
-    /**
-     * 角色ID（关联 role.id）
+     * 角色ID
      */
     private Long roleId;
 
     /**
-     * 状态：1=启用 2=禁用
+     * 员工ID
      */
-    private Integer status;
-
-    /**
-     * 最后登录时间
-     */
-    private Date lastLoginTime;
+    private Long employeeId;
 
     /**
      * 创建时间
@@ -86,7 +71,7 @@ public class User {
     private Date updateTime;
 
     /**
-     * 逻辑删除：0=否 1=是
+     * 是否删除
      */
-    private Integer isDeleted;
+    private Integer isDelete;
 }
