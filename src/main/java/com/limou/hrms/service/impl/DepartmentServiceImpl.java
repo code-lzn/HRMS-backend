@@ -41,7 +41,6 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
 
     @Override
     public List<DepartmentTreeVO> getDepartmentTree() {
-        // 一次性查询所有未删除部门
         List<Department> allDepts = this.list(
                 new LambdaQueryWrapper<Department>()
                         .orderByAsc(Department::getParentId)
@@ -52,10 +51,8 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
             return Collections.emptyList();
         }
 
-        // 收集所有部门ID，用于批量查询员工数
         Map<Long, Long> deptEmployeeCountMap = buildEmployeeCountMap(allDepts);
 
-        // 收集所有负责人ID，批量查询负责人姓名
         Set<Long> managerIds = allDepts.stream()
                 .map(Department::getManagerId)
                 .filter(Objects::nonNull)
@@ -77,10 +74,9 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
         // 检测并告警孤儿子部门
         allDepts.stream()
                 .filter(d -> d.getParentId() != null && !allDeptIds.contains(d.getParentId()))
-                .forEach(d -> log.warn("部门 [{}](id={}) 的上级部门 id={} 不存在或已删除，已移至根层级",
-                        d.getName(), d.getId(), d.getParentId()));
+                .forEach(d -> log.warn("部门 [{}(id={})] 的上级部门 id={} 不存在或已删除，已移至根层级",
+                        d.getDeptName(), d.getId(), d.getParentId()));
 
-        // 构建树
         List<Department> roots = parentIdMap.getOrDefault(0L, Collections.emptyList());
         return roots.stream()
                 .map(dept -> buildTreeVO(dept, parentIdMap, deptEmployeeCountMap, managerNameMap))
@@ -109,7 +105,7 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
         // 3. 校验同级部门名称不重复
         long nameCount = this.count(new LambdaQueryWrapper<Department>()
                 .eq(parentId == null, Department::getParentId, parentId)
-                .eq(Department::getName, name));
+                .eq(Department::getDeptName, name));
         ThrowUtils.throwIf(nameCount > 0, ErrorCode.OPERATION_ERROR, "同级部门名称 " + name + " 已存在");
 
         // 4. 校验部门负责人是否存在
@@ -120,8 +116,8 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
 
         // 5. 创建部门
         Department department = new Department();
-        department.setName(name);
-        department.setCode(code);
+        department.setDeptName(name);
+        department.setDeptCode(code);
         department.setParentId(parentId);
         department.setManagerId(request.getManagerId());
         department.setSortOrder(request.getSortOrder());
@@ -135,18 +131,17 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
     }
 
     @Override
-    public void updateDepartment(DepartmentUpdateRequest request) {
-        Department dept = this.getById(request.getId());
+    public void updateDepartment(Long id, DepartmentUpdateRequest request) {
+        Department dept = this.getById(id);
         ThrowUtils.throwIf(dept == null, ErrorCode.NOT_FOUND_ERROR, "部门不存在");
 
-        // 不允许修改编码和上级部门（编码创建后锁定，上级部门变更需走合并流程）
         String name = request.getName().trim();
 
         // 校验同级部门名称不重复（排除自身）
         long nameCount = this.count(new LambdaQueryWrapper<Department>()
                 .eq(dept.getParentId() == null, Department::getParentId, dept.getParentId())
-                .eq(Department::getName, name)
-                .ne(Department::getId, request.getId()));
+                .eq(Department::getDeptName, name)
+                .ne(Department::getId, id));
         ThrowUtils.throwIf(nameCount > 0, ErrorCode.OPERATION_ERROR, "同级部门名称 " + name + " 已存在");
 
         // 校验部门负责人是否存在
@@ -155,7 +150,7 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
             ThrowUtils.throwIf(manager == null, ErrorCode.NOT_FOUND_ERROR, "部门负责人ID " + request.getManagerId() + " 不存在");
         }
 
-        dept.setName(name);
+        dept.setDeptName(name);
         dept.setManagerId(request.getManagerId());
         dept.setSortOrder(request.getSortOrder());
         dept.setDescription(request.getDescription());
@@ -184,7 +179,7 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
         boolean removed = this.removeById(id);
         ThrowUtils.throwIf(!removed, ErrorCode.OPERATION_ERROR, "部门删除失败");
 
-        log.info("部门删除成功: id={}, name={}", id, dept.getName());
+        log.info("部门删除成功: id={}, name={}", id, dept.getDeptName());
     }
 
     @Override
@@ -231,15 +226,15 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
         // 7. 记录合并日志
         DepartmentMergeLog logEntity = new DepartmentMergeLog();
         logEntity.setSourceDeptId(sourceDeptId);
-        logEntity.setSourceDeptName(sourceDept.getName());
+        logEntity.setSourceDeptName(sourceDept.getDeptName());
         logEntity.setTargetDeptId(targetDeptId);
-        logEntity.setTargetDeptName(targetDept.getName());
+        logEntity.setTargetDeptName(targetDept.getDeptName());
         logEntity.setTransferredEmployees((int) transferredEmployees);
         logEntity.setOperatorId(operatorId);
         departmentMergeLogService.save(logEntity);
 
         log.info("部门合并成功: source={}({}), target={}({}), 转移员工={}, 转移子部门={}",
-                sourceDept.getName(), sourceDeptId, targetDept.getName(), targetDeptId,
+                sourceDept.getDeptName(), sourceDeptId, targetDept.getDeptName(), targetDeptId,
                 transferredEmployees, transferredChildDepts);
 
         DepartmentMergeResultVO result = new DepartmentMergeResultVO();
@@ -265,17 +260,14 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
 
     // ==================== 私有辅助方法 ====================
 
-    /**
-     * 构建部门树节点
-     */
     private DepartmentTreeVO buildTreeVO(Department dept,
                                          Map<Long, List<Department>> parentIdMap,
                                          Map<Long, Long> deptEmployeeCountMap,
                                          Map<Long, String> managerNameMap) {
         DepartmentTreeVO vo = new DepartmentTreeVO();
         vo.setId(dept.getId());
-        vo.setName(dept.getName());
-        vo.setCode(dept.getCode());
+        vo.setName(dept.getDeptName());
+        vo.setCode(dept.getDeptCode());
         vo.setParentId(dept.getParentId());
         vo.setManagerId(dept.getManagerId());
         vo.setManagerName(managerNameMap.get(dept.getManagerId()));
@@ -283,7 +275,6 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
         vo.setDescription(dept.getDescription());
         vo.setEmployeeCount(deptEmployeeCountMap.getOrDefault(dept.getId(), 0L).intValue());
 
-        // 递归构建子节点
         List<Department> children = parentIdMap.getOrDefault(dept.getId(), Collections.emptyList());
         for (Department child : children) {
             vo.getChildren().add(buildTreeVO(child, parentIdMap, deptEmployeeCountMap, managerNameMap));
@@ -292,9 +283,6 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
         return vo;
     }
 
-    /**
-     * 计算部门层级深度
-     */
     private int calculateDepth(Long deptId) {
         int depth = 0;
         Long currentId = deptId;
@@ -303,14 +291,11 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
             Department dept = this.getById(currentId);
             if (dept == null) break;
             currentId = dept.getParentId();
-            if (depth > OrgConstant.MAX_DEPT_DEPTH + 1) break; // 防止死循环
+            if (depth > OrgConstant.MAX_DEPT_DEPTH + 1) break;
         }
         return depth;
     }
 
-    /**
-     * 收集部门的所有子孙部门ID
-     */
     private List<Long> collectChildDeptIds(Long parentId) {
         List<Long> result = new ArrayList<>();
         List<Department> children = this.list(new LambdaQueryWrapper<Department>()
@@ -322,12 +307,8 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
         return result;
     }
 
-    /**
-     * 构建各部门在职员工数映射
-     */
     private Map<Long, Long> buildEmployeeCountMap(List<Department> allDepts) {
         Map<Long, Long> map = new LinkedHashMap<>();
-        // 按 parentId 分组用于递归收集子部门
         Map<Long, List<Department>> parentIdMap = allDepts.stream()
                 .collect(Collectors.groupingBy(
                         d -> d.getParentId() == null ? 0L : d.getParentId()
@@ -356,16 +337,13 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
         }
     }
 
-    /**
-     * 获取负责人姓名映射
-     */
     private Map<Long, String> getManagerNameMap(Set<Long> managerIds) {
         Map<Long, String> map = new HashMap<>();
         if (managerIds.isEmpty()) return map;
         try {
             List<Employee> employees = employeeMapper.selectBatchIds(managerIds);
             for (Employee emp : employees) {
-                map.put(emp.getId(), emp.getName());
+                map.put(emp.getId(), emp.getEmployeeName());
             }
         } catch (Exception e) {
             log.warn("查询负责人姓名失败: {}", e.getMessage());

@@ -3,7 +3,6 @@ package com.limou.hrms.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.limou.hrms.common.ErrorCode;
-import com.limou.hrms.constant.OrgConstant;
 import com.limou.hrms.constant.OrgConstant.PositionSequence;
 import com.limou.hrms.exception.ThrowUtils;
 import com.limou.hrms.mapper.DepartmentMapper;
@@ -53,7 +52,6 @@ public class PositionServiceImpl extends ServiceImpl<PositionMapper, Position> i
 
         List<Position> positions = this.list(wrapper);
 
-        // 收集涉及部门ID
         Set<Long> deptIds = positions.stream()
                 .map(Position::getDepartmentId)
                 .filter(Objects::nonNull)
@@ -89,11 +87,22 @@ public class PositionServiceImpl extends ServiceImpl<PositionMapper, Position> i
         ThrowUtils.throwIf(minIdx > maxIdx, ErrorCode.OPERATION_ERROR,
                 "职级下限 " + levelMin + " 不能高于上限 " + levelMax);
 
-        // 4. 校验同一序列+名称+部门唯一
-        long existCount = this.count(new LambdaQueryWrapper<Position>()
+        // 4. 校验所属部门存在
+        if (request.getDepartmentId() != null) {
+            Department dept = departmentMapper.selectById(request.getDepartmentId());
+            ThrowUtils.throwIf(dept == null, ErrorCode.NOT_FOUND_ERROR, "所属部门不存在或已被删除");
+        }
+
+        // 5. 校验同一序列+名称+部门唯一
+        LambdaQueryWrapper<Position> existWrapper = new LambdaQueryWrapper<Position>()
                 .eq(Position::getSequence, sequence)
-                .eq(Position::getName, name)
-                .eq(request.getDepartmentId() == null, Position::getDepartmentId, request.getDepartmentId()));
+                .eq(Position::getName, name);
+        if (request.getDepartmentId() == null) {
+            existWrapper.isNull(Position::getDepartmentId);
+        } else {
+            existWrapper.eq(Position::getDepartmentId, request.getDepartmentId());
+        }
+        long existCount = this.count(existWrapper);
         ThrowUtils.throwIf(existCount > 0, ErrorCode.OPERATION_ERROR, "已存在相同职位");
 
         // 5. 创建职位
@@ -114,8 +123,8 @@ public class PositionServiceImpl extends ServiceImpl<PositionMapper, Position> i
     }
 
     @Override
-    public void updatePosition(PositionUpdateRequest request) {
-        Position position = this.getById(request.getId());
+    public void updatePosition(Long id, PositionUpdateRequest request) {
+        Position position = this.getById(id);
         ThrowUtils.throwIf(position == null, ErrorCode.NOT_FOUND_ERROR, "职位不存在");
 
         Integer sequence = request.getSequence();
@@ -139,12 +148,23 @@ public class PositionServiceImpl extends ServiceImpl<PositionMapper, Position> i
         ThrowUtils.throwIf(minIdx > maxIdx, ErrorCode.OPERATION_ERROR,
                 "职级下限 " + levelMin + " 不能高于上限 " + levelMax);
 
-        // 4. 校验唯一性（排除自身）
-        long existCount = this.count(new LambdaQueryWrapper<Position>()
+        // 4. 校验所属部门存在
+        if (request.getDepartmentId() != null) {
+            Department dept = departmentMapper.selectById(request.getDepartmentId());
+            ThrowUtils.throwIf(dept == null, ErrorCode.NOT_FOUND_ERROR, "所属部门不存在或已被删除");
+        }
+
+        // 5. 校验唯一性（排除自身）
+        LambdaQueryWrapper<Position> existWrapper = new LambdaQueryWrapper<Position>()
                 .eq(Position::getSequence, sequence)
                 .eq(Position::getName, request.getName().trim())
-                .eq(request.getDepartmentId() == null, Position::getDepartmentId, request.getDepartmentId())
-                .ne(Position::getId, request.getId()));
+                .ne(Position::getId, id);
+        if (request.getDepartmentId() == null) {
+            existWrapper.isNull(Position::getDepartmentId);
+        } else {
+            existWrapper.eq(Position::getDepartmentId, request.getDepartmentId());
+        }
+        long existCount = this.count(existWrapper);
         ThrowUtils.throwIf(existCount > 0, ErrorCode.OPERATION_ERROR, "已存在相同职位");
 
         position.setName(request.getName().trim());
@@ -222,7 +242,7 @@ public class PositionServiceImpl extends ServiceImpl<PositionMapper, Position> i
         try {
             List<Department> depts = departmentMapper.selectBatchIds(deptIds);
             return depts.stream()
-                    .collect(Collectors.toMap(Department::getId, Department::getName, (a, b) -> a));
+                    .collect(Collectors.toMap(Department::getId, Department::getDeptName, (a, b) -> a));
         } catch (Exception e) {
             log.warn("查询部门名称失败: {}", e.getMessage());
             return Collections.emptyMap();

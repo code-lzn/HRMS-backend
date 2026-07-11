@@ -13,9 +13,6 @@ import java.io.Serializable;
 @ApiModel("部门更新请求")
 public class DepartmentUpdateRequest implements Serializable {
 
-    @ApiModelProperty(value = "部门ID", required = true)
-    private Long id;
-
     @ApiModelProperty(value = "部门名称", required = true, example = "技术部")
     private String name;
 

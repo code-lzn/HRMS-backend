@@ -28,7 +28,7 @@ public interface PositionService extends IService<Position> {
     /**
      * 更新职位
      */
-    void updatePosition(PositionUpdateRequest request);
+    void updatePosition(Long id, PositionUpdateRequest request);
 
     /**
      * 删除职位（校验无员工引用）

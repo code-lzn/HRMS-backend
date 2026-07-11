@@ -75,8 +75,7 @@ public class PositionController {
         if (request == null || id == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        request.setId(id);
-        positionService.updatePosition(request);
+        positionService.updatePosition(id, request);
         return ResultUtils.success(true);
     }
 

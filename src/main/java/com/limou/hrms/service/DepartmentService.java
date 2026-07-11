@@ -28,7 +28,7 @@ public interface DepartmentService extends IService<Department> {
     /**
      * 更新部门
      */
-    void updateDepartment(DepartmentUpdateRequest request);
+    void updateDepartment(Long id, DepartmentUpdateRequest request);
 
     /**
      * 删除部门（校验无子部门 + 无在职员工）

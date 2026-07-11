@@ -20,14 +20,14 @@ public interface OrgConstant {
     /** 职位序列：支持序列 */
     int SEQUENCE_SUPPORT = 3;
 
-    /** 员工状态：试用期 */
-    int EMPLOYEE_STATUS_PROBATION = 1;
-
-    /** 员工状态：正式 */
-    int EMPLOYEE_STATUS_REGULAR = 2;
-
     /** 员工状态：离职 */
-    int EMPLOYEE_STATUS_RESIGNED = 3;
+    int EMPLOYEE_STATUS_RESIGNED = 0;
+
+    /** 员工状态：在职 */
+    int EMPLOYEE_STATUS_ACTIVE = 1;
+
+    /** 员工状态：试用期 */
+    int EMPLOYEE_STATUS_PROBATION = 2;
 
     /**
      * 职位序列枚举
