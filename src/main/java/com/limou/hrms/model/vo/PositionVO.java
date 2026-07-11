@@ -1,12 +1,15 @@
 package com.limou.hrms.model.vo;
 
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import lombok.Data;
 
 import java.io.Serializable;
 import java.time.LocalDateTime;
+import java.util.Date;
 
 /**
- * 职位视图
+ * 职位VO
  */
 @Data
 public class PositionVO implements Serializable {
@@ -44,8 +47,7 @@ public class PositionVO implements Serializable {
     /** 职位描述 */
     private String description;
 
-    /** 创建时间 */
-    private LocalDateTime createTime;
+    private Date createTime;
 
     private static final long serialVersionUID = 1L;
 }
