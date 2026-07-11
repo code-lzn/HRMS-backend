@@ -6,9 +6,11 @@ import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.mapper.SalaryBatchMapper;
 import com.limou.hrms.mapper.SalaryDetailMapper;
+import com.limou.hrms.mapper.UserMapper;
 import com.limou.hrms.model.dto.salary.PayslipVerifyRequest;
 import com.limou.hrms.model.entity.SalaryBatch;
 import com.limou.hrms.model.entity.SalaryDetail;
+import com.limou.hrms.model.entity.User;
 import com.limou.hrms.model.enums.BatchStatusEnum;
 import com.limou.hrms.model.enums.SalaryItemTypeEnum;
 import com.limou.hrms.model.vo.salary.PayslipListVO;
@@ -34,6 +36,9 @@ public class PayslipServiceImpl implements PayslipService {
 
     @Resource
     private SalaryDetailMapper salaryDetailMapper;
+
+    @Resource
+    private UserMapper userMapper;
 
     // 10分钟内免验证（简化实现，实际应存Redis）
     private static final long VERIFY_WINDOW_MS = 10 * 60 * 1000;
@@ -73,18 +78,13 @@ public class PayslipServiceImpl implements PayslipService {
         if (request == null || request.getVerify_code() == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "验证码不能为空");
         }
-        // 简化实现：验证码为"123456"或密码验证
-        // 实际应接入短信服务或密码校验
-        if ("123456".equals(request.getVerify_code())) {
-            log.info("员工 {} 工资条验证通过（批次 {}）", employeeId, batchId);
+        // TODO: 实际应接入短信验证码服务或调用密码校验
+        User user = userMapper.selectById(employeeId);
+        if (user != null && request.getVerify_code().equals(user.getUserPassword())) {
+            log.info("员工 {} 工资条密码验证通过（批次 {}）", employeeId, batchId);
             return true;
         }
-        // 密码验证（备用）
-        if (request.getVerify_type() == 2) {
-            // TODO: 实际应调用 passwordEncoder.matches(verify_code, employee.getPassword())
-            log.info("员工 {} 使用密码验证", employeeId);
-        }
-        throw new BusinessException(ErrorCode.PARAMS_ERROR, "验证失败，验证码错误");
+        throw new BusinessException(ErrorCode.PARAMS_ERROR, "验证失败");
     }
 
     @Override
@@ -105,6 +105,9 @@ public class PayslipServiceImpl implements PayslipService {
         // 标记已查看
         detail.setPayslip_viewed(1);
         salaryDetailMapper.updateById(detail);
+
+        // 查询员工信息
+        User user = userMapper.selectById(employeeId);
 
         // 解析工资项
         List<SalaryItemAmountVO> allItems = new ArrayList<>();
@@ -128,6 +131,10 @@ public class PayslipServiceImpl implements PayslipService {
 
         PayslipVO vo = new PayslipVO();
         vo.setSalary_month(batch.getSalary_month());
+        if (user != null) {
+            vo.setEmployee_name(user.getUserName());
+            vo.setEmployee_no(user.getUserAccount());
+        }
         vo.setGross_pay(detail.getGross_pay());
         vo.setTotal_deductions(detail.getTotal_deductions());
         vo.setNet_pay(detail.getNet_pay());

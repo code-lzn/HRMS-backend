@@ -17,6 +17,11 @@ public class SalaryCalculationContext {
     private Long employeeId;
 
     /**
+     * 薪资账套ID（用于读取 salary_item 配置）
+     */
+    private Long accountId;
+
+    /**
      * 基本工资
      */
     private BigDecimal baseSalary;
@@ -80,6 +85,28 @@ public class SalaryCalculationContext {
      * 上月实发薪资（用于异常检测）
      */
     private BigDecimal lastMonthNetPay;
+
+    // ==================== 从 salary_item 加载的配置 ====================
+
+    /**
+     * 社保总费率（所有 SOCIAL_SECURITY 类型 item 的 formula 之和）
+     */
+    private BigDecimal socialSecurityRate;
+
+    /**
+     * 公积金总费率（所有 HOUSING_FUND 类型 item 的 formula 之和）
+     */
+    private BigDecimal housingFundRate;
+
+    /**
+     * 迟到每次扣款金额（元）
+     */
+    private BigDecimal lateFinePerTime;
+
+    /**
+     * 加班费倍数
+     */
+    private BigDecimal overtimeMultiplier;
 
     /**
      * 日工资（baseSalary / 21.75）

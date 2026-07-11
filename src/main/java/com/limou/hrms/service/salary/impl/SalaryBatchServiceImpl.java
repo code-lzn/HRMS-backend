@@ -10,6 +10,8 @@ import com.limou.hrms.mapper.EmployeeSalaryMapper;
 import com.limou.hrms.mapper.IncomeTaxCumulativeMapper;
 import com.limou.hrms.mapper.SalaryBatchMapper;
 import com.limou.hrms.mapper.SalaryDetailMapper;
+import com.limou.hrms.mapper.SalaryItemMapper;
+import com.limou.hrms.mapper.UserMapper;
 import com.limou.hrms.model.dto.salary.SalaryAdjustRequest;
 import com.limou.hrms.model.dto.salary.SalaryBatchCreateRequest;
 import com.limou.hrms.model.dto.salary.SalaryBatchQueryRequest;
@@ -17,6 +19,8 @@ import com.limou.hrms.model.entity.EmployeeSalary;
 import com.limou.hrms.model.entity.IncomeTaxCumulative;
 import com.limou.hrms.model.entity.SalaryBatch;
 import com.limou.hrms.model.entity.SalaryDetail;
+import com.limou.hrms.model.entity.SalaryItem;
+import com.limou.hrms.model.entity.User;
 import com.limou.hrms.model.enums.AbnormalLevelEnum;
 import com.limou.hrms.model.enums.BatchStatusEnum;
 import com.limou.hrms.model.enums.SalaryItemTypeEnum;
@@ -62,10 +66,16 @@ public class SalaryBatchServiceImpl extends ServiceImpl<SalaryBatchMapper, Salar
     private IncomeTaxCumulativeMapper incomeTaxCumulativeMapper;
 
     @Resource
+    private SalaryItemMapper salaryItemMapper;
+
+    @Resource
     private SalaryCalculatorEngine calculatorEngine;
 
     @Resource
     private IncomeTaxCalculator incomeTaxCalculator;
+
+    @Resource
+    private UserMapper userMapper;
 
     @Resource
     private AnomalyDetector anomalyDetector;
@@ -196,15 +206,56 @@ public class SalaryBatchServiceImpl extends ServiceImpl<SalaryBatchMapper, Salar
      */
     private SalaryDetail calculateOneEmployee(Long batchId, Long employeeId, EmployeeSalary salary,
                                                int year, int month) {
+        // 从 salary_item 加载配置
+        BigDecimal ssRate = BigDecimal.ZERO;
+        BigDecimal hfRate = BigDecimal.ZERO;
+        BigDecimal lateFine = new BigDecimal("50"); // 默认
+        BigDecimal overtimeMult = new BigDecimal("1.5"); // 默认
+
+        if (salary.getAccount_id() != null) {
+            QueryWrapper<SalaryItem> itemWrapper = new QueryWrapper<>();
+            itemWrapper.eq("account_id", salary.getAccount_id());
+            List<SalaryItem> items = salaryItemMapper.selectList(itemWrapper);
+            for (SalaryItem item : items) {
+                String formula = item.getFormula();
+                if (formula == null || formula.isEmpty()) continue;
+                try {
+                    if (item.getItem_type() == SalaryItemTypeEnum.SOCIAL_SECURITY.getValue()
+                            || item.getItem_type() == SalaryItemTypeEnum.HOUSING_FUND.getValue()) {
+                        // formula 就是费率，如 "0.08"
+                        BigDecimal rate = new BigDecimal(formula);
+                        if (item.getItem_type() == SalaryItemTypeEnum.SOCIAL_SECURITY.getValue()) {
+                            ssRate = ssRate.add(rate);
+                        } else {
+                            hfRate = hfRate.add(rate);
+                        }
+                    } else if (item.getItem_type() == SalaryItemTypeEnum.ATTENDANCE_DEDUCT.getValue()) {
+                        if (formula.startsWith("late:")) {
+                            lateFine = new BigDecimal(formula.substring(5));
+                        }
+                    } else if (item.getItem_type() == SalaryItemTypeEnum.VARIABLE_INCOME.getValue()) {
+                        overtimeMult = new BigDecimal(formula);
+                    }
+                } catch (NumberFormatException e) {
+                    log.warn("工资项目公式解析失败：item={}, formula={}", item.getName(), formula);
+                }
+            }
+        }
+
         // 构建计算上下文
         SalaryCalculationContext ctx = SalaryCalculationContext.builder()
                 .employeeId(employeeId)
+                .accountId(salary.getAccount_id())
                 .baseSalary(salary.getBase_salary())
                 .allowanceBase(salary.getAllowance_base())
                 .socialSecurityBase(salary.getSocial_security_base())
                 .housingFundBase(salary.getHousing_fund_base())
                 .performanceBase(salary.getPerformance_base())
-                .performanceCoefficient(BigDecimal.ONE) // 默认绩效系数1.0，实际应从绩效系统获取
+                .performanceCoefficient(BigDecimal.ONE)
+                .socialSecurityRate(ssRate.compareTo(BigDecimal.ZERO) > 0 ? ssRate : new BigDecimal("0.105"))
+                .housingFundRate(hfRate.compareTo(BigDecimal.ZERO) > 0 ? hfRate : new BigDecimal("0.12"))
+                .lateFinePerTime(lateFine)
+                .overtimeMultiplier(overtimeMult)
                 .month(month)
                 .build();
 
@@ -309,8 +360,11 @@ public class SalaryBatchServiceImpl extends ServiceImpl<SalaryBatchMapper, Salar
         Page<SalaryDetail> pageQuery = new Page<>(page, size);
         Page<SalaryDetail> detailPage = salaryDetailMapper.selectPage(pageQuery, wrapper);
 
+        // 批量加载员工信息
+        Map<Long, User> userMap = loadUserMap(detailPage.getRecords());
+
         List<SalaryDetailVO> recordVOs = detailPage.getRecords().stream()
-                .map(this::toDetailVO)
+                .map(d -> toDetailVO(d, userMap.get(d.getEmployee_id())))
                 .collect(Collectors.toList());
 
         SalaryBatchPreviewVO preview = new SalaryBatchPreviewVO();
@@ -319,6 +373,21 @@ public class SalaryBatchServiceImpl extends ServiceImpl<SalaryBatchMapper, Salar
         preview.setTotal(total);
 
         return preview;
+    }
+
+    /**
+     * 批量加载用户信息
+     */
+    private Map<Long, User> loadUserMap(List<SalaryDetail> details) {
+        List<Long> employeeIds = details.stream()
+                .map(SalaryDetail::getEmployee_id)
+                .distinct()
+                .collect(Collectors.toList());
+        if (employeeIds.isEmpty()) {
+            return new java.util.HashMap<>();
+        }
+        List<User> users = userMapper.selectBatchIds(employeeIds);
+        return users.stream().collect(Collectors.toMap(User::getId, u -> u, (u1, u2) -> u1));
     }
 
     @Override
@@ -434,10 +503,14 @@ public class SalaryBatchServiceImpl extends ServiceImpl<SalaryBatchMapper, Salar
         return vo;
     }
 
-    private SalaryDetailVO toDetailVO(SalaryDetail detail) {
+    private SalaryDetailVO toDetailVO(SalaryDetail detail, User user) {
         SalaryDetailVO vo = new SalaryDetailVO();
         vo.setId(detail.getId());
         vo.setEmployee_id(detail.getEmployee_id());
+        if (user != null) {
+            vo.setEmployee_name(user.getUserName());
+            vo.setEmployee_no(user.getUserAccount());
+        }
         vo.setGross_pay(detail.getGross_pay());
         vo.setSocial_security(detail.getSocial_security());
         vo.setHousing_fund(detail.getHousing_fund());
@@ -448,7 +521,6 @@ public class SalaryBatchServiceImpl extends ServiceImpl<SalaryBatchMapper, Salar
         vo.setAbnormal_reason(detail.getAbnormal_reason());
         vo.setManual_adjustment(detail.getManual_adjustment());
         vo.setAdjustment_reason(detail.getAdjustment_reason());
-        // 解析工资项JSON
         if (detail.getSalary_items() != null) {
             vo.setSalary_items(JSONUtil.toList(
                     JSONUtil.parseArray(detail.getSalary_items()), SalaryItemAmountVO.class));

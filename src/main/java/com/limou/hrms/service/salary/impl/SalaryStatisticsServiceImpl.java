@@ -152,7 +152,7 @@ public class SalaryStatisticsServiceImpl implements SalaryStatisticsService {
 
     @Override
     public List<VariationDistributionVO> getVariationDistribution(String month) {
-        // 薪资变动分布：按实发金额区间统计人数
+        // 薪资变动分布：计算每位员工本月与上月的实发工资变动率，按区间统计人数
         SalaryBatch batch = findBatchByMonth(month);
         if (batch == null) {
             return new ArrayList<>();
@@ -160,28 +160,66 @@ public class SalaryStatisticsServiceImpl implements SalaryStatisticsService {
 
         QueryWrapper<SalaryDetail> wrapper = new QueryWrapper<>();
         wrapper.eq("batch_id", batch.getId());
-        List<SalaryDetail> details = salaryDetailMapper.selectList(wrapper);
+        List<SalaryDetail> currentDetails = salaryDetailMapper.selectList(wrapper);
 
-        // 定义区间
-        int[][] ranges = {{0, 5000}, {5000, 8000}, {8000, 12000}, {12000, 20000}, {20000, 999999}};
+        // 查找上个月批次
+        String prevMonth = getPreviousMonth(month);
+        SalaryBatch prevBatch = findBatchByMonth(prevMonth);
+        Map<Long, BigDecimal> prevNetPayMap = new java.util.HashMap<>();
+        if (prevBatch != null) {
+            QueryWrapper<SalaryDetail> prevWrapper = new QueryWrapper<>();
+            prevWrapper.eq("batch_id", prevBatch.getId());
+            List<SalaryDetail> prevDetails = salaryDetailMapper.selectList(prevWrapper);
+            for (SalaryDetail pd : prevDetails) {
+                prevNetPayMap.put(pd.getEmployee_id(),
+                        pd.getNet_pay() != null ? pd.getNet_pay() : BigDecimal.ZERO);
+            }
+        }
+
+        // 定义变动率区间
+        String[] rangeLabels = {"下降>30%", "下降10%~30%", "基本持平(±10%)", "增长10%~30%", "增长>30%"};
+        int[] counts = new int[5];
+
+        for (SalaryDetail detail : currentDetails) {
+            BigDecimal currentNet = detail.getNet_pay() != null ? detail.getNet_pay() : BigDecimal.ZERO;
+            BigDecimal prevNet = prevNetPayMap.get(detail.getEmployee_id());
+
+            int idx = 2; // 默认持平
+            if (prevNet != null && prevNet.compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal changeRate = currentNet.subtract(prevNet)
+                        .divide(prevNet, 4, RoundingMode.HALF_UP);
+                double rate = changeRate.doubleValue();
+                if (rate < -0.30) idx = 0;
+                else if (rate < -0.10) idx = 1;
+                else if (rate <= 0.10) idx = 2;
+                else if (rate <= 0.30) idx = 3;
+                else idx = 4;
+            }
+            counts[idx]++;
+        }
+
         List<VariationDistributionVO> result = new ArrayList<>();
-
-        for (int[] range : ranges) {
-            BigDecimal low = new BigDecimal(range[0]);
-            BigDecimal high = new BigDecimal(range[1]);
-            long count = details.stream()
-                    .filter(d -> d.getNet_pay().compareTo(low) >= 0 && d.getNet_pay().compareTo(high) < 0)
-                    .count();
-
+        for (int i = 0; i < rangeLabels.length; i++) {
             VariationDistributionVO vo = new VariationDistributionVO();
-            vo.setRange_label(low + "-" + (range[1] == 999999 ? "以上" : high));
-            vo.setRange_start(range[0]);
-            vo.setRange_end(range[1]);
-            vo.setEmployee_count((int) count);
+            vo.setRange_label(rangeLabels[i]);
+            vo.setEmployee_count(counts[i]);
             result.add(vo);
         }
 
         return result;
+    }
+
+    /**
+     * 获取上个月份字符串 yyyy-MM
+     */
+    private String getPreviousMonth(String month) {
+        if (month == null || month.length() != 7) return null;
+        int year = Integer.parseInt(month.substring(0, 4));
+        int m = Integer.parseInt(month.substring(5, 7));
+        if (m == 1) {
+            return (year - 1) + "-12";
+        }
+        return year + "-" + String.format("%02d", m - 1);
     }
 
     // ==================== 辅助方法 ====================

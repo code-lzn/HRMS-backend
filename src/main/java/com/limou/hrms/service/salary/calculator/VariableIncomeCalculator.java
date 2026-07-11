@@ -5,13 +5,13 @@ import java.math.BigDecimal;
 import org.springframework.stereotype.Component;
 
 /**
- * 变动收入计算器：绩效奖金（绩效基数 × 绩效系数）+ 加班费（小时工资 × 1.5 × 平日加班时长）
- * 注：法定节假日倍数不同，这里简化处理，默认 1.5 倍
+ * 变动收入计算器：绩效奖金（绩效基数 × 绩效系数）+ 加班费（小时工资 × 倍数 × 加班时长）
+ * 倍数从 salary_item 加载，默认 1.5 倍
  */
 @Component
 public class VariableIncomeCalculator implements SalaryItemCalculator {
 
-    private static final BigDecimal OVERTIME_MULTIPLIER = new BigDecimal("1.5");
+    private static final BigDecimal DEFAULT_OVERTIME_MULTIPLIER = new BigDecimal("1.5");
 
     @Override
     public SalaryItemTypeEnum getItemType() {
@@ -28,8 +28,10 @@ public class VariableIncomeCalculator implements SalaryItemCalculator {
         // 加班费：小时工资 × 倍数 × 加班时长
         BigDecimal overtimePay = BigDecimal.ZERO;
         if (ctx.getOvertimeHours() > 0) {
+            BigDecimal multiplier = ctx.getOvertimeMultiplier() != null
+                    ? ctx.getOvertimeMultiplier() : DEFAULT_OVERTIME_MULTIPLIER;
             overtimePay = ctx.getHourlySalary()
-                    .multiply(OVERTIME_MULTIPLIER)
+                    .multiply(multiplier)
                     .multiply(new BigDecimal(ctx.getOvertimeHours()));
         }
 
