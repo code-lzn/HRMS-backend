@@ -62,7 +62,7 @@ public class AttendanceController {
      */
     @GetMapping("/calendar")
     public BaseResponse<AttendanceCalendarVO> getCalendar(
-            @ApiParam(value = "月份 yyyy-MM", required = true) @RequestParam String month,
+           @RequestParam String month,
             HttpServletRequest request) {
         User loginUser = userService.getLoginUser(request);
         AttendanceCalendarVO vo = attendanceService.getCalendar(loginUser.getId(), month);
@@ -74,7 +74,7 @@ public class AttendanceController {
      */
     @GetMapping("/records")
     public BaseResponse<List<AttendanceVO>> getMonthRecords(
-            @ApiParam(value = "月份 yyyy-MM", required = true) @RequestParam String month,
+            @RequestParam String month,
             HttpServletRequest request) {
         User loginUser = userService.getLoginUser(request);
         List<AttendanceVO> list = attendanceService.getMonthRecords(loginUser.getId(), month);

@@ -253,53 +253,163 @@ PayslipVO *-- SalaryItemDetail
 
 > 个人中心主要复用已有模块数据表，仅新增以下安全相关表。
 
-### 登录日志表 login_log
+```
+-- ============== 考勤模块 ==============
 
-```sql
-CREATE TABLE IF NOT EXISTS `login_log` (
-    `id`                  BIGINT UNSIGNED   NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    `employee_id`         BIGINT UNSIGNED   NOT NULL COMMENT '员工ID',
-    `login_time`          DATETIME          NOT NULL COMMENT '登录时间',
-    `ip`                  VARCHAR(45)       NOT NULL COMMENT '登录IP',
-    `device`              VARCHAR(256)               COMMENT '设备信息（User-Agent）',
-    `login_type`          TINYINT           NOT NULL COMMENT '登录方式：1=密码登录 2=短信验证码登录',
-    `is_success`          TINYINT           NOT NULL DEFAULT 1 COMMENT '是否成功：0=失败 1=成功',
-    `fail_reason`         VARCHAR(128)               COMMENT '失败原因',
-    PRIMARY KEY (`id`),
-    KEY `idx_employee_id` (`employee_id`),
-    KEY `idx_login_time` (`login_time`)
-) DEFAULT CHARACTER SET = utf8mb4 COMMENT = '登录日志表';
+-- 考勤打卡记录表
+CREATE TABLE IF NOT EXISTS attendance (
+    id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+    employeeId      BIGINT          NOT NULL                 COMMENT '员工ID',
+    userId          BIGINT          NOT NULL                 COMMENT '用户ID',
+    attendanceDate  DATE            NOT NULL                 COMMENT '考勤日期',
+    punchInTime     DATETIME        DEFAULT NULL             COMMENT '上班打卡时间',
+    punchOutTime    DATETIME        DEFAULT NULL             COMMENT '下班打卡时间',
+    status          TINYINT         NOT NULL DEFAULT 0       COMMENT '状态：0=正常 1=迟到 2=早退 3=缺卡 4=请假 5=旷工',
+    punchInType     TINYINT         DEFAULT NULL             COMMENT '上班打卡方式：0=网页 1=APP',
+    punchOutType    TINYINT         DEFAULT NULL             COMMENT '下班打卡方式：0=网页 1=APP',
+    punchInLocation VARCHAR(256)    DEFAULT NULL             COMMENT '上班打卡位置',
+    punchOutLocation VARCHAR(256)   DEFAULT NULL             COMMENT '下班打卡位置',
+    remark          VARCHAR(512)    DEFAULT NULL             COMMENT '备注',
+    createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updateTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    isDeleted               tinyint  default 0                 not null comment '逻辑删除：0=否 1=是',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_employee_date (employeeId, attendanceDate),
+    KEY idx_user_id (userId),
+    KEY idx_attendance_date (attendanceDate),
+    KEY idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='考勤打卡记录表';
+
+
+-- 请假申请表
+CREATE TABLE IF NOT EXISTS `leave`(
+    id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+    employeeId      BIGINT          NOT NULL                 COMMENT '员工ID',
+    userId          BIGINT          NOT NULL                 COMMENT '用户ID',
+    leaveType       TINYINT         NOT NULL                 COMMENT '请假类型：0=事假 1=病假 2=年假 3=婚假 4=产假 5=丧假 6=调休',
+    startDate       DATE            NOT NULL                 COMMENT '开始日期',
+    endDate         DATE            NOT NULL                 COMMENT '结束日期',
+    totalDays       DECIMAL(4,1)    NOT NULL                 COMMENT '请假总天数',
+    reason          VARCHAR(512)    NOT NULL                 COMMENT '请假原因',
+    status          TINYINT         NOT NULL DEFAULT 0       COMMENT '状态：0=待审批 1=已通过 2=已拒绝 3=已撤销',
+    approverId      BIGINT          DEFAULT NULL             COMMENT '审批人ID',
+    approveTime     DATETIME        DEFAULT NULL             COMMENT '审批时间',
+    approveComment  VARCHAR(512)    DEFAULT NULL             COMMENT '审批意见',
+    createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updateTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    isDeleted               tinyint  default 0                 not null comment '逻辑删除：0=否 1=是',
+    PRIMARY KEY (id),
+    KEY idx_employee_id (employeeId),
+    KEY idx_user_id (userId),
+    KEY idx_status (status),
+    KEY idx_start_date (startDate)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='请假申请表';
+
+
+-- 补卡申请表
+CREATE TABLE IF NOT EXISTS makeup_punch (
+    id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+    employeeId      BIGINT          NOT NULL                 COMMENT '员工ID',
+    userId          BIGINT          NOT NULL                 COMMENT '用户ID',
+    punchDate       DATE            NOT NULL                 COMMENT '补卡日期',
+    punchType       TINYINT         NOT NULL                 COMMENT '补卡类型：0=上班补卡 1=下班补卡',
+    punchTime       DATETIME        NOT NULL                 COMMENT '实际到岗/离岗时间',
+    reason          VARCHAR(512)    NOT NULL                 COMMENT '缺卡原因',
+    status          TINYINT         NOT NULL DEFAULT 0       COMMENT '状态：0=待审批 1=已通过 2=已拒绝',
+    approverId      BIGINT          DEFAULT NULL             COMMENT '审批人ID',
+    approveTime     DATETIME        DEFAULT NULL             COMMENT '审批时间',
+    approveComment  VARCHAR(512)    DEFAULT NULL             COMMENT '审批意见',
+    createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updateTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    isDeleted               tinyint  default 0                 not null comment '逻辑删除：0=否 1=是',
+    PRIMARY KEY (id),
+    KEY idx_employee_id (employeeId),
+    KEY idx_user_id (userId),
+    KEY idx_status (status),
+    KEY idx_punch_date (punchDate)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='补卡申请表';
+
+
+
+
+-- 考勤打卡记录表
+CREATE TABLE IF NOT EXISTS attendance_record (
+                                                 id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+                                                 employeeId      BIGINT          NOT NULL                 COMMENT '员工ID',
+                                                 userId          BIGINT          NOT NULL                 COMMENT '用户ID',
+                                                 attendanceDate  DATE            NOT NULL                 COMMENT '考勤日期',
+                                                 punchInTime     DATETIME        DEFAULT NULL             COMMENT '上班打卡时间',
+                                                 punchOutTime    DATETIME        DEFAULT NULL             COMMENT '下班打卡时间',
+                                                 status          TINYINT         NOT NULL DEFAULT 0       COMMENT '状态：0=正常 1=迟到 2=早退 3=缺卡 4=请假 5=旷工',
+                                                 punchInType     TINYINT         DEFAULT NULL             COMMENT '上班打卡方式：0=网页 1=APP',
+                                                 punchOutType    TINYINT         DEFAULT NULL             COMMENT '下班打卡方式：0=网页 1=APP',
+                                                 punchInLocation VARCHAR(256)    DEFAULT NULL             COMMENT '上班打卡位置',
+                                                 punchOutLocation VARCHAR(256)   DEFAULT NULL             COMMENT '下班打卡位置',
+                                                 remark          VARCHAR(512)    DEFAULT NULL             COMMENT '备注',
+                                                 createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+                                                 updateTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+                                                 isDeleted       TINYINT         DEFAULT 0 NOT NULL       COMMENT '逻辑删除：0=否 1=是',
+                                                 PRIMARY KEY (id),
+                                                 UNIQUE KEY uk_employee_date (employeeId, attendanceDate),
+                                                 KEY idx_user_id (userId),
+                                                 KEY idx_attendance_date (attendanceDate),
+                                                 KEY idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='考勤打卡记录表';
+
+
+-- 请假申请表
+CREATE TABLE IF NOT EXISTS leave_request (
+                                             id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+                                             employeeId      BIGINT          NOT NULL                 COMMENT '员工ID',
+                                             userId          BIGINT          NOT NULL                 COMMENT '用户ID',
+                                             leaveType       TINYINT         NOT NULL                 COMMENT '请假类型：0=事假 1=病假 2=年假 3=婚假 4=产假 5=丧假 6=调休',
+                                             startDate       DATE            NOT NULL                 COMMENT '开始日期',
+                                             endDate         DATE            NOT NULL                 COMMENT '结束日期',
+                                             totalDays       DECIMAL(4,1)    NOT NULL                 COMMENT '请假总天数',
+                                             reason          VARCHAR(512)    NOT NULL                 COMMENT '请假原因',
+                                             status          TINYINT         NOT NULL DEFAULT 0       COMMENT '状态：0=待审批 1=已通过 2=已拒绝 3=已撤销',
+                                             approverId      BIGINT          DEFAULT NULL             COMMENT '审批人ID',
+                                             approveTime     DATETIME        DEFAULT NULL             COMMENT '审批时间',
+                                             approveComment  VARCHAR(512)    DEFAULT NULL             COMMENT '审批意见',
+                                             createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+                                             updateTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+                                             isDeleted       TINYINT         DEFAULT 0 NOT NULL       COMMENT '逻辑删除：0=否 1=是',
+                                             PRIMARY KEY (id),
+                                             KEY idx_employee_id (employeeId),
+                                             KEY idx_user_id (userId),
+                                             KEY idx_status (status),
+                                             KEY idx_start_date (startDate)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='请假申请表';
+
+
+-- 补卡申请表
+CREATE TABLE IF NOT EXISTS makeup_punch (
+                                            id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+                                            employeeId      BIGINT          NOT NULL                 COMMENT '员工ID',
+                                            userId          BIGINT          NOT NULL                 COMMENT '用户ID',
+                                            punchDate       DATE            NOT NULL                 COMMENT '补卡日期',
+                                            punchType       TINYINT         NOT NULL                 COMMENT '补卡类型：0=上班补卡 1=下班补卡',
+                                            punchTime       DATETIME        NOT NULL                 COMMENT '实际到岗/离岗时间',
+                                            reason          VARCHAR(512)    NOT NULL                 COMMENT '缺卡原因',
+                                            status          TINYINT         NOT NULL DEFAULT 0       COMMENT '状态：0=待审批 1=已通过 2=已拒绝',
+                                            approverId      BIGINT          DEFAULT NULL             COMMENT '审批人ID',
+                                            approveTime     DATETIME        DEFAULT NULL             COMMENT '审批时间',
+                                            approveComment  VARCHAR(512)    DEFAULT NULL             COMMENT '审批意见',
+                                            createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+                                            updateTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+                                            isDeleted       TINYINT         DEFAULT 0 NOT NULL       COMMENT '逻辑删除：0=否 1=是',
+                                            PRIMARY KEY (id),
+                                            KEY idx_employee_id (employeeId),
+                                            KEY idx_user_id (userId),
+                                            KEY idx_status (status),
+                                            KEY idx_punch_date (punchDate)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='补卡申请表';
 ```
 
-### 密码历史表 password_history
-
-```sql
-CREATE TABLE IF NOT EXISTS `password_history` (
-    `id`                  BIGINT UNSIGNED   NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    `employee_id`         BIGINT UNSIGNED   NOT NULL COMMENT '员工ID',
-    `password_hash`       VARCHAR(128)      NOT NULL COMMENT '历史密码哈希',
-    `create_time`         DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    PRIMARY KEY (`id`),
-    KEY `idx_employee_id_time` (`employee_id`, `create_time`)
-) DEFAULT CHARACTER SET = utf8mb4 COMMENT = '密码历史表，每个员工仅保留最近3次';
-```
 
 ### 工资条验证记录表 payslip_verification
 
-```sql
-CREATE TABLE IF NOT EXISTS `payslip_verification` (
-    `id`                  BIGINT UNSIGNED   NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    `employee_id`         BIGINT UNSIGNED   NOT NULL COMMENT '员工ID',
-    `batch_id`            BIGINT UNSIGNED   NOT NULL COMMENT '薪资批次ID',
-    `verify_type`         TINYINT           NOT NULL COMMENT '验证方式：1=短信验证码 2=密码',
-    `is_success`          TINYINT           NOT NULL DEFAULT 1 COMMENT '是否成功：0=失败 1=成功',
-    `locked_until`        DATETIME                   COMMENT '锁定截止时间（连续3次失败后锁定30分钟）',
-    `create_time`         DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    PRIMARY KEY (`id`),
-    KEY `idx_employee_batch` (`employee_id`, `batch_id`),
-    KEY `idx_locked_until` (`locked_until`)
-) DEFAULT CHARACTER SET = utf8mb4 COMMENT = '工资条查看验证记录表';
-```
+
 
 ## API 设计
 
@@ -343,10 +453,10 @@ PUT    /api/v1/my/profile              # 编辑我的档案（仅允许可编辑
 ### 2. 我的考勤
 
 ```plain
-GET    /api/v1/my/attendance/calendar?month=2024-07       # 考勤日历
-POST   /api/v1/my/attendance/clock-in                     # 上班打卡
-POST   /api/v1/my/attendance/clock-out                    # 下班打卡
-GET    /api/v1/my/attendance/statistics?month=2024-07     # 月度统计
+GET    /api/attendance/calendar?month=2024-07       # 考勤日历
+POST   /api/attendance/punch                   # 上班，下班打卡
+GET    /api/attendance/statistics?month=2024-07     # 月度统计
+GET    /api/attendance/today     # 获取今天的考勤状态
 ```
 
 #### 打卡响应
