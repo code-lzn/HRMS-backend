@@ -526,7 +526,7 @@ int ATTENDANCE_STATUS_ABSENT = 5;
 POST    /api/attendance/leave/apply             #申请请假
 POST   /api/attendance/leave/cancel/{id}           # 取消申请
 GET    /api/attendance/leave/my           #获取我的请假记录
-POST    /api/attendance/leave           #申请审批
+POST	/api/attendance/leave/{id}/progress	#查看我的审批进度
 ```
 
 #### 请假详情响应
@@ -555,10 +555,9 @@ POST    /api/attendance/leave           #申请审批
 ### 4. 我的薪资
 
 ```plain
-GET    /api/v1/my/payslips                                # 工资条列表
-GET    /api/v1/my/payslips/{batchId}                      # 工资条详情（需验证）
-POST   /api/v1/my/payslips/{batchId}/verify               # 二次验证
-GET    /api/v1/my/salary-trend?months=6                    # 薪资趋势（AntV折线图）
+GET    /api/salary/slips                                # 工资条列表
+POST    /api/salary/slips/{id}                                 # 工资条详情（需验证）
+GET    /api/salary/slips/trend                                # 获取6个月的趋势
 ```
 
 #### 二次验证请求
@@ -574,10 +573,9 @@ GET    /api/v1/my/salary-trend?months=6                    # 薪资趋势（AntV
 ### 5. 账号安全
 
 ```plain
-PUT    /api/v1/my/password                  # 修改密码
-POST   /api/v1/my/phone/send-code           # 发送手机验证码（绑新手机/解绑）
-PUT    /api/v1/my/phone                     # 绑定/修改手机号
-GET    /api/v1/my/login-logs                # 登录日志（分页）
+POST   /api/account/changePassword          #修改密码
+POST    /api/account/bindPhone                    # 绑定/解绑手机号
+GET    /api/account/login-logs                # 登录日志（分页）
 ```
 
 #### 修改密码请求
@@ -588,6 +586,27 @@ GET    /api/v1/my/login-logs                # 登录日志（分页）
 | newPassword | String | 是 | 新密码（>=8位，含大小写+数字） |
 
 ---
+
+日志响应格式
+
+```json
+    {
+      "id": "18",
+      "loginTime": "2026-05-25T06:32:00.000+00:00",
+      "ip": "114.25.66.78",
+      "device": "Mozilla/5.0 Chrome/121 Android",
+      "loginType": 1,
+      "loginTypeText": "密码登录",
+      "isSuccess": 1,
+      "failReason": null
+    },
+```
+
+
+
+
+
+
 
 ## 关键技术设计
 
