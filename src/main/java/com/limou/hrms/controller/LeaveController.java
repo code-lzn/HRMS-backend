@@ -7,6 +7,7 @@ import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.model.dto.attendance.ApprovalRequest;
 import com.limou.hrms.model.dto.attendance.LeaveApplyRequest;
 import com.limou.hrms.model.entity.User;
+import com.limou.hrms.model.vo.LeaveProgressVO;
 import com.limou.hrms.model.vo.LeaveVO;
 import com.limou.hrms.service.LeaveService;
 import com.limou.hrms.service.UserService;
@@ -82,5 +83,17 @@ public class LeaveController {
         User loginUser = userService.getLoginUser(request);
         leaveService.cancel(id, loginUser.getId());
         return ResultUtils.success(true);
+    }
+
+    /**
+     * 查看审批进度
+     */
+    @GetMapping("/{id}/progress")
+    public BaseResponse<LeaveProgressVO> getApprovalProgress(
+            @PathVariable Long id,
+            HttpServletRequest request) {
+        User loginUser = userService.getLoginUser(request);
+        LeaveProgressVO vo = leaveService.getApprovalProgress(id, loginUser.getId());
+        return ResultUtils.success(vo);
     }
 }

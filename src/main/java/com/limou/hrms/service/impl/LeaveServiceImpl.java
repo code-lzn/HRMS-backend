@@ -12,6 +12,7 @@ import com.limou.hrms.model.entity.Employee;
 import com.limou.hrms.model.entity.Leave;
 import com.limou.hrms.model.enums.ApprovalStatusEnum;
 import com.limou.hrms.model.enums.LeaveTypeEnum;
+import com.limou.hrms.model.vo.LeaveProgressVO;
 import com.limou.hrms.model.vo.LeaveVO;
 import com.limou.hrms.service.AttendanceService;
 import com.limou.hrms.service.EmployeeService;
@@ -23,7 +24,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 import java.math.BigDecimal;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -117,6 +121,58 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
                 .list();
 
         return list.stream().map(r -> convertToVO(r, emp)).collect(Collectors.toList());
+    }
+
+    @Override
+    public LeaveProgressVO getApprovalProgress(Long requestId, Long userId) {
+        Leave request = this.getById(requestId);
+        ThrowUtils.throwIf(request == null, ErrorCode.NOT_FOUND_ERROR, "请假申请不存在");
+        ThrowUtils.throwIf(!Objects.equals(request.getUserId(), userId), ErrorCode.NO_AUTH_ERROR);
+
+        Employee emp = employeeService.lambdaQuery().eq(Employee::getId, request.getEmployeeId()).one();
+        LeaveVO leaveVO = convertToVO(request, emp);
+
+        // 构建审批进度节点
+        List<LeaveProgressVO.ProgressNode> nodes = new ArrayList<>();
+
+        // 节点1: 提交申请
+        LeaveProgressVO.ProgressNode submitNode = new LeaveProgressVO.ProgressNode();
+        submitNode.setNodeName("提交申请");
+        submitNode.setStatus(0); // 已完成
+        submitNode.setOperatorName(emp != null ? emp.getEmployeeName() : null);
+        submitNode.setOperateTime(request.getCreateTime());
+        submitNode.setComment(request.getReason());
+        nodes.add(submitNode);
+
+        // 节点2: 审批结果
+        LeaveProgressVO.ProgressNode approveNode = new LeaveProgressVO.ProgressNode();
+        approveNode.setNodeName("审批");
+        if (request.getStatus() == AttendanceConstant.APPROVAL_STATUS_PENDING) {
+            approveNode.setStatus(1); // 进行中
+            approveNode.setOperatorName(null);
+            approveNode.setOperateTime(null);
+            approveNode.setComment(null);
+        } else if (request.getStatus() == AttendanceConstant.APPROVAL_STATUS_CANCELLED) {
+            approveNode.setStatus(2); // 未开始/已跳过
+            approveNode.setNodeName("审批（已撤销）");
+            approveNode.setOperatorName(null);
+            approveNode.setOperateTime(null);
+            approveNode.setComment("申请人已撤销此申请");
+        } else {
+            approveNode.setStatus(0); // 已完成
+            Employee approver = request.getApproverId() != null
+                    ? employeeService.lambdaQuery().eq(Employee::getId, request.getApproverId()).one()
+                    : null;
+            approveNode.setOperatorName(approver != null ? approver.getEmployeeName() : null);
+            approveNode.setOperateTime(request.getApproveTime());
+            approveNode.setComment(request.getApproveComment());
+        }
+        nodes.add(approveNode);
+
+        LeaveProgressVO vo = new LeaveProgressVO();
+        vo.setLeave(leaveVO);
+        vo.setProgressNodes(nodes);
+        return vo;
     }
 
     @Override

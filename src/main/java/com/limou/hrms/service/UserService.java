@@ -117,4 +117,14 @@ public interface UserService extends IService<User> {
      */
     QueryWrapper<User> getQueryWrapper(UserQueryRequest userQueryRequest);
 
+    /**
+     * 修改密码
+     */
+    void changePassword(Long userId, String oldPassword, String newPassword, String confirmPassword);
+
+    /**
+     * 绑定/解绑手机（phone 为空字符串则解绑）
+     */
+    void updatePhone(Long userId, String phone);
+
 }

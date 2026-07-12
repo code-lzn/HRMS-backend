@@ -2,6 +2,7 @@ package com.limou.hrms.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.limou.hrms.model.entity.Leave;
+import com.limou.hrms.model.vo.LeaveProgressVO;
 import com.limou.hrms.model.vo.LeaveVO;
 
 import java.util.List;
@@ -30,4 +31,9 @@ public interface LeaveService extends IService<Leave> {
      * 撤销请假
      */
     void cancel(Long requestId, Long userId);
+
+    /**
+     * 获取审批进度
+     */
+    LeaveProgressVO getApprovalProgress(Long requestId, Long userId);
 }

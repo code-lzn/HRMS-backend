@@ -18,7 +18,14 @@ public enum ErrorCode {
     ATTENDANCE_TIME_ERROR(50011, "不在打卡时间范围内"),
     LEAVE_OVERLAP_ERROR(50012, "请假时间与已有请假记录重叠"),
     LEAVE_DAYS_ERROR(50013, "请假天数不足"),
-    APPROVAL_NOT_PENDING_ERROR(50014, "该申请已审批，无法重复操作");
+    APPROVAL_NOT_PENDING_ERROR(50014, "该申请已审批，无法重复操作"),
+    SALARY_VERIFY_FAILED(50015, "密码验证失败"),
+    SALARY_VERIFY_LOCKED(50016, "验证次数过多，请30分钟后重试"),
+    SALARY_NOT_FOUND(50017, "工资条不存在"),
+    PASSWORD_ERROR(50018, "原密码错误"),
+    PASSWORD_SAME_AS_OLD(50019, "新密码不能与旧密码相同"),
+    PASSWORD_RECENTLY_USED(50020, "新密码与近期使用过的密码重复"),
+    PHONE_ALREADY_BOUND(50021, "该手机号已被其他账号绑定");
 
     /**
      * 状态码
