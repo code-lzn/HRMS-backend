@@ -162,3 +162,224 @@ CREATE TABLE IF NOT EXISTS `department_merge_log` (
 ) DEFAULT CHARACTER SET = utf8mb4 COMMENT = '部门合并日志表';
 
 
+-- ============== 考勤模块 ==============
+
+-- 考勤打卡记录表
+CREATE TABLE IF NOT EXISTS attendance (
+    id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+    employeeId      BIGINT          NOT NULL                 COMMENT '员工ID',
+    userId          BIGINT          NOT NULL                 COMMENT '用户ID',
+    attendanceDate  DATE            NOT NULL                 COMMENT '考勤日期',
+    punchInTime     DATETIME        DEFAULT NULL             COMMENT '上班打卡时间',
+    punchOutTime    DATETIME        DEFAULT NULL             COMMENT '下班打卡时间',
+    status          TINYINT         NOT NULL DEFAULT 0       COMMENT '状态：0=正常 1=迟到 2=早退 3=缺卡 4=请假 5=旷工',
+    punchInType     TINYINT         DEFAULT NULL             COMMENT '上班打卡方式：0=网页 1=APP',
+    punchOutType    TINYINT         DEFAULT NULL             COMMENT '下班打卡方式：0=网页 1=APP',
+    punchInLocation VARCHAR(256)    DEFAULT NULL             COMMENT '上班打卡位置',
+    punchOutLocation VARCHAR(256)   DEFAULT NULL             COMMENT '下班打卡位置',
+    remark          VARCHAR(512)    DEFAULT NULL             COMMENT '备注',
+    createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updateTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    isDeleted               tinyint  default 0                 not null comment '逻辑删除：0=否 1=是',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_employee_date (employeeId, attendanceDate),
+    KEY idx_user_id (userId),
+    KEY idx_attendance_date (attendanceDate),
+    KEY idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='考勤打卡记录表';
+
+
+-- 请假申请表
+CREATE TABLE IF NOT EXISTS `leave`(
+    id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+    employeeId      BIGINT          NOT NULL                 COMMENT '员工ID',
+    userId          BIGINT          NOT NULL                 COMMENT '用户ID',
+    leaveType       TINYINT         NOT NULL                 COMMENT '请假类型：0=事假 1=病假 2=年假 3=婚假 4=产假 5=丧假 6=调休',
+    startDate       DATE            NOT NULL                 COMMENT '开始日期',
+    endDate         DATE            NOT NULL                 COMMENT '结束日期',
+    totalDays       DECIMAL(4,1)    NOT NULL                 COMMENT '请假总天数',
+    reason          VARCHAR(512)    NOT NULL                 COMMENT '请假原因',
+    status          TINYINT         NOT NULL DEFAULT 0       COMMENT '状态：0=待审批 1=已通过 2=已拒绝 3=已撤销',
+    approverId      BIGINT          DEFAULT NULL             COMMENT '审批人ID',
+    approveTime     DATETIME        DEFAULT NULL             COMMENT '审批时间',
+    approveComment  VARCHAR(512)    DEFAULT NULL             COMMENT '审批意见',
+    createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updateTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    isDeleted               tinyint  default 0                 not null comment '逻辑删除：0=否 1=是',
+    PRIMARY KEY (id),
+    KEY idx_employee_id (employeeId),
+    KEY idx_user_id (userId),
+    KEY idx_status (status),
+    KEY idx_start_date (startDate)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='请假申请表';
+
+
+-- 补卡申请表
+CREATE TABLE IF NOT EXISTS makeup_punch (
+    id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+    employeeId      BIGINT          NOT NULL                 COMMENT '员工ID',
+    userId          BIGINT          NOT NULL                 COMMENT '用户ID',
+    punchDate       DATE            NOT NULL                 COMMENT '补卡日期',
+    punchType       TINYINT         NOT NULL                 COMMENT '补卡类型：0=上班补卡 1=下班补卡',
+    punchTime       DATETIME        NOT NULL                 COMMENT '实际到岗/离岗时间',
+    reason          VARCHAR(512)    NOT NULL                 COMMENT '缺卡原因',
+    status          TINYINT         NOT NULL DEFAULT 0       COMMENT '状态：0=待审批 1=已通过 2=已拒绝',
+    approverId      BIGINT          DEFAULT NULL             COMMENT '审批人ID',
+    approveTime     DATETIME        DEFAULT NULL             COMMENT '审批时间',
+    approveComment  VARCHAR(512)    DEFAULT NULL             COMMENT '审批意见',
+    createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updateTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    isDeleted               tinyint  default 0                 not null comment '逻辑删除：0=否 1=是',
+    PRIMARY KEY (id),
+    KEY idx_employee_id (employeeId),
+    KEY idx_user_id (userId),
+    KEY idx_status (status),
+    KEY idx_punch_date (punchDate)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='补卡申请表';
+
+
+
+
+-- 考勤打卡记录表
+CREATE TABLE IF NOT EXISTS attendance (
+                                                 id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+                                                 employeeId      BIGINT          NOT NULL                 COMMENT '员工ID',
+                                                 userId          BIGINT          NOT NULL                 COMMENT '用户ID',
+                                                 attendanceDate  DATE            NOT NULL                 COMMENT '考勤日期',
+                                                 punchInTime     DATETIME        DEFAULT NULL             COMMENT '上班打卡时间',
+                                                 punchOutTime    DATETIME        DEFAULT NULL             COMMENT '下班打卡时间',
+                                                 status          TINYINT         NOT NULL DEFAULT 0       COMMENT '状态：0=正常 1=迟到 2=早退 3=缺卡 4=请假 5=旷工',
+                                                 punchInType     TINYINT         DEFAULT NULL             COMMENT '上班打卡方式：0=网页 1=APP',
+                                                 punchOutType    TINYINT         DEFAULT NULL             COMMENT '下班打卡方式：0=网页 1=APP',
+                                                 punchInLocation VARCHAR(256)    DEFAULT NULL             COMMENT '上班打卡位置',
+                                                 punchOutLocation VARCHAR(256)   DEFAULT NULL             COMMENT '下班打卡位置',
+                                                 remark          VARCHAR(512)    DEFAULT NULL             COMMENT '备注',
+                                                 createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+                                                 updateTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+                                                 isDeleted       TINYINT         DEFAULT 0 NOT NULL       COMMENT '逻辑删除：0=否 1=是',
+                                                 PRIMARY KEY (id),
+                                                 UNIQUE KEY uk_employee_date (employeeId, attendanceDate),
+                                                 KEY idx_user_id (userId),
+                                                 KEY idx_attendance_date (attendanceDate),
+                                                 KEY idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='考勤打卡记录表';
+
+
+-- 请假申请表
+CREATE TABLE IF NOT EXISTS leave_request (
+                                             id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+                                             employeeId      BIGINT          NOT NULL                 COMMENT '员工ID',
+                                             userId          BIGINT          NOT NULL                 COMMENT '用户ID',
+                                             leaveType       TINYINT         NOT NULL                 COMMENT '请假类型：0=事假 1=病假 2=年假 3=婚假 4=产假 5=丧假 6=调休',
+                                             startDate       DATE            NOT NULL                 COMMENT '开始日期',
+                                             endDate         DATE            NOT NULL                 COMMENT '结束日期',
+                                             totalDays       DECIMAL(4,1)    NOT NULL                 COMMENT '请假总天数',
+                                             reason          VARCHAR(512)    NOT NULL                 COMMENT '请假原因',
+                                             status          TINYINT         NOT NULL DEFAULT 0       COMMENT '状态：0=待审批 1=已通过 2=已拒绝 3=已撤销',
+                                             approverId      BIGINT          DEFAULT NULL             COMMENT '审批人ID',
+                                             approveTime     DATETIME        DEFAULT NULL             COMMENT '审批时间',
+                                             approveComment  VARCHAR(512)    DEFAULT NULL             COMMENT '审批意见',
+                                             createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+                                             updateTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+                                             isDeleted       TINYINT         DEFAULT 0 NOT NULL       COMMENT '逻辑删除：0=否 1=是',
+                                             PRIMARY KEY (id),
+                                             KEY idx_employee_id (employeeId),
+                                             KEY idx_user_id (userId),
+                                             KEY idx_status (status),
+                                             KEY idx_start_date (startDate)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='请假申请表';
+
+
+-- 补卡申请表
+CREATE TABLE IF NOT EXISTS makeup_punch (
+                                            id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+                                            employeeId      BIGINT          NOT NULL                 COMMENT '员工ID',
+                                            userId          BIGINT          NOT NULL                 COMMENT '用户ID',
+                                            punchDate       DATE            NOT NULL                 COMMENT '补卡日期',
+                                            punchType       TINYINT         NOT NULL                 COMMENT '补卡类型：0=上班补卡 1=下班补卡',
+                                            punchTime       DATETIME        NOT NULL                 COMMENT '实际到岗/离岗时间',
+                                            reason          VARCHAR(512)    NOT NULL                 COMMENT '缺卡原因',
+                                            status          TINYINT         NOT NULL DEFAULT 0       COMMENT '状态：0=待审批 1=已通过 2=已拒绝',
+                                            approverId      BIGINT          DEFAULT NULL             COMMENT '审批人ID',
+                                            approveTime     DATETIME        DEFAULT NULL             COMMENT '审批时间',
+                                            approveComment  VARCHAR(512)    DEFAULT NULL             COMMENT '审批意见',
+                                            createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+                                            updateTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+                                            isDeleted       TINYINT         DEFAULT 0 NOT NULL       COMMENT '逻辑删除：0=否 1=是',
+                                            PRIMARY KEY (id),
+                                            KEY idx_employee_id (employeeId),
+                                            KEY idx_user_id (userId),
+                                            KEY idx_status (status),
+                                            KEY idx_punch_date (punchDate)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='补卡申请表';
+
+
+-- ============== 考勤打卡记录测试数据 ==============
+-- 说明：
+--   1. 员工ID沿用 employee_test_data.sql 中的数据：101/102/201/202/203/204
+--   2. userId 与 employeeId 保持一致（测试用，实际应关联 user 表）
+--   3. 数据周期：2026-07-01 ~ 2026-07-11（工作日，跳过周末 07-04/07-05）
+--   4. 覆盖全部状态：0=正常 1=迟到 2=早退 3=缺卡 4=请假 5=旷工
+--   5. 打卡方式：0=网页 1=APP；打卡位置统一为"公司总部"
+
+INSERT INTO `attendance` (`employeeId`, `userId`, `attendanceDate`, `punchInTime`, `punchOutTime`, `status`, `punchInType`, `punchOutType`, `punchInLocation`, `punchOutLocation`, `remark`) VALUES
+-- ===== 员工 101 王总（基本正常，1天迟到） =====
+(101, 101, '2026-07-01', '2026-07-01 08:48:00', '2026-07-01 18:05:00', 0, 0, 0, '公司总部', '公司总部', NULL),
+(101, 101, '2026-07-02', '2026-07-02 08:52:00', '2026-07-02 18:10:00', 0, 0, 1, '公司总部', '公司总部', NULL),
+(101, 101, '2026-07-03', '2026-07-03 09:12:00', '2026-07-03 18:08:00', 1, 0, 0, '公司总部', '公司总部', '早会迟到'),
+(101, 101, '2026-07-06', '2026-07-06 08:45:00', '2026-07-06 18:00:00', 0, 1, 0, '公司总部', '公司总部', NULL),
+(101, 101, '2026-07-07', '2026-07-07 08:50:00', '2026-07-07 18:15:00', 0, 0, 0, '公司总部', '公司总部', NULL),
+(101, 101, '2026-07-08', '2026-07-08 08:55:00', '2026-07-08 18:02:00', 0, 0, 1, '公司总部', '公司总部', NULL),
+(101, 101, '2026-07-09', '2026-07-09 08:47:00', '2026-07-09 18:05:00', 0, 1, 1, '公司总部', '公司总部', NULL),
+(101, 101, '2026-07-10', '2026-07-10 08:53:00', '2026-07-10 18:00:00', 0, 0, 0, '公司总部', '公司总部', NULL),
+
+-- ===== 员工 102 行政小李（含早退、请假） =====
+(102, 102, '2026-07-01', '2026-07-01 08:58:00', '2026-07-01 18:03:00', 0, 0, 0, '公司总部', '公司总部', NULL),
+(102, 102, '2026-07-02', '2026-07-02 08:50:00', '2026-07-02 17:35:00', 2, 0, 0, '公司总部', '公司总部', '提前接孩子放学'),
+(102, 102, '2026-07-03', '2026-07-03 08:55:00', '2026-07-03 18:05:00', 0, 0, 1, '公司总部', '公司总部', NULL),
+(102, 102, '2026-07-06', NULL, NULL, 4, NULL, NULL, NULL, NULL, '事假1天'),
+(102, 102, '2026-07-07', '2026-07-07 08:52:00', '2026-07-07 18:10:00', 0, 0, 0, '公司总部', '公司总部', NULL),
+(102, 102, '2026-07-08', '2026-07-08 08:48:00', '2026-07-08 18:00:00', 0, 1, 0, '公司总部', '公司总部', NULL),
+(102, 102, '2026-07-09', '2026-07-09 08:56:00', '2026-07-09 18:08:00', 0, 0, 1, '公司总部', '公司总部', NULL),
+(102, 102, '2026-07-10', '2026-07-10 08:51:00', '2026-07-10 18:05:00', 0, 0, 0, '公司总部', '公司总部', NULL),
+
+-- ===== 员工 201 技术张经理（含缺卡、旷工） =====
+(201, 201, '2026-07-01', '2026-07-01 08:50:00', '2026-07-01 18:00:00', 0, 0, 0, '公司总部', '公司总部', NULL),
+(201, 201, '2026-07-02', '2026-07-02 08:45:00', NULL, 3, 0, NULL, '公司总部', NULL, '下班忘打卡'),
+(201, 201, '2026-07-03', '2026-07-03 08:48:00', '2026-07-03 18:05:00', 0, 0, 0, '公司总部', '公司总部', NULL),
+(201, 201, '2026-07-06', NULL, NULL, 5, NULL, NULL, NULL, NULL, '未打卡且无请假记录'),
+(201, 201, '2026-07-07', '2026-07-07 08:52:00', '2026-07-07 18:10:00', 0, 1, 1, '公司总部', '公司总部', NULL),
+(201, 201, '2026-07-08', '2026-07-08 09:05:00', '2026-07-08 18:03:00', 1, 0, 0, '公司总部', '公司总部', '交通拥堵'),
+(201, 201, '2026-07-09', '2026-07-09 08:50:00', '2026-07-09 18:00:00', 0, 0, 0, '公司总部', '公司总部', NULL),
+(201, 201, '2026-07-10', '2026-07-10 08:47:00', '2026-07-10 18:08:00', 0, 1, 0, '公司总部', '公司总部', NULL),
+
+-- ===== 员工 202 Java工程师A（含迟到、早退、缺卡） =====
+(202, 202, '2026-07-01', '2026-07-01 09:20:00', '2026-07-01 18:05:00', 1, 0, 0, '公司总部', '公司总部', '睡过头'),
+(202, 202, '2026-07-02', '2026-07-02 08:50:00', '2026-07-02 18:00:00', 0, 0, 0, '公司总部', '公司总部', NULL),
+(202, 202, '2026-07-03', '2026-07-03 08:55:00', '2026-07-03 17:40:00', 2, 0, 0, '公司总部', '公司总部', '外出办事'),
+(202, 202, '2026-07-06', NULL, '2026-07-06 18:00:00', 3, NULL, 0, NULL, '公司总部', '上班漏打卡'),
+(202, 202, '2026-07-07', '2026-07-07 08:48:00', '2026-07-07 18:10:00', 0, 1, 1, '公司总部', '公司总部', NULL),
+(202, 202, '2026-07-08', '2026-07-08 08:52:00', '2026-07-08 18:05:00', 0, 0, 0, '公司总部', '公司总部', NULL),
+(202, 202, '2026-07-09', '2026-07-09 09:10:00', '2026-07-09 18:00:00', 1, 0, 0, '公司总部', '公司总部', '地铁故障'),
+(202, 202, '2026-07-10', '2026-07-10 08:50:00', '2026-07-10 18:03:00', 0, 0, 1, '公司总部', '公司总部', NULL),
+
+-- ===== 员工 203 Java工程师B（含请假、旷工、缺卡） =====
+(203, 203, '2026-07-01', '2026-07-01 08:50:00', '2026-07-01 18:00:00', 0, 0, 0, '公司总部', '公司总部', NULL),
+(203, 203, '2026-07-02', NULL, NULL, 4, NULL, NULL, NULL, NULL, '病假1天'),
+(203, 203, '2026-07-03', NULL, NULL, 5, NULL, NULL, NULL, NULL, '未到岗且未请假'),
+(203, 203, '2026-07-06', '2026-07-06 08:48:00', '2026-07-06 18:05:00', 0, 0, 0, '公司总部', '公司总部', NULL),
+(203, 203, '2026-07-07', '2026-07-07 08:55:00', NULL, 3, 0, NULL, '公司总部', NULL, '下班缺卡'),
+(203, 203, '2026-07-08', '2026-07-08 08:52:00', '2026-07-08 18:10:00', 0, 1, 0, '公司总部', '公司总部', NULL),
+(203, 203, '2026-07-09', '2026-07-09 08:50:00', '2026-07-09 18:00:00', 0, 0, 1, '公司总部', '公司总部', NULL),
+(203, 203, '2026-07-10', '2026-07-10 08:45:00', '2026-07-10 18:08:00', 0, 0, 0, '公司总部', '公司总部', NULL),
+
+-- ===== 员工 204 高级工程师C（基本正常，1天早退） =====
+(204, 204, '2026-07-01', '2026-07-01 08:45:00', '2026-07-01 18:05:00', 0, 0, 0, '公司总部', '公司总部', NULL),
+(204, 204, '2026-07-02', '2026-07-02 08:50:00', '2026-07-02 18:00:00', 0, 1, 0, '公司总部', '公司总部', NULL),
+(204, 204, '2026-07-03', '2026-07-03 08:48:00', '2026-07-03 17:50:00', 2, 0, 0, '公司总部', '公司总部', '就医提前离开'),
+(204, 204, '2026-07-06', '2026-07-06 08:52:00', '2026-07-06 18:10:00', 0, 0, 1, '公司总部', '公司总部', NULL),
+(204, 204, '2026-07-07', '2026-07-07 08:50:00', '2026-07-07 18:00:00', 0, 0, 0, '公司总部', '公司总部', NULL),
+(204, 204, '2026-07-08', '2026-07-08 08:47:00', '2026-07-08 18:05:00', 0, 1, 1, '公司总部', '公司总部', NULL),
+(204, 204, '2026-07-09', '2026-07-09 08:55:00', '2026-07-09 18:03:00', 0, 0, 0, '公司总部', '公司总部', NULL),
+(204, 204, '2026-07-10', '2026-07-10 08:50:00', '2026-07-10 18:00:00', 0, 0, 0, '公司总部', '公司总部', NULL);
+
