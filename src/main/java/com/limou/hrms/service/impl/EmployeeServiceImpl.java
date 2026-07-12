@@ -26,15 +26,15 @@ import java.util.Set;
 public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
         implements EmployeeService {
     @Resource
-    private  DepartmentService departmentService;
+    private DepartmentService departmentService;
     @Resource
     private PositionService positionService;
     @Resource
     private EmpSalaryProfileService salaryProfileService;
 
     /**
-    * 可编辑的字段名集合（不在这个集合里的字段均为锁定状态，前端提示"如需修改请联系 HR"）
-    */
+     * 可编辑的字段名集合（不在这个集合里的字段均为锁定状态，前端提示"如需修改请联系 HR"）
+     */
     private static final Set<String> EDITABLE_FIELDS = Set.of(
             "email", "currentAddress", "emergencyContactName", "emergencyContactPhone");
 
@@ -51,12 +51,12 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
         EmpSalaryProfile salary = salaryProfileService.getById(emp.getSalaryProfileId());
         EmpProfileVO vo = new EmpProfileVO();
         BeanUtils.copyProperties(emp, vo);
-        if(department!=null){
+        if (department != null) {
             vo.setDepartmentName(department.getDeptName());
         }
-        if(position!=null)
+        if (position != null)
             vo.setPositionName(position.getName());
-        if(salary!=null)
+        if (salary != null)
             vo.setBaseSalary(salary.getBaseSalary());
         vo.setIdCard(maskIdCard(emp.getIdCard()));
         vo.setPhone(maskPhone(emp.getPhone()));
@@ -86,8 +86,8 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
         }
     }
 
-
-    private Employee getByUserId(Long userId) {
+    @Override
+    public Employee getByUserId(Long userId) {
         QueryWrapper<Employee> wrapper = new QueryWrapper<>();
         wrapper.eq("userId", userId);
         Employee emp = this.getOne(wrapper);

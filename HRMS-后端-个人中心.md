@@ -416,8 +416,8 @@ CREATE TABLE IF NOT EXISTS makeup_punch (
 ### 1. 我的档案
 
 ```plain
-GET    /api/v1/my/profile              # 查看我的档案（含字段权限元数据）
-PUT    /api/v1/my/profile              # 编辑我的档案（仅允许可编辑字段）
+GET    /api/employee/profile              # 查看我的档案（含字段权限元数据）
+PUT    /api/employee/profileUpdate       # 编辑我的档案（仅允许可编辑字段）
 ```
 
 #### 查看档案响应
@@ -459,6 +459,23 @@ GET    /api/attendance/statistics?month=2024-07     # 月度统计
 GET    /api/attendance/today     # 获取今天的考勤状态
 ```
 
+```
+/** 正常 */
+int ATTENDANCE_STATUS_NORMAL = 0;
+/** 迟到 */
+int ATTENDANCE_STATUS_LATE = 1;
+/** 早退 */
+int ATTENDANCE_STATUS_LEAVE_EARLY = 2;
+/** 缺卡 */
+int ATTENDANCE_STATUS_MISSING = 3;
+/** 请假 */
+int ATTENDANCE_STATUS_LEAVE = 4;
+/** 旷工 */
+int ATTENDANCE_STATUS_ABSENT = 5;
+```
+
+
+
 #### 打卡响应
 
 ```json
@@ -474,13 +491,42 @@ GET    /api/attendance/today     # 获取今天的考勤状态
 
 ---
 
+得到考勤日历响应
+
+```json
+{
+  "code": 0,
+  "data": {
+    "month": "2026-07",
+    "normalDays": 5,
+    "lateDays": 0,
+    "leaveDays": 0,
+    "missingDays": 0,
+    "dailyStatus": {
+      "2026-07-03": 2,
+      "2026-07-06": 0,
+      "2026-07-07": 0,
+      "2026-07-08": 0,
+      "2026-07-09": 0,
+      "2026-07-10": 0
+    },
+    "makeupAvailableDates": []
+  },
+  "message": "ok"
+}
+```
+
+当有缺卡的时候可以进行补卡申请
+
+
+
 ### 3. 我的请假
 
 ```plain
-GET    /api/v1/my/leave-applications?status=1              # 请假列表
-GET    /api/v1/my/leave-applications/{id}                  # 请假详情（含审批进度）
-POST   /api/v1/my/leave-applications/{id}/cancel           # 取消申请
-GET    /api/v1/my/leave-balance                            # 假期余额
+POST    /api/attendance/leave/apply             #申请请假
+POST   /api/attendance/leave/cancel/{id}           # 取消申请
+GET    /api/attendance/leave/my           #获取我的请假记录
+POST    /api/attendance/leave           #申请审批
 ```
 
 #### 请假详情响应

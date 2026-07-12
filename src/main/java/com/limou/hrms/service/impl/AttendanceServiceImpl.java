@@ -8,6 +8,7 @@ import com.limou.hrms.exception.ThrowUtils;
 import com.limou.hrms.mapper.AttendanceMapper;
 import com.limou.hrms.model.entity.Attendance;
 import com.limou.hrms.model.entity.Employee;
+import com.limou.hrms.model.enums.AttendanceStatusEnum;
 import com.limou.hrms.model.vo.AttendanceCalendarVO;
 import com.limou.hrms.model.vo.AttendanceVO;
 import com.limou.hrms.service.AttendanceService;
@@ -32,21 +33,13 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
     @Resource
     private EmployeeService employeeService;
 
-    private static final Map<Integer, String> STATUS_MAP = new LinkedHashMap<>();
-
-    static {
-        STATUS_MAP.put(AttendanceConstant.ATTENDANCE_STATUS_NORMAL, "正常");
-        STATUS_MAP.put(AttendanceConstant.ATTENDANCE_STATUS_LATE, "迟到");
-        STATUS_MAP.put(AttendanceConstant.ATTENDANCE_STATUS_LEAVE_EARLY, "早退");
-        STATUS_MAP.put(AttendanceConstant.ATTENDANCE_STATUS_MISSING, "缺卡");
-        STATUS_MAP.put(AttendanceConstant.ATTENDANCE_STATUS_LEAVE, "请假");
-        STATUS_MAP.put(AttendanceConstant.ATTENDANCE_STATUS_ABSENT, "旷工");
-    }
-
+    /**
+     * 上下班打卡
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public AttendanceVO punch(Long userId, Integer punchType, String location) {
-        Employee emp = getEmployee(userId);
+        Employee emp = employeeService.getByUserId(userId);
         Date now = new Date();
         String today = DateUtil.formatDate(now);
 
@@ -102,7 +95,7 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
 
     @Override
     public AttendanceCalendarVO getCalendar(Long userId, String month) {
-        Employee emp = getEmployee(userId);
+        Employee emp = employeeService.getByUserId(userId);
         // month 格式: yyyy-MM
         Date monthStart = DateUtil.parseDate(month + "-01");
         Date monthEnd = DateUtil.endOfMonth(monthStart);
@@ -132,6 +125,7 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
                 case 0: vo.setNormalDays(vo.getNormalDays() + 1); break;
                 case 1: vo.setLateDays(vo.getLateDays() + 1); break;
                 case 4: vo.setLeaveDays(vo.getLeaveDays() + 1); break;
+                // 缺卡---可以进行补卡
                 case 3:
                     vo.setMissingDays(vo.getMissingDays() + 1);
                     makeupDates.add(dateStr);
@@ -147,7 +141,7 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
 
     @Override
     public List<AttendanceVO> getMonthRecords(Long userId, String month) {
-        Employee emp = getEmployee(userId);
+        Employee emp = employeeService.getByUserId(userId);
         Date monthStart = DateUtil.parseDate(month + "-01");
         Date monthEnd = DateUtil.endOfMonth(monthStart);
 
@@ -163,7 +157,7 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
 
     @Override
     public AttendanceVO getTodayStatus(Long userId) {
-        Employee emp = getEmployee(userId);
+        Employee emp = employeeService.getByUserId(userId);
         String today = DateUtil.formatDate(new Date());
 
         Attendance record = this.lambdaQuery()
@@ -183,16 +177,17 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
 
     // ========== 私有方法 ==========
 
-    private Employee getEmployee(Long userId) {
-        Employee emp = employeeService.lambdaQuery().eq(Employee::getUserId, userId).one();
-        ThrowUtils.throwIf(emp == null, ErrorCode.NOT_FOUND_ERROR, "员工档案不存在");
-        return emp;
-    }
+//    private Employee getEmployee(Long userId) {
+//        Employee emp = employeeService.lambdaQuery().eq(Employee::getUserId, userId).one();
+//        ThrowUtils.throwIf(emp == null, ErrorCode.NOT_FOUND_ERROR, "员工档案不存在");
+//        return emp;
+//    }
 
     private AttendanceVO convertToVO(Attendance record) {
         AttendanceVO vo = new AttendanceVO();
         BeanUtils.copyProperties(record, vo);
-        vo.setStatusText(STATUS_MAP.getOrDefault(record.getStatus(), "未知"));
+        AttendanceStatusEnum status = AttendanceStatusEnum.getEnumByValue(record.getStatus());
+        vo.setStatusText(status != null ? status.getText() : "未知");
         return vo;
     }
 }

@@ -10,6 +10,8 @@ import com.limou.hrms.mapper.LeaveMapper;
 import com.limou.hrms.model.entity.Attendance;
 import com.limou.hrms.model.entity.Employee;
 import com.limou.hrms.model.entity.Leave;
+import com.limou.hrms.model.enums.ApprovalStatusEnum;
+import com.limou.hrms.model.enums.LeaveTypeEnum;
 import com.limou.hrms.model.vo.LeaveVO;
 import com.limou.hrms.service.AttendanceService;
 import com.limou.hrms.service.EmployeeService;
@@ -37,24 +39,6 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
 
     @Resource
     private AttendanceService attendanceService;
-
-    private static final Map<Integer, String> LEAVE_TYPE_MAP = new LinkedHashMap<>();
-    private static final Map<Integer, String> STATUS_MAP = new LinkedHashMap<>();
-
-    static {
-        LEAVE_TYPE_MAP.put(AttendanceConstant.LEAVE_TYPE_PERSONAL, "事假");
-        LEAVE_TYPE_MAP.put(AttendanceConstant.LEAVE_TYPE_SICK, "病假");
-        LEAVE_TYPE_MAP.put(AttendanceConstant.LEAVE_TYPE_ANNUAL, "年假");
-        LEAVE_TYPE_MAP.put(AttendanceConstant.LEAVE_TYPE_MARRIAGE, "婚假");
-        LEAVE_TYPE_MAP.put(AttendanceConstant.LEAVE_TYPE_MATERNITY, "产假");
-        LEAVE_TYPE_MAP.put(AttendanceConstant.LEAVE_TYPE_FUNERAL, "丧假");
-        LEAVE_TYPE_MAP.put(AttendanceConstant.LEAVE_TYPE_COMPENSATORY, "调休");
-
-        STATUS_MAP.put(AttendanceConstant.APPROVAL_STATUS_PENDING, "待审批");
-        STATUS_MAP.put(AttendanceConstant.APPROVAL_STATUS_APPROVED, "已通过");
-        STATUS_MAP.put(AttendanceConstant.APPROVAL_STATUS_REJECTED, "已拒绝");
-        STATUS_MAP.put(AttendanceConstant.APPROVAL_STATUS_CANCELLED, "已撤销");
-    }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -163,8 +147,10 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
         LeaveVO vo = new LeaveVO();
         BeanUtils.copyProperties(request, vo);
         vo.setEmployeeName(emp != null ? emp.getEmployeeName() : null);
-        vo.setLeaveTypeText(LEAVE_TYPE_MAP.getOrDefault(request.getLeaveType(), "未知"));
-        vo.setStatusText(STATUS_MAP.getOrDefault(request.getStatus(), "未知"));
+        LeaveTypeEnum leaveType = LeaveTypeEnum.getEnumByValue(request.getLeaveType());
+        vo.setLeaveTypeText(leaveType != null ? leaveType.getText() : "未知");
+        ApprovalStatusEnum status = ApprovalStatusEnum.getEnumByValue(request.getStatus());
+        vo.setStatusText(status != null ? status.getText() : "未知");
         return vo;
     }
 

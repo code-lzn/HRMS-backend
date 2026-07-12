@@ -16,4 +16,9 @@ public interface EmployeeService extends IService<Employee> {
      * 更新当前登录员工的可编辑字段
      */
     void updateProfile(Long userId, EmpProfileUpdateRequest request);
+
+    /**
+     * 通过用户ID获取员工信息
+     */
+     Employee getByUserId(Long userId);
 }

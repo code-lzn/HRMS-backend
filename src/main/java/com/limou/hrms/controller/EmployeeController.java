@@ -45,7 +45,7 @@ public class EmployeeController {
     /**
      * 编辑我的档案（仅可编辑邮箱/现居住地址/紧急联系人）
      */
-    @PostMapping("/profile")
+    @PostMapping("/profileUpdate")
     public BaseResponse<Boolean> updateMyProfile(@RequestBody EmpProfileUpdateRequest updateRequest,
                                                   HttpServletRequest request) {
         if (updateRequest == null) {
