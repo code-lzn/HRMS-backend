@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.exception.ThrowUtils;
 import com.limou.hrms.mapper.ApprovalRecordMapper;
+import com.limou.hrms.mapper.EmployeeDetailMapper;
 import com.limou.hrms.model.entity.*;
 import com.limou.hrms.model.enums.ApprovalActionEnum;
 import com.limou.hrms.model.enums.ApprovalRecordStatusEnum;
@@ -42,6 +43,9 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
 
     @Resource
     private DepartmentService departmentService;
+
+    @Resource
+    private EmployeeDetailMapper employeeDetailMapper;
 
     @Override
     public List<ApprovalPendingVO> getPendingList(Long employeeId) {
@@ -343,20 +347,16 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
                     }
                 }
                 return null;
-            case DIRECT_SUPERIOR:
-                /// 查找直接上级：通过 applicant 的 employee 找到其直接上级
-                //    // employee 表中暂无 reporterId，从测试数据可知 employee 15 的直接上级是 employee 2
-                //    // 实际生产需要扩展 employee 表添加上级字段
-                return null;
+            case DIRECT_SUPERIOR: {
+                EmployeeDetail detail = employeeDetailMapper.selectOne(
+                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<EmployeeDetail>()
+                                .eq(EmployeeDetail::getEmployeeId, applicant.getId())
+                );
+                return detail != null ? detail.getDirectReportId() : null;
+            }
             case HR_MANAGER:
-                //返回HR负责人
-                return null;
             case FINANCE:
-                //返回财务专业
-                return null;
             case BOSS:
-                //返回老板
-                return null;
             case SPECIFIED:
                 return node.getApproverId();
             default:
