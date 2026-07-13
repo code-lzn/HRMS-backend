@@ -10,15 +10,21 @@ import com.limou.hrms.constant.CommonConstant;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.mapper.UserMapper;
 import com.limou.hrms.model.dto.user.UserQueryRequest;
+import com.limou.hrms.model.entity.Employee;
 import com.limou.hrms.model.entity.User;
 import com.limou.hrms.model.enums.UserRoleEnum;
 import com.limou.hrms.model.vo.LoginUserVO;
 import com.limou.hrms.model.vo.UserVO;
+import com.limou.hrms.service.EmployeeService;
+import com.limou.hrms.service.LoginLogService;
+import com.limou.hrms.service.PasswordHistoryService;
 import com.limou.hrms.service.UserService;
 import com.limou.hrms.utils.SqlUtils;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
+import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -38,6 +44,15 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
      * 盐值，混淆密码
      */
     public static final String SALT = "limou";
+
+    @Resource
+    private PasswordHistoryService passwordHistoryService;
+
+    @Resource
+    private LoginLogService loginLogService;
+
+    @Resource
+    private EmployeeService employeeService;
 
     @Override
     public long userRegister(String userAccount, String userPassword, String checkPassword) {
@@ -99,10 +114,21 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         // 用户不存在
         if (user == null) {
             log.info("user login failed, userAccount cannot match userPassword");
+            // 尝试根据账号查询用户以记录登录失败日志
+            User existUser = this.lambdaQuery().eq(User::getUserAccount, userAccount).one();
+            if (existUser != null) {
+                loginLogService.recordLoginLog(existUser.getId(),
+                        request.getRemoteAddr(), request.getHeader("User-Agent"),
+                        1, false, "密码错误");
+            }
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户不存在或密码错误");
         }
         // 3. 记录用户的登录态
         request.getSession().setAttribute(USER_LOGIN_STATE, user);
+        // 记录登录成功日志
+        loginLogService.recordLoginLog(user.getId(),
+                request.getRemoteAddr(), request.getHeader("User-Agent"),
+                1, true, null);
         return this.getLoginUserVO(user);
     }
 
@@ -265,5 +291,82 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         queryWrapper.orderBy(SqlUtils.validSortField(sortField), sortOrder.equals(CommonConstant.SORT_ORDER_ASC),
                 sortField);
         return queryWrapper;
+    }
+
+    @Override
+    public void changePassword(Long userId, String oldPassword, String newPassword, String confirmPassword) {
+        if (StringUtils.isAnyBlank(oldPassword, newPassword, confirmPassword)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "密码不能为空");
+        }
+        if (newPassword.length() < 8) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "新密码长度不能少于8位");
+        }
+        if (!newPassword.equals(confirmPassword)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "两次输入的新密码不一致");
+        }
+
+        User user = this.getById(userId);
+        if (user == null) {
+            throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
+        }
+
+        // 验证旧密码
+        String oldHash = DigestUtils.md5DigestAsHex((SALT + oldPassword).getBytes());
+        if (!Objects.equals(user.getUserPassword(), oldHash)) {
+            throw new BusinessException(ErrorCode.PASSWORD_ERROR);
+        }
+
+        // 新密码不能与旧密码相同
+        String newHash = DigestUtils.md5DigestAsHex((SALT + newPassword).getBytes());
+        if (Objects.equals(user.getUserPassword(), newHash)) {
+            throw new BusinessException(ErrorCode.PASSWORD_SAME_AS_OLD);
+        }
+
+        // 检查是否在最近3次密码历史中
+        if (passwordHistoryService.isRecentlyUsed(userId, newHash)) {
+            throw new BusinessException(ErrorCode.PASSWORD_RECENTLY_USED);
+        }
+
+        // 保存旧密码到历史
+        passwordHistoryService.savePasswordHistory(userId, user.getUserPassword());
+
+        // 更新密码
+        user.setUserPassword(newHash);
+        boolean updated = this.updateById(user);
+        if (!updated) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "密码修改失败");
+        }
+    }
+
+    @Override
+    public void updatePhone(Long userId, String phone) {
+        Employee emp = employeeService.lambdaQuery().eq(Employee::getUserId, userId).one();
+        if (emp == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "员工档案不存在");
+        }
+
+        if (StringUtils.isBlank(phone)) {
+            // 解绑手机
+            emp.setPhone(null);
+            employeeService.updateById(emp);
+            return;
+        }
+
+        // 校验手机号格式
+        if (!phone.matches("^1[3-9]\\d{9}$")) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "手机号格式不正确");
+        }
+
+        // 检查手机号是否已被其他员工绑定
+        Employee existing = employeeService.lambdaQuery()
+                .eq(Employee::getPhone, phone)
+                .ne(Employee::getId, emp.getId())
+                .one();
+        if (existing != null) {
+            throw new BusinessException(ErrorCode.PHONE_ALREADY_BOUND);
+        }
+
+        emp.setPhone(phone);
+        employeeService.updateById(emp);
     }
 }

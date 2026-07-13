@@ -62,6 +62,7 @@ create table  if not exists employee
     phone   varchar(32)                            null comment '联系人电话',
     departmentId   bigint                                 null comment '部门ID',
     positionId     bigint                                 null comment '职位ID',
+    salaryId       bigint                                 null comment '薪资ID',
     employmentType     VARCHAR(16)     NOT NULL                 COMMENT '录用类型: FULL_TIME=全职, PART_TIME=兼职, INTERN=实习',
     email                   varchar(256)                           null comment '邮箱',
     currentAddress          varchar(512)                           null comment '现居住地址',
@@ -72,6 +73,7 @@ create table  if not exists employee
     isDeleted      tinyint      default 0                 not null comment '是否删除'
 ) comment '员工' collate = utf8mb4_unicode_ci;
 
+ALTER TABLE employee ADD COLUMN salaryProfileId BIGINT DEFAULT NULL COMMENT '薪资ID';
 
 #部门表----与employee进行关联
 CREATE TABLE department (
@@ -160,3 +162,360 @@ CREATE TABLE IF NOT EXISTS `department_merge_log` (
 ) DEFAULT CHARACTER SET = utf8mb4 COMMENT = '部门合并日志表';
 
 
+-- ============== 考勤模块 ==============
+
+-- 考勤打卡记录表
+CREATE TABLE IF NOT EXISTS attendance (
+    id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+    employeeId      BIGINT          NOT NULL                 COMMENT '员工ID',
+    userId          BIGINT          NOT NULL                 COMMENT '用户ID',
+    attendanceDate  DATE            NOT NULL                 COMMENT '考勤日期',
+    punchInTime     DATETIME        DEFAULT NULL             COMMENT '上班打卡时间',
+    punchOutTime    DATETIME        DEFAULT NULL             COMMENT '下班打卡时间',
+    status          TINYINT         NOT NULL DEFAULT 0       COMMENT '状态：0=正常 1=迟到 2=早退 3=缺卡 4=请假 5=旷工',
+    punchInType     TINYINT         DEFAULT NULL             COMMENT '上班打卡方式：0=网页 1=APP',
+    punchOutType    TINYINT         DEFAULT NULL             COMMENT '下班打卡方式：0=网页 1=APP',
+    punchInLocation VARCHAR(256)    DEFAULT NULL             COMMENT '上班打卡位置',
+    punchOutLocation VARCHAR(256)   DEFAULT NULL             COMMENT '下班打卡位置',
+    remark          VARCHAR(512)    DEFAULT NULL             COMMENT '备注',
+    createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updateTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    isDeleted               tinyint  default 0                 not null comment '逻辑删除：0=否 1=是',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_employee_date (employeeId, attendanceDate),
+    KEY idx_user_id (userId),
+    KEY idx_attendance_date (attendanceDate),
+    KEY idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='考勤打卡记录表';
+
+
+-- 请假申请表
+CREATE TABLE IF NOT EXISTS `leave_record`(
+    id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+    employeeId      BIGINT          NOT NULL                 COMMENT '员工ID',
+    userId          BIGINT          NOT NULL                 COMMENT '用户ID',
+    leaveType       TINYINT         NOT NULL                 COMMENT '请假类型：0=事假 1=病假 2=年假 3=婚假 4=产假 5=丧假 6=调休',
+    startDate       DATE            NOT NULL                 COMMENT '开始日期',
+    endDate         DATE            NOT NULL                 COMMENT '结束日期',
+    totalDays       DECIMAL(4,1)    NOT NULL                 COMMENT '请假总天数',
+    reason          VARCHAR(512)    NOT NULL                 COMMENT '请假原因',
+    status          TINYINT         NOT NULL DEFAULT 0       COMMENT '状态：0=待审批 1=已通过 2=已拒绝 3=已撤销',
+    approverId      BIGINT          DEFAULT NULL             COMMENT '审批人ID',
+    approveTime     DATETIME        DEFAULT NULL             COMMENT '审批时间',
+    approveComment  VARCHAR(512)    DEFAULT NULL             COMMENT '审批意见',
+    createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updateTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    isDeleted               tinyint  default 0                 not null comment '逻辑删除：0=否 1=是',
+    PRIMARY KEY (id),
+    KEY idx_employee_id (employeeId),
+    KEY idx_user_id (userId),
+    KEY idx_status (status),
+    KEY idx_start_date (startDate)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='请假申请表';
+
+
+-- 补卡申请表
+CREATE TABLE IF NOT EXISTS makeup_punch (
+    id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+    employeeId      BIGINT          NOT NULL                 COMMENT '员工ID',
+    userId          BIGINT          NOT NULL                 COMMENT '用户ID',
+    punchDate       DATE            NOT NULL                 COMMENT '补卡日期',
+    punchType       TINYINT         NOT NULL                 COMMENT '补卡类型：0=上班补卡 1=下班补卡',
+    punchTime       DATETIME        NOT NULL                 COMMENT '实际到岗/离岗时间',
+    reason          VARCHAR(512)    NOT NULL                 COMMENT '缺卡原因',
+    status          TINYINT         NOT NULL DEFAULT 0       COMMENT '状态：0=待审批 1=已通过 2=已拒绝',
+    approverId      BIGINT          DEFAULT NULL             COMMENT '审批人ID',
+    approveTime     DATETIME        DEFAULT NULL             COMMENT '审批时间',
+    approveComment  VARCHAR(512)    DEFAULT NULL             COMMENT '审批意见',
+    createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updateTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    isDeleted               tinyint  default 0                 not null comment '逻辑删除：0=否 1=是',
+    PRIMARY KEY (id),
+    KEY idx_employee_id (employeeId),
+    KEY idx_user_id (userId),
+    KEY idx_status (status),
+    KEY idx_punch_date (punchDate)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='补卡申请表';
+
+
+-- ============== 薪资模块 ==============
+
+-- 薪资核算批次表
+CREATE TABLE IF NOT EXISTS sal_batch (
+    id                      BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+    batchNo                 VARCHAR(32)     NOT NULL                 COMMENT '批次号',
+    salaryMonth             VARCHAR(7)      NOT NULL                 COMMENT '薪资月份: YYYY-MM',
+    status                  VARCHAR(16)     NOT NULL DEFAULT 'DRAFT' COMMENT '状态: DRAFT=草稿, PENDING_CONFIRM=待确认, APPROVING=审批中, APPROVED=已通过, PAID=已发放',
+    totalEmployeeCount      INT             NOT NULL DEFAULT 0       COMMENT '核算员工总数',
+    totalGross              DECIMAL(14,2)   NOT NULL DEFAULT 0.00    COMMENT '应发工资总额',
+    totalDeduction          DECIMAL(14,2)   NOT NULL DEFAULT 0.00    COMMENT '扣除总额',
+    totalNet                DECIMAL(14,2)   NOT NULL DEFAULT 0.00    COMMENT '实发工资总额',
+    createdBy               BIGINT          NOT NULL                 COMMENT '创建人ID',
+    approvedBy              BIGINT          DEFAULT NULL             COMMENT '审批人ID',
+    paidAt                  DATETIME        DEFAULT NULL             COMMENT '实际发放时间',
+    createdAt               DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updatedAt               DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_batch_no (batchNo),
+    UNIQUE KEY uk_salary_month (salaryMonth),
+    KEY idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='薪资核算批次表';
+
+-- 薪资核算明细表（工资条）
+CREATE TABLE IF NOT EXISTS sal_batch_detail (
+    id                      BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+    batchId                 BIGINT          NOT NULL                 COMMENT '批次ID',
+    employeeId              BIGINT          NOT NULL                 COMMENT '员工ID',
+    baseSalary              DECIMAL(12,2)   NOT NULL DEFAULT 0.00    COMMENT '基本工资',
+    allowance               DECIMAL(12,2)   NOT NULL DEFAULT 0.00    COMMENT '岗位津贴',
+    performanceBonus        DECIMAL(12,2)   NOT NULL DEFAULT 0.00    COMMENT '绩效奖金',
+    overtimePay             DECIMAL(12,2)   NOT NULL DEFAULT 0.00    COMMENT '加班费',
+    lateDeduction           DECIMAL(12,2)   NOT NULL DEFAULT 0.00    COMMENT '迟到扣款',
+    leaveDeduction          DECIMAL(12,2)   NOT NULL DEFAULT 0.00    COMMENT '请假扣款',
+    socialPension           DECIMAL(12,2)   NOT NULL DEFAULT 0.00    COMMENT '养老保险',
+    socialMedical           DECIMAL(12,2)   NOT NULL DEFAULT 0.00    COMMENT '医疗保险',
+    socialUnemployment      DECIMAL(12,2)   NOT NULL DEFAULT 0.00    COMMENT '失业保险',
+    housingFund             DECIMAL(12,2)   NOT NULL DEFAULT 0.00    COMMENT '住房公积金',
+    incomeTax               DECIMAL(12,2)   NOT NULL DEFAULT 0.00    COMMENT '个人所得税',
+    grossSalary             DECIMAL(12,2)   NOT NULL DEFAULT 0.00    COMMENT '应发工资',
+    totalDeduction          DECIMAL(12,2)   NOT NULL DEFAULT 0.00    COMMENT '应扣合计',
+    netSalary               DECIMAL(12,2)   NOT NULL DEFAULT 0.00    COMMENT '实发工资',
+    hasAnomaly              TINYINT         NOT NULL DEFAULT 0       COMMENT '是否有异常: 0=正常, 1=预警, 2=阻断',
+    anomalyReason           VARCHAR(256)    DEFAULT NULL             COMMENT '异常说明',
+    manualAdjust            DECIMAL(12,2)   NOT NULL DEFAULT 0.00    COMMENT '手动调整金额',
+    adjustReason            VARCHAR(256)    DEFAULT NULL             COMMENT '手动调整原因',
+    createdAt               DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updatedAt               DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_batch_employee (batchId, employeeId),
+    KEY idx_employee_id (employeeId),
+    KEY idx_batch_id (batchId)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='薪资核算明细表（工资条）';
+
+
+-- 考勤打卡记录表
+CREATE TABLE IF NOT EXISTS attendance (
+                                                 id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+                                                 employeeId      BIGINT          NOT NULL                 COMMENT '员工ID',
+                                                 userId          BIGINT          NOT NULL                 COMMENT '用户ID',
+                                                 attendanceDate  DATE            NOT NULL                 COMMENT '考勤日期',
+                                                 punchInTime     DATETIME        DEFAULT NULL             COMMENT '上班打卡时间',
+                                                 punchOutTime    DATETIME        DEFAULT NULL             COMMENT '下班打卡时间',
+                                                 status          TINYINT         NOT NULL DEFAULT 0       COMMENT '状态：0=正常 1=迟到 2=早退 3=缺卡 4=请假 5=旷工',
+                                                 punchInType     TINYINT         DEFAULT NULL             COMMENT '上班打卡方式：0=网页 1=APP',
+                                                 punchOutType    TINYINT         DEFAULT NULL             COMMENT '下班打卡方式：0=网页 1=APP',
+                                                 punchInLocation VARCHAR(256)    DEFAULT NULL             COMMENT '上班打卡位置',
+                                                 punchOutLocation VARCHAR(256)   DEFAULT NULL             COMMENT '下班打卡位置',
+                                                 remark          VARCHAR(512)    DEFAULT NULL             COMMENT '备注',
+                                                 createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+                                                 updateTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+                                                 isDeleted       TINYINT         DEFAULT 0 NOT NULL       COMMENT '逻辑删除：0=否 1=是',
+                                                 PRIMARY KEY (id),
+                                                 UNIQUE KEY uk_employee_date (employeeId, attendanceDate),
+                                                 KEY idx_user_id (userId),
+                                                 KEY idx_attendance_date (attendanceDate),
+                                                 KEY idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='考勤打卡记录表';
+
+
+-- 请假申请表
+CREATE TABLE IF NOT EXISTS leave_request (
+                                             id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+                                             employeeId      BIGINT          NOT NULL                 COMMENT '员工ID',
+                                             userId          BIGINT          NOT NULL                 COMMENT '用户ID',
+                                             leaveType       TINYINT         NOT NULL                 COMMENT '请假类型：0=事假 1=病假 2=年假 3=婚假 4=产假 5=丧假 6=调休',
+                                             startDate       DATE            NOT NULL                 COMMENT '开始日期',
+                                             endDate         DATE            NOT NULL                 COMMENT '结束日期',
+                                             totalDays       DECIMAL(4,1)    NOT NULL                 COMMENT '请假总天数',
+                                             reason          VARCHAR(512)    NOT NULL                 COMMENT '请假原因',
+                                             status          TINYINT         NOT NULL DEFAULT 0       COMMENT '状态：0=待审批 1=已通过 2=已拒绝 3=已撤销',
+                                             approverId      BIGINT          DEFAULT NULL             COMMENT '审批人ID',
+                                             approveTime     DATETIME        DEFAULT NULL             COMMENT '审批时间',
+                                             approveComment  VARCHAR(512)    DEFAULT NULL             COMMENT '审批意见',
+                                             createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+                                             updateTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+                                             isDeleted       TINYINT         DEFAULT 0 NOT NULL       COMMENT '逻辑删除：0=否 1=是',
+                                             PRIMARY KEY (id),
+                                             KEY idx_employee_id (employeeId),
+                                             KEY idx_user_id (userId),
+                                             KEY idx_status (status),
+                                             KEY idx_start_date (startDate)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='请假申请表';
+
+
+
+
+-- 补卡申请表
+CREATE TABLE IF NOT EXISTS makeup_punch (
+                                            id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+                                            employeeId      BIGINT          NOT NULL                 COMMENT '员工ID',
+                                            userId          BIGINT          NOT NULL                 COMMENT '用户ID',
+                                            punchDate       DATE            NOT NULL                 COMMENT '补卡日期',
+                                            punchType       TINYINT         NOT NULL                 COMMENT '补卡类型：0=上班补卡 1=下班补卡',
+                                            punchTime       DATETIME        NOT NULL                 COMMENT '实际到岗/离岗时间',
+                                            reason          VARCHAR(512)    NOT NULL                 COMMENT '缺卡原因',
+                                            status          TINYINT         NOT NULL DEFAULT 0       COMMENT '状态：0=待审批 1=已通过 2=已拒绝',
+                                            approverId      BIGINT          DEFAULT NULL             COMMENT '审批人ID',
+                                            approveTime     DATETIME        DEFAULT NULL             COMMENT '审批时间',
+                                            approveComment  VARCHAR(512)    DEFAULT NULL             COMMENT '审批意见',
+                                            createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+                                            updateTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+                                            isDeleted       TINYINT         DEFAULT 0 NOT NULL       COMMENT '逻辑删除：0=否 1=是',
+                                            PRIMARY KEY (id),
+                                            KEY idx_employee_id (employeeId),
+                                            KEY idx_user_id (userId),
+                                            KEY idx_status (status),
+                                            KEY idx_punch_date (punchDate)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='补卡申请表';
+
+
+-- ============== 薪资模块 ==============
+
+-- 薪资核算批次表
+CREATE TABLE IF NOT EXISTS sal_batch (
+    id                      BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+    batchNo                 VARCHAR(32)     NOT NULL                 COMMENT '批次号',
+    salaryMonth             VARCHAR(7)      NOT NULL                 COMMENT '薪资月份: YYYY-MM',
+    status                  VARCHAR(16)     NOT NULL DEFAULT 'DRAFT' COMMENT '状态: DRAFT=草稿, PENDING_CONFIRM=待确认, APPROVING=审批中, APPROVED=已通过, PAID=已发放',
+    totalEmployeeCount      INT             NOT NULL DEFAULT 0       COMMENT '核算员工总数',
+    totalGross              DECIMAL(14,2)   NOT NULL DEFAULT 0.00    COMMENT '应发工资总额',
+    totalDeduction          DECIMAL(14,2)   NOT NULL DEFAULT 0.00    COMMENT '扣除总额',
+    totalNet                DECIMAL(14,2)   NOT NULL DEFAULT 0.00    COMMENT '实发工资总额',
+    createdBy               BIGINT          NOT NULL                 COMMENT '创建人ID',
+    approvedBy              BIGINT          DEFAULT NULL             COMMENT '审批人ID',
+    paidAt                  DATETIME        DEFAULT NULL             COMMENT '实际发放时间',
+    createdAt               DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updatedAt               DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_batch_no (batchNo),
+    UNIQUE KEY uk_salary_month (salaryMonth),
+    KEY idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='薪资核算批次表';
+
+-- 薪资核算明细表（工资条）
+CREATE TABLE IF NOT EXISTS sal_batch_detail (
+    id                      BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+    batchId                 BIGINT          NOT NULL                 COMMENT '批次ID',
+    employeeId              BIGINT          NOT NULL                 COMMENT '员工ID',
+    baseSalary              DECIMAL(12,2)   NOT NULL DEFAULT 0.00    COMMENT '基本工资',
+    allowance               DECIMAL(12,2)   NOT NULL DEFAULT 0.00    COMMENT '岗位津贴',
+    performanceBonus        DECIMAL(12,2)   NOT NULL DEFAULT 0.00    COMMENT '绩效奖金',
+    overtimePay             DECIMAL(12,2)   NOT NULL DEFAULT 0.00    COMMENT '加班费',
+    lateDeduction           DECIMAL(12,2)   NOT NULL DEFAULT 0.00    COMMENT '迟到扣款',
+    leaveDeduction          DECIMAL(12,2)   NOT NULL DEFAULT 0.00    COMMENT '请假扣款',
+    socialPension           DECIMAL(12,2)   NOT NULL DEFAULT 0.00    COMMENT '养老保险',
+    socialMedical           DECIMAL(12,2)   NOT NULL DEFAULT 0.00    COMMENT '医疗保险',
+    socialUnemployment      DECIMAL(12,2)   NOT NULL DEFAULT 0.00    COMMENT '失业保险',
+    housingFund             DECIMAL(12,2)   NOT NULL DEFAULT 0.00    COMMENT '住房公积金',
+    incomeTax               DECIMAL(12,2)   NOT NULL DEFAULT 0.00    COMMENT '个人所得税',
+    grossSalary             DECIMAL(12,2)   NOT NULL DEFAULT 0.00    COMMENT '应发工资',
+    totalDeduction          DECIMAL(12,2)   NOT NULL DEFAULT 0.00    COMMENT '应扣合计',
+    netSalary               DECIMAL(12,2)   NOT NULL DEFAULT 0.00    COMMENT '实发工资',
+    hasAnomaly              TINYINT         NOT NULL DEFAULT 0       COMMENT '是否有异常: 0=正常, 1=预警, 2=阻断',
+    anomalyReason           VARCHAR(256)    DEFAULT NULL             COMMENT '异常说明',
+    manualAdjust            DECIMAL(12,2)   NOT NULL DEFAULT 0.00    COMMENT '手动调整金额',
+    adjustReason            VARCHAR(256)    DEFAULT NULL             COMMENT '手动调整原因',
+    createdAt               DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updatedAt               DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_batch_employee (batchId, employeeId),
+    KEY idx_employee_id (employeeId),
+    KEY idx_batch_id (batchId)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='薪资核算明细表（工资条）';
+
+
+-- ============== 薪资测试数据（userId=2075829151662010370, employeeId=15） ==============
+
+-- 2026年1月~6月薪资批次
+INSERT INTO sal_batch (id, batchNo, salaryMonth, status, totalEmployeeCount, totalGross, totalDeduction, totalNet, createdBy, paidAt) VALUES
+(1, 'B202601', '2026-01', 'PAID', 1, 15000.00, 2870.00, 12130.00, 1, '2026-02-10 10:00:00'),
+(2, 'B202602', '2026-02', 'PAID', 1, 15200.00, 2890.00, 12310.00, 1, '2026-03-10 10:00:00'),
+(3, 'B202603', '2026-03', 'PAID', 1, 15500.00, 2930.00, 12570.00, 1, '2026-04-10 10:00:00'),
+(4, 'B202604', '2026-04', 'PAID', 1, 15500.00, 2930.00, 12570.00, 1, '2026-05-10 10:00:00'),
+(5, 'B202605', '2026-05', 'PAID', 1, 15800.00, 2975.00, 12825.00, 1, '2026-06-10 10:00:00'),
+(6, 'B202606', '2026-06', 'PAID', 1, 16000.00, 3000.00, 13000.00, 1, '2026-07-10 10:00:00');
+
+-- 员工15的6个月工资条明细
+-- 月薪约15000，社保+公积金约2870，个税按累计预扣
+INSERT INTO sal_batch_detail (batchId, employeeId, baseSalary, allowance, performanceBonus, overtimePay,
+                              lateDeduction, leaveDeduction, socialPension, socialMedical, socialUnemployment,
+                              housingFund, incomeTax, grossSalary, totalDeduction, netSalary, hasAnomaly) VALUES
+(1, 15, 10000.00, 2500.00, 2000.00, 500.00, 0.00, 0.00, 800.00, 200.00, 50.00, 1800.00, 20.00, 15000.00, 2870.00, 12130.00, 0),
+(2, 15, 10000.00, 2500.00, 2200.00, 500.00, 0.00, 0.00, 800.00, 200.00, 50.00, 1800.00, 40.00, 15200.00, 2890.00, 12310.00, 0),
+(3, 15, 10000.00, 2500.00, 2500.00, 500.00, 0.00, 0.00, 800.00, 200.00, 50.00, 1800.00, 80.00, 15500.00, 2930.00, 12570.00, 0),
+(4, 15, 10000.00, 2500.00, 2500.00, 500.00, 50.00, 0.00, 800.00, 200.00, 50.00, 1800.00, 80.00, 15500.00, 2980.00, 12520.00, 1),
+(5, 15, 10500.00, 2500.00, 2300.00, 500.00, 0.00, 0.00, 840.00, 210.00, 52.50, 1800.00, 72.50, 15800.00, 2975.00, 12825.00, 0),
+(6, 15, 10500.00, 2500.00, 2500.00, 500.00, 0.00, 0.00, 840.00, 210.00, 52.50, 1800.00, 97.50, 16000.00, 3000.00, 13000.00, 0);
+
+
+-- ============== 账号安全模块 ==============
+
+-- 登录日志表
+CREATE TABLE IF NOT EXISTS login_log (
+    id                  BIGINT          NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    userId              BIGINT          NOT NULL                COMMENT '用户ID',
+    loginTime           DATETIME        NOT NULL                COMMENT '登录时间',
+    ip                  VARCHAR(45)     NOT NULL                COMMENT '登录IP',
+    device              VARCHAR(256)    DEFAULT NULL            COMMENT '设备信息（User-Agent）',
+    loginType           TINYINT         NOT NULL                COMMENT '登录方式：1=密码登录 2=短信验证码登录',
+    isSuccess           TINYINT         NOT NULL DEFAULT 1      COMMENT '是否成功：0=失败 1=成功',
+    failReason          VARCHAR(128)    DEFAULT NULL            COMMENT '失败原因',
+    PRIMARY KEY (id),
+    KEY idx_user_id (userId),
+    KEY idx_login_time (loginTime)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='登录日志表';
+
+-- 密码历史表（每个用户仅保留最近3次旧密码）
+CREATE TABLE IF NOT EXISTS password_history (
+    id                  BIGINT          NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    userId              BIGINT          NOT NULL                COMMENT '用户ID',
+    passwordHash        VARCHAR(128)    NOT NULL                COMMENT '历史密码哈希',
+    createTime          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (id),
+    KEY idx_user_id_time (userId, createTime)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='密码历史表';
+
+
+-- ============== 账号安全测试数据（userId=2075829151662010370, employeeId=15） ==============
+
+-- 给员工绑定手机号（employee 表已有 phone 字段）
+UPDATE employee SET phone = '13800138000' WHERE id = 15;
+
+-- 近3条密码历史
+INSERT INTO password_history (userId, passwordHash, createTime) VALUES
+(2075829151662010370, 'e10adc3949ba59abbe56e057f20f883e', '2025-12-15 09:00:00'),
+(2075829151662010370, '5d93ceb70e7bf5f408f0a8e5c4d5e5e3', '2026-03-20 14:30:00'),
+(2075829151662010370, '25d55ad283aa400af464c76d713c07ad', '2026-06-01 08:15:00');
+
+-- 近30条登录日志（覆盖3个月）
+INSERT INTO login_log (userId, loginTime, ip, device, loginType, isSuccess, failReason) VALUES
+(2075829151662010370, '2026-04-01 08:55:00', '192.168.1.100', 'Mozilla/5.0 Chrome/120 Windows', 1, 1, NULL),
+(2075829151662010370, '2026-04-03 09:02:00', '192.168.1.100', 'Mozilla/5.0 Chrome/120 Windows', 1, 1, NULL),
+(2075829151662010370, '2026-04-07 08:48:00', '192.168.1.100', 'Mozilla/5.0 Chrome/120 Windows', 1, 1, NULL),
+(2075829151662010370, '2026-04-10 09:15:00', '10.0.0.55', 'Mozilla/5.0 Safari/17 iPhone', 1, 1, NULL),
+(2075829151662010370, '2026-04-12 14:20:00', '192.168.1.100', 'Mozilla/5.0 Chrome/120 Windows', 1, 0, '密码错误'),
+(2075829151662010370, '2026-04-12 14:21:00', '192.168.1.100', 'Mozilla/5.0 Chrome/120 Windows', 1, 1, NULL),
+(2075829151662010370, '2026-04-15 08:50:00', '192.168.1.100', 'Mozilla/5.0 Chrome/120 Windows', 1, 1, NULL),
+(2075829151662010370, '2026-04-20 09:05:00', '113.87.23.45', 'Mozilla/5.0 Edge/120 Mac', 1, 1, NULL),
+(2075829151662010370, '2026-04-25 08:58:00', '192.168.1.100', 'Mozilla/5.0 Chrome/121 Windows', 1, 1, NULL),
+(2075829151662010370, '2026-04-28 08:45:00', '192.168.1.100', 'Mozilla/5.0 Chrome/121 Windows', 1, 1, NULL),
+(2075829151662010370, '2026-05-04 09:10:00', '192.168.1.100', 'Mozilla/5.0 Chrome/121 Windows', 1, 1, NULL),
+(2075829151662010370, '2026-05-08 08:52:00', '192.168.1.100', 'Mozilla/5.0 Chrome/121 Windows', 1, 1, NULL),
+(2075829151662010370, '2026-05-12 09:00:00', '192.168.1.100', 'Mozilla/5.0 Chrome/121 Windows', 1, 1, NULL),
+(2075829151662010370, '2026-05-15 08:47:00', '10.0.0.55', 'Mozilla/5.0 Safari/17 iPhone', 2, 0, '验证码已过期'),
+(2075829151662010370, '2026-05-15 08:48:00', '10.0.0.55', 'Mozilla/5.0 Safari/17 iPhone', 2, 1, NULL),
+(2075829151662010370, '2026-05-20 08:55:00', '192.168.1.100', 'Mozilla/5.0 Chrome/121 Windows', 1, 1, NULL),
+(2075829151662010370, '2026-05-25 14:30:00', '114.25.66.78', 'Mozilla/5.0 Chrome/121 Android', 1, 0, '密码错误'),
+(2075829151662010370, '2026-05-25 14:32:00', '114.25.66.78', 'Mozilla/5.0 Chrome/121 Android', 1, 1, NULL),
+(2075829151662010370, '2026-05-28 08:50:00', '192.168.1.100', 'Mozilla/5.0 Chrome/121 Windows', 1, 1, NULL),
+(2075829151662010370, '2026-06-01 09:03:00', '192.168.1.100', 'Mozilla/5.0 Chrome/122 Windows', 1, 1, NULL),
+(2075829151662010370, '2026-06-05 08:56:00', '192.168.1.100', 'Mozilla/5.0 Chrome/122 Windows', 1, 1, NULL),
+(2075829151662010370, '2026-06-10 09:08:00', '192.168.1.100', 'Mozilla/5.0 Chrome/122 Windows', 1, 1, NULL),
+(2075829151662010370, '2026-06-15 08:50:00', '10.0.0.55', 'Mozilla/5.0 Safari/17 iPhone', 1, 1, NULL),
+(2075829151662010370, '2026-06-20 08:53:00', '192.168.1.100', 'Mozilla/5.0 Chrome/122 Windows', 1, 0, '密码错误'),
+(2075829151662010370, '2026-06-20 08:54:00', '192.168.1.100', 'Mozilla/5.0 Chrome/122 Windows', 1, 1, NULL),
+(2075829151662010370, '2026-06-25 08:58:00', '192.168.1.100', 'Mozilla/5.0 Chrome/122 Windows', 1, 1, NULL),
+(2075829151662010370, '2026-07-01 09:01:00', '192.168.1.100', 'Mozilla/5.0 Chrome/123 Windows', 1, 1, NULL),
+(2075829151662010370, '2026-07-05 08:49:00', '192.168.1.100', 'Mozilla/5.0 Chrome/123 Windows', 1, 1, NULL),
+(2075829151662010370, '2026-07-08 08:55:00', '10.0.0.55', 'Mozilla/5.0 Safari/17 iPhone', 1, 1, NULL),
+(2075829151662010370, '2026-07-10 09:02:00', '192.168.1.100', 'Mozilla/5.0 Chrome/123 Windows', 1, 1, NULL);

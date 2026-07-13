@@ -31,11 +31,11 @@ cos:
     region: xxx
     bucket: xxx
   # todo 需替换配置，然后取消注释
-  redis:
-    database: 1
-    host: localhost
-    port: 6379
-    timeout: 5000
+#  redis:
+#    database: 1
+#    host: localhost
+#    port: 6379
+#    timeout: 5000
   # Elasticsearch 配置
   # todo 需替换配置，然后取消注释
 #  elasticsearch:

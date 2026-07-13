@@ -70,7 +70,10 @@ public class PositionServiceImpl extends ServiceImpl<PositionMapper, Position> i
         String levelMin = request.getLevelMin().trim();
         String levelMax = request.getLevelMax().trim();
 
-        // 1. 校验序列有效性
+        // 1. 校验职位名称不为空
+        ThrowUtils.throwIf(name.isEmpty(), ErrorCode.PARAMS_ERROR, "职位名称不能为空");
+
+        // 2. 校验序列有效性
         PositionSequence seq = PositionSequence.fromCode(sequence);
         ThrowUtils.throwIf(seq == null, ErrorCode.PARAMS_ERROR, "无效的职位序列: " + sequence);
 
@@ -123,15 +126,19 @@ public class PositionServiceImpl extends ServiceImpl<PositionMapper, Position> i
     }
 
     @Override
-    public void updatePosition(Long id, PositionUpdateRequest request) {
-        Position position = this.getById(id);
+    public void updatePosition(PositionUpdateRequest request) {
+        Position position = this.getById(request.getId());
         ThrowUtils.throwIf(position == null, ErrorCode.NOT_FOUND_ERROR, "职位不存在");
 
         Integer sequence = request.getSequence();
+        String name = request.getName().trim();
         String levelMin = request.getLevelMin().trim();
         String levelMax = request.getLevelMax().trim();
 
-        // 1. 校验序列有效性
+        // 1. 校验职位名称不为空
+        ThrowUtils.throwIf(name.isEmpty(), ErrorCode.PARAMS_ERROR, "职位名称不能为空");
+
+        // 2. 校验序列有效性
         PositionSequence seq = PositionSequence.fromCode(sequence);
         ThrowUtils.throwIf(seq == null, ErrorCode.PARAMS_ERROR, "无效的职位序列: " + sequence);
 
@@ -157,8 +164,8 @@ public class PositionServiceImpl extends ServiceImpl<PositionMapper, Position> i
         // 5. 校验唯一性（排除自身）
         LambdaQueryWrapper<Position> existWrapper = new LambdaQueryWrapper<Position>()
                 .eq(Position::getSequence, sequence)
-                .eq(Position::getName, request.getName().trim())
-                .ne(Position::getId, id);
+                .eq(Position::getName, name)
+                .ne(Position::getId, request.getId());
         if (request.getDepartmentId() == null) {
             existWrapper.isNull(Position::getDepartmentId);
         } else {
@@ -167,7 +174,7 @@ public class PositionServiceImpl extends ServiceImpl<PositionMapper, Position> i
         long existCount = this.count(existWrapper);
         ThrowUtils.throwIf(existCount > 0, ErrorCode.OPERATION_ERROR, "已存在相同职位");
 
-        position.setName(request.getName().trim());
+        position.setName(name);
         position.setSequence(sequence);
         position.setDepartmentId(request.getDepartmentId());
         position.setLevelMin(levelMin);
