@@ -61,7 +61,6 @@ create table  if not exists employee
     email                   varchar(256)                           null comment '邮箱',
     departmentId   bigint                                 null comment '部门ID',
     positionId     bigint                                 null comment '职位ID',
-    jobLevel       VARCHAR(8)        NULL COMMENT '职级，如P5、M2',
     hireDate       datetime                               null comment '入职日期',
     hireType       tinyint                                null comment '入职类型',
     salaryId       bigint                                 null comment '薪资ID',

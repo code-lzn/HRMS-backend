@@ -51,7 +51,7 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
 
         Department department = departmentService.getById(emp.getDepartmentId());
         Position position = positionService.getById(emp.getPositionId());
-        EmpSalaryProfile salary = salaryProfileService.getById(emp.getSalaryId());
+        EmpSalaryProfile salary = salaryProfileService.getById(emp.getSalaryProfileId());
 
         EmpProfileVO vo = new EmpProfileVO();
         BeanUtils.copyProperties(emp, vo);

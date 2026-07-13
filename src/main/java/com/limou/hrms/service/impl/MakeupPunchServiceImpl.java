@@ -12,6 +12,7 @@ import com.limou.hrms.model.entity.MakeupPunch;
 import com.limou.hrms.model.enums.ApprovalStatusEnum;
 import com.limou.hrms.model.enums.MakeupPunchTypeEnum;
 import com.limou.hrms.model.vo.MakeupPunchVO;
+import com.limou.hrms.service.ApprovalService;
 import com.limou.hrms.service.AttendanceService;
 import com.limou.hrms.service.EmployeeService;
 import com.limou.hrms.service.MakeupPunchService;
@@ -40,6 +41,9 @@ public class MakeupPunchServiceImpl extends ServiceImpl<MakeupPunchMapper, Makeu
     @Resource
     private AttendanceService attendanceService;
 
+    @Resource
+    private ApprovalService approvalService;
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public MakeupPunchVO apply(Long userId, String punchDate, Integer punchType,
@@ -57,6 +61,9 @@ public class MakeupPunchServiceImpl extends ServiceImpl<MakeupPunchMapper, Makeu
 
         boolean saved = this.save(request);
         ThrowUtils.throwIf(!saved, ErrorCode.OPERATION_ERROR, "补卡申请失败");
+
+        // 同步到审批中心
+        approvalService.startApproval("PATCH_CLOCK", request.getId(), emp.getId(), emp.getEmployeeName());
 
         return convertToVO(request, emp);
     }

@@ -46,9 +46,6 @@ public class Employee implements Serializable {
     /** 职位ID */
     private Long positionId;
 
-    /** 职级，如P5、M2 */
-    private String jobLevel;
-
     /** 入职日期 */
     private Date hireDate;
 
@@ -56,7 +53,7 @@ public class Employee implements Serializable {
     private Integer hireType;
 
     /** 薪资ID */
-    private Long salaryId;
+    private Long salaryProfileId;
 
     /** 录用类型: FULL_TIME=全职, PART_TIME=兼职, INTERN=实习 */
     private String employmentType;
