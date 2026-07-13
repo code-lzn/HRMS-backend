@@ -1,5 +1,7 @@
 package com.limou.hrms.model.enums;
 
+import lombok.Getter;
+
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -7,6 +9,7 @@ import java.util.stream.Collectors;
 /**
  * 审批状态枚举
  */
+@Getter
 public enum ApprovalStatusEnum {
 
     PENDING(0, "待审批"),
@@ -50,11 +53,4 @@ public enum ApprovalStatusEnum {
         return null;
     }
 
-    public Integer getValue() {
-        return value;
-    }
-
-    public String getText() {
-        return text;
-    }
 }

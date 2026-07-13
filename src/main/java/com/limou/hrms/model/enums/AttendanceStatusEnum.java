@@ -1,5 +1,7 @@
 package com.limou.hrms.model.enums;
 
+import lombok.Getter;
+
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -7,6 +9,7 @@ import java.util.stream.Collectors;
 /**
  * 考勤状态枚举
  */
+@Getter
 public enum AttendanceStatusEnum {
 
     NORMAL(0, "正常"),
@@ -52,11 +55,4 @@ public enum AttendanceStatusEnum {
         return null;
     }
 
-    public Integer getValue() {
-        return value;
-    }
-
-    public String getText() {
-        return text;
-    }
 }

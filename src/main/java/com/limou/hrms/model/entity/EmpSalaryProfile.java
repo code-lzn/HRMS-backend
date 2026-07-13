@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+
+import java.io.Serializable;
 import java.math.BigDecimal;
 import java.util.Date;
 import lombok.Data;
@@ -14,7 +16,7 @@ import lombok.Data;
  */
 @TableName(value ="emp_salary_profile")
 @Data
-public class EmpSalaryProfile {
+public class EmpSalaryProfile implements Serializable {
     /**
      * 主键ID
      */

@@ -2,6 +2,7 @@ package com.limou.hrms.model.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
 
+import java.io.Serializable;
 import java.util.Date;
 import lombok.Data;
 
@@ -11,7 +12,7 @@ import lombok.Data;
  */
 @TableName(value ="employee")
 @Data
-public class Employee {
+public class Employee implements Serializable {
     /**
      * id
      */
