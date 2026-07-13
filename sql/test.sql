@@ -52,28 +52,74 @@ create table  if not exists employee
 (
     id             bigint auto_increment comment 'id' primary key,
     employeeName     varchar(128)                           not null comment '员工名称（真实姓名）',
-    userId         bigint                                 null comment '关联用户ID',
     employeeNo         VARCHAR(16)     NOT NULL                 COMMENT '工号, 格式: 年份(4)+部门编码(2)+序号(3)',
-    status         tinyint      default 1                 not null comment '状态：0-离职，1-在职，2-试用期',
+    account          VARCHAR(32)       NULL COMMENT '系统账号（=手机号）',
+    userId         bigint                                 null comment '关联用户ID',
+    status         tinyint      default 1                 not null comment '在职状态：1=试用期 2=正式 3=待离职 4=已离职',
     gender              TINYINT         NOT NULL DEFAULT 0       COMMENT '性别: 0=女, 1=男',
-    idCard             VARCHAR(256)    DEFAULT NULL             COMMENT '身份证号（加密存储）',
-    hireDate       datetime                               null comment '入职日期',
-    hireType       tinyint                                null comment '入职类型',
-    phone   varchar(32)                            null comment '联系人电话',
+    phone   varchar(32)                            null comment '手机号',
+    email                   varchar(256)                           null comment '邮箱',
     departmentId   bigint                                 null comment '部门ID',
     positionId     bigint                                 null comment '职位ID',
+    jobLevel       VARCHAR(8)        NULL COMMENT '职级，如P5、M2',
+    hireDate       datetime                               null comment '入职日期',
+    hireType       tinyint                                null comment '入职类型',
     salaryId       bigint                                 null comment '薪资ID',
     employmentType     VARCHAR(16)     NOT NULL                 COMMENT '录用类型: FULL_TIME=全职, PART_TIME=兼职, INTERN=实习',
-    email                   varchar(256)                           null comment '邮箱',
-    currentAddress          varchar(512)                           null comment '现居住地址',
-    emergencyContactName    varchar(128)                           null comment '紧急联系人姓名',
-    emergencyContactPhone   varchar(32)                            null comment '紧急联系人电话',
     createTime     datetime     default CURRENT_TIMESTAMP not null comment '创建时间',
     updateTime     datetime     default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',
-    isDeleted      tinyint      default 0                 not null comment '是否删除'
+    isDeleted      tinyint      default 0                 not null comment '是否删除',
+    UNIQUE KEY `uk_employee_no` (`employeeNo`),
+    KEY `idx_department_id` (`departmentId`),
+    KEY `idx_position_id` (`positionId`),
+    KEY `idx_status` (`status`),
+    KEY `idx_phone` (`phone`),
+    KEY `idx_job_level` (`jobLevel`),
+    KEY `idx_hire_date` (`hireDate`)
 ) comment '员工' collate = utf8mb4_unicode_ci;
 
-ALTER TABLE employee ADD COLUMN salaryProfileId BIGINT DEFAULT NULL COMMENT '薪资ID';
+#员工详情表----与employee一对一
+CREATE TABLE IF NOT EXISTS employee_detail (
+    id                    BIGINT UNSIGNED   NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    employeeId            BIGINT UNSIGNED   NOT NULL COMMENT '员工ID',
+    account               VARCHAR(32)       NULL COMMENT '系统账号（=手机号）',
+    idCard                VARCHAR(256)      NULL COMMENT '身份证号（加密存储）',
+    birthday              DATE              NULL COMMENT '生日',
+    registeredAddress     VARCHAR(512)      NULL COMMENT '户籍地址',
+    currentAddress        VARCHAR(512)      NULL COMMENT '现居住地址',
+    jobLevel              VARCHAR(8)        NULL COMMENT '职级',
+    directReportId        BIGINT UNSIGNED   NULL COMMENT '直接汇报人ID',
+    workLocation          VARCHAR(128)      NULL COMMENT '工作地点',
+    contractType          TINYINT           NULL COMMENT '合同类型：1=固定期限 2=无固定期限 3=劳务合同',
+    contractExpireDate    DATE              NULL COMMENT '合同到期日',
+    probationRatio        DECIMAL(5,4)      NULL COMMENT '试用期待遇比例',
+    baseSalary            DECIMAL(12,2)     NULL COMMENT '基本工资',
+    bankAccount           VARCHAR(64)       NULL COMMENT '银行账号（加密存储）',
+    bankName              VARCHAR(128)      NULL COMMENT '开户行',
+    emergencyContactName  VARCHAR(128)      NULL COMMENT '紧急联系人姓名',
+    emergencyContactPhone VARCHAR(32)       NULL COMMENT '紧急联系人电话',
+    createTime            DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updateTime            DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_employee_id (employeeId),
+    KEY idx_direct_report_id (directReportId)
+) DEFAULT CHARACTER SET = utf8mb4 COMMENT = '员工详情表';
+
+#员工档案变更日志表
+CREATE TABLE IF NOT EXISTS employee_change_log (
+    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    employeeId      BIGINT UNSIGNED NOT NULL COMMENT '员工ID',
+    fieldName       VARCHAR(64)     NOT NULL COMMENT '变更字段名',
+    oldValue        VARCHAR(512)    NULL COMMENT '变更前值',
+    newValue        VARCHAR(512)    NULL COMMENT '变更后值',
+    changeType      VARCHAR(32)     NOT NULL COMMENT 'DIRECT_EDIT/FLOW_CHANGE/SYSTEM',
+    operatorId      BIGINT UNSIGNED NULL COMMENT '操作人ID',
+    remark          VARCHAR(256)    NULL COMMENT '备注',
+    createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_employee_id (employeeId),
+    KEY idx_create_time (createTime)
+) DEFAULT CHARACTER SET = utf8mb4 COMMENT = '员工档案变更日志表';
 
 #部门表----与employee进行关联
 CREATE TABLE department (
