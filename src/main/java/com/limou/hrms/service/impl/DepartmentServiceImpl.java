@@ -168,6 +168,7 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
         Department dept = this.getById(request.getId());
         ThrowUtils.throwIf(dept == null, ErrorCode.NOT_FOUND_ERROR, "部门不存在");
 
+        ThrowUtils.throwIf(request.getName() == null, ErrorCode.PARAMS_ERROR, "部门名称不能为空");
         String name = request.getName().trim();
 
         // 校验部门名称不为空
