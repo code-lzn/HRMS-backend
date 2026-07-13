@@ -9,7 +9,10 @@ import com.limou.hrms.mapper.MakeupPunchMapper;
 import com.limou.hrms.model.entity.Attendance;
 import com.limou.hrms.model.entity.Employee;
 import com.limou.hrms.model.entity.MakeupPunch;
+import com.limou.hrms.model.enums.ApprovalStatusEnum;
+import com.limou.hrms.model.enums.MakeupPunchTypeEnum;
 import com.limou.hrms.model.vo.MakeupPunchVO;
+import com.limou.hrms.service.ApprovalService;
 import com.limou.hrms.service.AttendanceService;
 import com.limou.hrms.service.EmployeeService;
 import com.limou.hrms.service.MakeupPunchService;
@@ -19,7 +22,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
-import java.util.*;
+import java.util.Date;
+import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -36,17 +41,8 @@ public class MakeupPunchServiceImpl extends ServiceImpl<MakeupPunchMapper, Makeu
     @Resource
     private AttendanceService attendanceService;
 
-    private static final Map<Integer, String> PUNCH_TYPE_MAP = new LinkedHashMap<>();
-    private static final Map<Integer, String> STATUS_MAP = new LinkedHashMap<>();
-
-    static {
-        PUNCH_TYPE_MAP.put(AttendanceConstant.MAKEUP_TYPE_PUNCH_IN, "上班补卡");
-        PUNCH_TYPE_MAP.put(AttendanceConstant.MAKEUP_TYPE_PUNCH_OUT, "下班补卡");
-
-        STATUS_MAP.put(AttendanceConstant.APPROVAL_STATUS_PENDING, "待审批");
-        STATUS_MAP.put(AttendanceConstant.APPROVAL_STATUS_APPROVED, "已通过");
-        STATUS_MAP.put(AttendanceConstant.APPROVAL_STATUS_REJECTED, "已拒绝");
-    }
+    @Resource
+    private ApprovalService approvalService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -65,6 +61,9 @@ public class MakeupPunchServiceImpl extends ServiceImpl<MakeupPunchMapper, Makeu
 
         boolean saved = this.save(request);
         ThrowUtils.throwIf(!saved, ErrorCode.OPERATION_ERROR, "补卡申请失败");
+
+        // 同步到审批中心
+        approvalService.startApproval("PATCH_CLOCK", request.getId(), emp.getId(), emp.getEmployeeName());
 
         return convertToVO(request, emp);
     }
@@ -118,8 +117,10 @@ public class MakeupPunchServiceImpl extends ServiceImpl<MakeupPunchMapper, Makeu
         MakeupPunchVO vo = new MakeupPunchVO();
         BeanUtils.copyProperties(request, vo);
         vo.setEmployeeName(emp != null ? emp.getEmployeeName() : null);
-        vo.setPunchTypeText(PUNCH_TYPE_MAP.getOrDefault(request.getPunchType(), "未知"));
-        vo.setStatusText(STATUS_MAP.getOrDefault(request.getStatus(), "未知"));
+        MakeupPunchTypeEnum punchType = MakeupPunchTypeEnum.getEnumByValue(request.getPunchType());
+        vo.setPunchTypeText(punchType != null ? punchType.getText() : "未知");
+        ApprovalStatusEnum status = ApprovalStatusEnum.getEnumByValue(request.getStatus());
+        vo.setStatusText(status != null ? status.getText() : "未知");
         return vo;
     }
 

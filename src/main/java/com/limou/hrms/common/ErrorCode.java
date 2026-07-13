@@ -25,7 +25,11 @@ public enum ErrorCode {
     PASSWORD_ERROR(50018, "原密码错误"),
     PASSWORD_SAME_AS_OLD(50019, "新密码不能与旧密码相同"),
     PASSWORD_RECENTLY_USED(50020, "新密码与近期使用过的密码重复"),
-    PHONE_ALREADY_BOUND(50021, "该手机号已被其他账号绑定");
+    PHONE_ALREADY_BOUND(50021, "该手机号已被其他账号绑定"),
+    APPROVAL_NOT_FOUND(50022, "审批记录不存在"),
+    APPROVAL_NOT_PENDING(50023, "该节点已处理，无法重复操作"),
+    APPROVAL_NO_PERMISSION(50024, "无审批权限"),
+    DELEGATION_NOT_FOUND(50025, "委托记录不存在");
 
     /**
      * 状态码

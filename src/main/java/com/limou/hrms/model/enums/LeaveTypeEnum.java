@@ -1,5 +1,7 @@
 package com.limou.hrms.model.enums;
 
+import lombok.Getter;
+
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -7,6 +9,7 @@ import java.util.stream.Collectors;
 /**
  * 请假类型枚举
  */
+@Getter
 public enum LeaveTypeEnum {
 
     PERSONAL(0, "事假"),
@@ -53,11 +56,4 @@ public enum LeaveTypeEnum {
         return null;
     }
 
-    public Integer getValue() {
-        return value;
-    }
-
-    public String getText() {
-        return text;
-    }
 }

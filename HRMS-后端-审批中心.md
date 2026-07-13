@@ -7,12 +7,13 @@
 | **日期** | **版本** | **修订说明** | **作者** |
 | --- | --- | --- | --- |
 | 2026-07-10 | 1.0 | 初稿 | - |
+| 2026-07-12 | 1.1 | 根据实际代码实现更新：修正表结构、API路径、实体字段 | - |
 
 ## 项目背景
 
 > 对本次项目的背景以及目标进行描述，方便开发者理解需求，对齐上下文。
 
-本模块来源于 HRMS（人资管理系统）产品规格说明书中第 8 部分——审批中心。当前公司审批依赖微信/邮件等碎片化渠道，缺乏统一的审批工作台，审批进度不透明、委托审批无系统支持、审批超时无自动处理。本模块旨在建立统一的审批中心，整合入转调离、请假、补卡、薪资批次等所有审批类型的待办列表、审批详情、审批操作（通过/拒绝/转交）、委托审批和审批历史追踪能力，为各业务模块提供标准化的审批流引擎。
+本模块来源于 HRMS（人资管理系统）产品规格说明书中第 8 部分——审批中心。当前公司审批依赖微信/邮件等碎片化渠道，缺乏统一的审批工作台，审批进度不透明、委托审批无系统支持。本模块旨在建立统一的审批中心，整合入转调离、请假、补卡、薪资批次等所有审批类型的待办列表、审批详情、审批操作（通过/拒绝/转交）、委托审批和审批历史追踪能力，为各业务模块提供标准化的审批流引擎。
 
 ### 相关资料
 
@@ -32,45 +33,37 @@
 
 本模块核心功能包括：
 
-1. **审批工作台**：待办列表（显示当前用户需要审批的申请，按类型/时间筛选）、已办列表（历史审批记录）
-2. **审批详情**：完整展示申请信息（按审批类型动态渲染不同字段）、审批历史时间线（已审批节点及意见）、审批操作（通过/拒绝需填写理由、转交选择审批人）
-3. **审批流引擎**：支持多级审批、条件分支（如二审开关）、审批转交、审批超时升级/催办
-4. **委托审批**：审批人可设置委托其他人代为审批，委托期间任务自动转给被委托人，委托人可随时取消，被委托人审批时记录"XXX 代 YYY 审批"
-5. **审批类型汇总**：入职审批、转正审批、调岗审批、离职审批、请假审批、补卡审批、薪资批次审批、加班审批
+1. **审批工作台**：待办列表（显示当前用户需要审批的申请，包含直接审批和委托审批）
+2. **审批详情**：完整展示申请信息、审批历史时间线（已审批节点及意见）
+3. **审批操作**：通过（可选意见）、拒绝（填写原因）、转交（选择审批人+原因）
+4. **审批流引擎**：支持多级审批流转，审批人类型包括部门负责人/直接上级/HR负责人/财务专员/老板/指定人
+5. **委托审批**：审批人可设置委托其他人代为审批（按业务类型+日期范围），委托期间任务自动转给被委托人，被委托人审批时记录代审批标记
 
 ### 功能模块树
 
 ```plain
 审批中心
 ├── 审批工作台
-│   ├── 待办列表
-│   │   ├── 按审批类型筛选
-│   │   ├── 按时间排序
-│   │   └── 超时标记（红色高亮）
-│   ├── 已办列表
-│   │   └── 历史审批记录
-│   └── 我发起的申请
-│       └── 查看自己提交的审批进度
+│   └── 待办列表
+│       ├── 直接审批：当前人是审批人且状态为PENDING
+│       └── 委托审批：当前人被委托且委托在有效期内
 ├── 审批详情
-│   ├── 申请信息展示（按类型动态渲染）
+│   ├── 申请信息展示（按业务类型携带businessId）
 │   ├── 审批历史时间线
 │   └── 审批操作区
 │       ├── 通过（可选填写意见）
-│       ├── 拒绝（必填原因）
-│       └── 转交（选择审批人）
+│       ├── 拒绝（填写原因）
+│       └── 转交（选择审批人+原因）
 ├── 审批流引擎
-│   ├── 审批流定义（类型+节点+条件）
-│   ├── 审批流实例（运行时状态）
-│   ├── 多级审批流转
-│   ├── 条件分支（二审开关：非标准职位/薪资超范围）
-│   ├── 转交处理
-│   ├── 撤回处理（仅第一级发起人可撤回）
-│   └── 超时处理（48小时自动升级/催办提醒）
+│   ├── 审批流定义（businessType + flowName + 节点列表）
+│   ├── 审批流实例（运行时状态：APPROVING/APPROVED/REJECTED/WITHDRAWN）
+│   ├── 多级审批流转（按节点顺序逐级推进）
+│   └── 审批人解析（DEPT_MANAGER/HR_MANAGER/DIRECT_SUPERIOR/FINANCE/BOSS/SPECIFIED）
 └── 委托审批
     ├── 设置委托人
-    ├── 取消委托
-    ├── 委托自动路由
-    └── 委托审批记录标记
+    ├── 取消委托（仅委托人本人）
+    ├── 委托自动路由（根据业务类型范围过滤）
+    └── 委托审批记录标记（isDelegated + delegatedBy）
 ```
 
 ## 流程图
@@ -80,340 +73,311 @@
 ### 8-1 通用审批流转流程
 
 ```plain
-业务模块提交审批
+业务模块调用 startApproval()
      │
      ▼
-创建审批流实例
-  ├── 确定审批类型
-  ├── 构建审批节点链（根据类型规则 + 条件分支）
-  └── 当前节点 = 第一个审批节点
+创建审批流实例 (approval_record)
+  ├── 匹配审批流定义 (approval_flow, 按 businessType + status=1)
+  ├── 构建审批节点链 (approval_flow_node, 按 nodeOrder 排序)
+  ├── resolveApprover() 解析每节点审批人
+  └── 创建审批明细 (approval_detail, 全部初始为 PENDING)
      │
      ▼
-通知当前节点审批人（站内消息 + [邮件/短信]）
-     │
-     ▼
-审批人操作：
-     ├── 通过
-     │   ├── 是否有下一节点？
-     │   │   ├── 是 → 流转至下一节点
-     │   │   └── 否 → 审批完成 → 回调业务模块
-     │   └── 记录审批历史（通过 + 意见）
-     ├── 拒绝
-     │   ├── 流程终止
-     │   ├── 记录审批历史（拒绝 + 原因）
-     │   └── 回调业务模块（通知发起人）
-     └── 转交
-         ├── 变更为新审批人
-         ├── 记录审批历史（XXX 转交至 YYY）
-         └── 重新通知新审批人
+审批人操作（通过 detailId 定位明细）:
+     ├── 通过 (POST /approval/approve)
+     │   ├── 校验权限（审批人本人或有效被委托人）
+     │   ├── 标记 action=APPROVE
+     │   ├── advanceApproval(): currentStep++
+     │   └── 若 currentStep > totalSteps → status=APPROVED
+     ├── 拒绝 (POST /approval/reject)
+     │   ├── 标记 action=REJECT
+     │   └── record.status=REJECTED, finishedAt=now
+     └── 转交 (POST /approval/transfer)
+         ├── 原审批人标记 action=TRANSFER
+         └── 创建新 detail 给目标审批人（同节点、同步骤）
 ```
 
-### 8-2 审批超时处理流程
+### 8-2 委托审批路由流程
 
 ```plain
-定时任务：每小时执行
+validateAndGetDetail(detailId, employeeId)
      │
      ▼
-扫描所有审批中的审批流实例
-  WHERE status = 'APPROVING'
-  AND current_node_create_time + 48小时 <= NOW()
-     │
-     ▼
-对每个超时审批：
-     ├── 是否有上级审批人？
-     │   ├── 是 → 自动升级至上级审批人
-     │   │      记录 "XXX 超时未处理，自动升级至 YYY"
-     │   └── 否 → 发送催办通知（站内+邮件）
-     └── 给当前审批人发送超时提醒
+检查是否审批人本人: Objects.equals(detail.approverId, employeeId)
+     ├── 是 → 通过权限检查
+     └── 否 → 查询委托关系
+          ├── approvalDelegationService.isActiveDelegate(
+          │       detail.approverId, employeeId, record.businessType)
+          │   检查: delegatorId=原审批人 AND delegateId=当前人
+          │        AND status=1 AND 日期在有效范围内
+          │        AND businessTypes 包含当前业务类型（NULL=全部）
+          ├── 有委托 → 标记 detail.isDelegated=1, detail.delegatedBy=原审批人
+          └── 无委托 → 抛出 APPROVAL_NO_PERMISSION
 ```
-
-### 8-3 委托审批路由流程
-
-```plain
-审批流引擎确定当前审批人
-     │
-     ▼
-查询当前审批人是否有生效中的委托
-  SELECT * FROM approval_delegation
-  WHERE delegator_id = currentApproverId
-  AND start_date <= NOW() AND end_date >= NOW()
-  AND status = 'ACTIVE'
-     │
-     ├── 有委托 → 实际审批人 = 被委托人(delegate_id)
-     │           记录 "待 XXX（由 YYY 代审）"
-     ├── 无委托 → 实际审批人 = currentApproverId
-     │
-     ▼
-通知实际审批人
-```
-
-## UML 图
-
-> 描述审批中心的核心类和依赖关系。
-
-### 审批核心领域模型
-
-```plain
-@startuml
-class ApprovalDefinition {
-  - id: Long
-  - approvalType: ApprovalTypeEnum   "审批类型"
-  - name: String                     "审批流名称"
-  - nodes: List<NodeDefinition>      "节点定义列表"
-  - isActive: Boolean                "是否启用"
-}
-
-class NodeDefinition {
-  - id: Long
-  - definitionId: Long               "所属审批流"
-  - nodeOrder: Integer               "节点顺序"
-  - approverType: ApproverType       "审批人类型：指定人/角色/部门负责人/直接上级"
-  - approverId: Long                 "指定审批人ID（approverType=指定人时）"
-  - roleType: Integer                "角色类型（approverType=角色时）"
-  - conditionField: String           "条件字段"
-  - conditionValue: String           "条件值（如薪资超出范围时启用该节点）"
-  - timeoutHours: Integer            "超时小时数"
-}
-
-class ApprovalInstance {
-  - id: Long
-  - definitionId: Long               "审批流定义ID"
-  - businessType: String             "业务类型"
-  - businessId: Long                 "业务单据ID"
-  - status: InstanceStatus           "审批流状态"
-  - currentNodeOrder: Integer        "当前审批节点序号"
-  - currentNodeApproverId: Long      "当前节点审批人"
-  - applicantId: Long                "发起人ID"
-  - createTime: LocalDateTime
-  - finishTime: LocalDateTime
-}
-
-class ApprovalRecord {
-  - id: Long
-  - instanceId: Long                 "审批流实例ID"
-  - nodeOrder: Integer               "审批节点序号"
-  - approverId: Long                 "审批人ID"
-  - actualApproverId: Long           "实际审批人ID（处理转交/委托）"
-  - action: ApprovalAction           "操作：通过/拒绝/转交"
-  - opinion: String                  "审批意见"
-  - isDelegated: Boolean             "是否委托审批"
-  - delegatorId: Long                "原审批人ID（委托审批时）"
-  - createTime: LocalDateTime
-}
-
-class ApprovalDelegation {
-  - id: Long
-  - delegatorId: Long                "委托人ID"
-  - delegateId: Long                 "被委托人ID"
-  - startDate: LocalDate             "委托开始日期"
-  - endDate: LocalDate               "委托结束日期"
-  - approvalTypes: String            "委托审批类型范围(JSON数组，空=全部)"
-  - status: DelegationStatus         "状态"
-  - cancelTime: LocalDateTime        "取消时间"
-}
-
-enum ApprovalTypeEnum {
-  ONBOARDING       "入职审批"
-  REGULARIZATION   "转正审批"
-  TRANSFER         "调岗审批"
-  RESIGNATION      "离职审批"
-  LEAVE            "请假审批"
-  MAKEUP           "补卡审批"
-  SALARY_BATCH     "薪资批次审批"
-  OVERTIME         "加班审批"
-}
-
-enum ApproverType {
-  SPECIFIED    "指定人"
-  ROLE         "角色"
-  DEPT_MANAGER "部门负责人"
-  DIRECT_SUPERIOR "直接上级"
-}
-
-enum InstanceStatus {
-  APPROVING    "审批中"
-  APPROVED     "已通过"
-  REJECTED     "已拒绝"
-  WITHDRAWN    "已撤回"
-  CANCELLED    "已取消"
-}
-
-enum ApprovalAction {
-  APPROVE  "通过"
-  REJECT   "拒绝"
-  TRANSFER "转交"
-}
-
-enum DelegationStatus {
-  ACTIVE   "生效中"
-  CANCELLED "已取消"
-  EXPIRED  "已过期"
-}
-
-ApprovalDefinition "1" -- "*" NodeDefinition
-ApprovalDefinition "1" -- "*" ApprovalInstance
-ApprovalInstance "1" -- "*" ApprovalRecord
-@enduml
-```
-
-## 时序图
-
-### 8-1 通用审批提交时序
-
-![通用审批提交时序](https://alidocs.oss-cn-zhangjiakou.aliyuncs.com/res/placeholder-approval-submit.svg)
-
-### 8-2 审批流转时序
-
-![审批流转时序](https://alidocs.oss-cn-zhangjiakou.aliyuncs.com/res/placeholder-approval-flow.svg)
-
-### 8-3 委托审批时序
-
-![委托审批时序](https://alidocs.oss-cn-zhangjiakou.aliyuncs.com/res/placeholder-approval-delegate.svg)
 
 ## 数据库设计
 
-> 审批中心模块涉及的核心数据表。
+> 审批中心模块涉及的核心数据表（实际实现）。
 
-### 审批流定义表 approval_definition
-
-```sql
-CREATE TABLE IF NOT EXISTS `approval_definition` (
-    `id`                  BIGINT UNSIGNED   NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    `approval_type`       VARCHAR(32)       NOT NULL COMMENT '审批类型：ONBOARDING/REGULARIZATION/TRANSFER/RESIGNATION/LEAVE/MAKEUP/SALARY_BATCH/OVERTIME',
-    `name`                VARCHAR(64)       NOT NULL COMMENT '审批流名称',
-    `is_active`           TINYINT           NOT NULL DEFAULT 1 COMMENT '是否启用：0=否 1=是',
-    `create_time`         DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    `update_time`         DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    PRIMARY KEY (`id`),
-    UNIQUE KEY `uk_approval_type` (`approval_type`)
-) DEFAULT CHARACTER SET = utf8mb4 COMMENT = '审批流定义表';
-```
-
-### 审批节点定义表 approval_node_definition
+### 审批流定义表 approval_flow
 
 ```sql
-CREATE TABLE IF NOT EXISTS `approval_node_definition` (
-    `id`                  BIGINT UNSIGNED   NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    `definition_id`       BIGINT UNSIGNED   NOT NULL COMMENT '所属审批流定义ID',
-    `node_order`          INT               NOT NULL COMMENT '节点顺序，从1开始',
-    `approver_type`       TINYINT           NOT NULL COMMENT '审批人类型：1=指定人 2=角色 3=部门负责人 4=直接上级',
-    `approver_id`         BIGINT UNSIGNED            COMMENT '指定审批人ID（approver_type=1时）',
-    `role_type`           VARCHAR(32)                COMMENT '角色类型（approver_type=2时）：HR/HR_MANAGER/DEPT_MANAGER/FINANCE',
-    `condition_field`     VARCHAR(64)                COMMENT '条件字段名（控制该节点是否启用）',
-    `condition_value`     VARCHAR(256)               COMMENT '条件值（匹配时启用该节点）',
-    `timeout_hours`       INT               NOT NULL DEFAULT 48 COMMENT '审批超时小时数',
-    `create_time`         DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    PRIMARY KEY (`id`),
-    KEY `idx_definition_id` (`definition_id`)
-) DEFAULT CHARACTER SET = utf8mb4 COMMENT = '审批节点定义表';
+CREATE TABLE IF NOT EXISTS approval_flow (
+    id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+    businessType    VARCHAR(32)     NOT NULL                 COMMENT '业务类型: ONBOARDING=入职, REGULARIZATION=转正, TRANSFER=调岗, RESIGNATION=离职, LEAVE=请假, PATCH_CLOCK=补卡, SALARY_BATCH=薪资批次',
+    flowName        VARCHAR(64)     NOT NULL                 COMMENT '审批流名称',
+    description     VARCHAR(256)    DEFAULT NULL             COMMENT '说明',
+    status          TINYINT         NOT NULL DEFAULT 1       COMMENT '状态: 1=启用, 0=禁用',
+    createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updateTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_business_type (businessType)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='审批流定义表';
 ```
 
-### 审批流实例表 approval_instance
+### 审批节点定义表 approval_flow_node
 
 ```sql
-CREATE TABLE IF NOT EXISTS `approval_instance` (
-    `id`                        BIGINT UNSIGNED   NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    `definition_id`             BIGINT UNSIGNED   NOT NULL COMMENT '审批流定义ID',
-    `business_type`             VARCHAR(32)       NOT NULL COMMENT '业务类型，同approval_type',
-    `business_id`               BIGINT UNSIGNED   NOT NULL COMMENT '业务单据ID',
-    `status`                    TINYINT           NOT NULL DEFAULT 1 COMMENT '状态：1=审批中 2=已通过 3=已拒绝 4=已撤回 5=已取消',
-    `current_node_order`        INT               NOT NULL DEFAULT 1 COMMENT '当前审批节点序号',
-    `current_node_approver_id`  BIGINT UNSIGNED            COMMENT '当前节点审批人ID',
-    `applicant_id`              BIGINT UNSIGNED   NOT NULL COMMENT '发起人ID',
-    `node_chain`                JSON              NOT NULL COMMENT '审批节点链快照（JSON，记录节点顺序及审批人）',
-    `create_time`               DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间（发起时间）',
-    `finish_time`               DATETIME                   COMMENT '完成时间',
-    `update_time`               DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    PRIMARY KEY (`id`),
-    KEY `idx_business_type_id` (`business_type`, `business_id`),
-    KEY `idx_applicant_id` (`applicant_id`),
-    KEY `idx_current_approver` (`current_node_approver_id`),
-    KEY `idx_status` (`status`),
-    KEY `idx_create_time` (`create_time`)
-) DEFAULT CHARACTER SET = utf8mb4 COMMENT = '审批流实例表';
+CREATE TABLE IF NOT EXISTS approval_flow_node (
+    id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+    flowId          BIGINT          NOT NULL                 COMMENT '审批流ID',
+    nodeName        VARCHAR(64)     NOT NULL                 COMMENT '节点名称, 如"部门负责人审批"',
+    nodeOrder       INT             NOT NULL                 COMMENT '节点顺序, 从1开始',
+    approverType    VARCHAR(16)     NOT NULL                 COMMENT '审批人类型: DEPT_MANAGER=部门负责人, HR_MANAGER=HR负责人, DIRECT_SUPERIOR=直接上级, FINANCE=财务专员, BOSS=老板, SPECIFIED=指定人',
+    approverId      BIGINT          DEFAULT NULL             COMMENT '指定审批人ID（approverType=SPECIFIED时使用）',
+    isOptional      TINYINT         NOT NULL DEFAULT 0       COMMENT '是否可选: 0=必选, 1=可选',
+    createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (id),
+    KEY idx_flow_id (flowId)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='审批节点定义表';
 ```
 
-### 审批记录表 approval_record
+### 审批实例表 approval_record
 
 ```sql
-CREATE TABLE IF NOT EXISTS `approval_record` (
-    `id`                  BIGINT UNSIGNED   NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    `instance_id`         BIGINT UNSIGNED   NOT NULL COMMENT '审批流实例ID',
-    `node_order`          INT               NOT NULL COMMENT '审批节点序号',
-    `approver_id`         BIGINT UNSIGNED   NOT NULL COMMENT '原审批人ID',
-    `actual_approver_id`  BIGINT UNSIGNED   NOT NULL COMMENT '实际审批人ID（转交/委托后可能与approver_id不同）',
-    `action`              TINYINT           NOT NULL COMMENT '操作：1=通过 2=拒绝 3=转交',
-    `opinion`             VARCHAR(512)               COMMENT '审批意见/拒绝原因/转交说明',
-    `is_delegated`        TINYINT           NOT NULL DEFAULT 0 COMMENT '是否委托审批：0=否 1=是',
-    `delegator_id`        BIGINT UNSIGNED            COMMENT '原委托人ID（is_delegated=1时有值）',
-    `transfer_to_id`      BIGINT UNSIGNED            COMMENT '转交目标人ID（action=3时有值）',
-    `create_time`         DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '审批时间',
-    PRIMARY KEY (`id`),
-    KEY `idx_instance_id` (`instance_id`),
-    KEY `idx_approver_id` (`approver_id`),
-    KEY `idx_create_time` (`create_time`)
-) DEFAULT CHARACTER SET = utf8mb4 COMMENT = '审批记录表';
+CREATE TABLE IF NOT EXISTS approval_record (
+    id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+    flowId          BIGINT          NOT NULL                 COMMENT '审批流定义ID',
+    businessType    VARCHAR(32)     NOT NULL                 COMMENT '业务类型',
+    businessId      BIGINT          NOT NULL                 COMMENT '关联业务表记录ID',
+    applicantId     BIGINT          NOT NULL                 COMMENT '申请人ID（employeeId）',
+    applicantName   VARCHAR(64)     DEFAULT NULL             COMMENT '申请人姓名（冗余，便于列表展示）',
+    currentStep     INT             NOT NULL DEFAULT 1       COMMENT '当前审批步骤',
+    totalSteps      INT             NOT NULL                 COMMENT '总步骤数',
+    status          VARCHAR(16)     NOT NULL DEFAULT 'APPROVING' COMMENT '审批状态: APPROVING=审批中, APPROVED=已通过, REJECTED=已拒绝, WITHDRAWN=已撤回',
+    finishedAt      DATETIME        DEFAULT NULL             COMMENT '审批完成时间',
+    createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '发起时间',
+    updateTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_business (businessType, businessId),
+    KEY idx_applicant_id (applicantId),
+    KEY idx_status (status),
+    KEY idx_current_step (currentStep)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='审批实例表';
 ```
 
-### 委托审批表 approval_delegation
+### 审批明细表 approval_detail
 
 ```sql
-CREATE TABLE IF NOT EXISTS `approval_delegation` (
-    `id`                  BIGINT UNSIGNED   NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    `delegator_id`        BIGINT UNSIGNED   NOT NULL COMMENT '委托人ID',
-    `delegate_id`         BIGINT UNSIGNED   NOT NULL COMMENT '被委托人ID',
-    `start_date`          DATE              NOT NULL COMMENT '委托开始日期',
-    `end_date`            DATE              NOT NULL COMMENT '委托结束日期',
-    `approval_types`      VARCHAR(512)               COMMENT '委托审批类型范围（JSON数组，空=全部类型）',
-    `status`              TINYINT           NOT NULL DEFAULT 1 COMMENT '状态：1=生效中 2=已取消 3=已过期',
-    `cancel_time`         DATETIME                   COMMENT '取消时间',
-    `create_time`         DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    `update_time`         DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    PRIMARY KEY (`id`),
-    KEY `idx_delegator_id` (`delegator_id`),
-    KEY `idx_delegate_id` (`delegate_id`),
-    KEY `idx_status_date` (`status`, `end_date`)
-) DEFAULT CHARACTER SET = utf8mb4 COMMENT = '委托审批表';
+CREATE TABLE IF NOT EXISTS approval_detail (
+    id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+    recordId        BIGINT          NOT NULL                 COMMENT '审批实例ID',
+    nodeId          BIGINT          NOT NULL                 COMMENT '审批节点定义ID',
+    nodeName        VARCHAR(64)     NOT NULL                 COMMENT '节点名称（快照）',
+    stepOrder       INT             NOT NULL                 COMMENT '步骤序号',
+    approverId      BIGINT          DEFAULT NULL             COMMENT '审批人ID',
+    approverName    VARCHAR(64)     DEFAULT NULL             COMMENT '审批人姓名（冗余）',
+    action          VARCHAR(16)     NOT NULL DEFAULT 'PENDING' COMMENT '审批动作: PENDING=待审批, APPROVE=通过, REJECT=拒绝, TRANSFER=转交',
+    comment         TEXT            DEFAULT NULL             COMMENT '审批意见',
+    isDelegated     TINYINT         NOT NULL DEFAULT 0       COMMENT '是否代审批: 0=否, 1=是',
+    delegatedBy     BIGINT          DEFAULT NULL             COMMENT '委托人ID（代审批时记录）',
+    operateTime     DATETIME        DEFAULT NULL             COMMENT '操作时间',
+    createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (id),
+    KEY idx_record_id (recordId),
+    KEY idx_approver_id (approverId),
+    KEY idx_action (action)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='审批明细表';
 ```
+
+### 审批委托表 approval_delegation
+
+```sql
+CREATE TABLE IF NOT EXISTS approval_delegation (
+    id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+    delegatorId     BIGINT          NOT NULL                 COMMENT '委托人ID（employeeId）',
+    delegatorName   VARCHAR(64)     NOT NULL                 COMMENT '委托人姓名（冗余）',
+    delegateId      BIGINT          NOT NULL                 COMMENT '被委托人ID（employeeId）',
+    delegateName    VARCHAR(64)     NOT NULL                 COMMENT '被委托人姓名（冗余）',
+    businessTypes   VARCHAR(256)    DEFAULT NULL             COMMENT '委托业务类型（逗号分隔，NULL=全部）',
+    startDate       DATE            NOT NULL                 COMMENT '委托开始日期',
+    endDate         DATE            NOT NULL                 COMMENT '委托结束日期',
+    status          TINYINT         NOT NULL DEFAULT 1       COMMENT '状态: 1=有效, 0=已取消',
+    createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updateTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_delegator_id (delegatorId),
+    KEY idx_delegate_id (delegateId),
+    KEY idx_status_dates (status, startDate, endDate)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='审批委托表';
+```
+
+## 实体类设计
+
+### ApprovalFlow（审批流定义）
+
+| **字段** | **类型** | **说明** |
+| --- | --- | --- |
+| id | Long (AUTO) | 主键 |
+| businessType | String | 业务类型：ONBOARDING/REGULARIZATION/TRANSFER/RESIGNATION/LEAVE/PATCH_CLOCK/SALARY_BATCH |
+| flowName | String | 审批流名称 |
+| description | String | 说明 |
+| status | Integer | 1=启用, 0=禁用 |
+
+### ApprovalFlowNode（审批节点定义）
+
+| **字段** | **类型** | **说明** |
+| --- | --- | --- |
+| id | Long (AUTO) | 主键 |
+| flowId | Long | 审批流ID |
+| nodeName | String | 节点名称 |
+| nodeOrder | Integer | 节点顺序 |
+| approverType | String | 审批人类型：DEPT_MANAGER/HR_MANAGER/DIRECT_SUPERIOR/FINANCE/BOSS/SPECIFIED |
+| approverId | Long | 指定审批人ID（SPECIFIED时使用） |
+| isOptional | Integer | 是否可选：0=必选, 1=可选 |
+
+### ApprovalRecord（审批实例）
+
+| **字段** | **类型** | **说明** |
+| --- | --- | --- |
+| id | Long (AUTO) | 主键 |
+| flowId | Long | 审批流定义ID |
+| businessType | String | 业务类型 |
+| businessId | Long | 业务单据ID |
+| applicantId | Long | 申请人employeeId |
+| applicantName | String | 申请人姓名（冗余） |
+| currentStep | Integer | 当前步骤（从1开始） |
+| totalSteps | Integer | 总步骤数 |
+| status | String | APPROVING/APPROVED/REJECTED/WITHDRAWN |
+| finishedAt | Date | 完成时间 |
+
+### ApprovalDetail（审批明细）
+
+| **字段** | **类型** | **说明** |
+| --- | --- | --- |
+| id | Long (AUTO) | 主键 |
+| recordId | Long | 审批实例ID |
+| nodeId | Long | 节点定义ID |
+| nodeName | String | 节点名称（快照） |
+| stepOrder | Integer | 步骤序号 |
+| approverId | Long | 审批人ID |
+| approverName | String | 审批人姓名（冗余） |
+| action | String | PENDING/APPROVE/REJECT/TRANSFER |
+| comment | String | 审批意见 |
+| isDelegated | Integer | 是否代审批：0=否, 1=是 |
+| delegatedBy | Long | 委托人ID（代审批时） |
+| operateTime | Date | 操作时间 |
+
+### ApprovalDelegation（审批委托）
+
+| **字段** | **类型** | **说明** |
+| --- | --- | --- |
+| id | Long (AUTO) | 主键 |
+| delegatorId | Long | 委托人employeeId |
+| delegatorName | String | 委托人姓名（冗余） |
+| delegateId | Long | 被委托人employeeId |
+| delegateName | String | 被委托人姓名（冗余） |
+| businessTypes | String | 委托业务类型（逗号分隔，NULL=全部） |
+| startDate | Date | 委托开始日期 |
+| endDate | Date | 委托结束日期 |
+| status | Integer | 1=有效, 0=已取消 |
 
 ## API 设计
 
-### 1. 审批工作台
+> 基础路径: `/approval`
+
+### 1. 审批工作台 — 待办列表
 
 ```plain
-GET    /api/v1/approvals/pending       # 我的待办列表
-GET    /api/v1/approvals/processed     # 我的已办列表
-GET    /api/v1/approvals/initiated     # 我发起的申请列表
+GET /approval/pending
 ```
 
-#### 待办列表请求参数
+**请求参数**: 无（自动从登录态获取当前用户）
 
-| **参数** | **类型** | **必填** | **描述** |
-| --- | --- | --- | --- |
-| approvalType | String | 否 | 审批类型过滤 |
-| page | Integer | 否 | 页码 |
-| size | Integer | 否 | 每页条数 |
+**响应格式** (`BaseResponse<List<ApprovalPendingVO>>`):
 
-#### 待办列表响应格式
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": [
+    {
+      "recordId": 100,
+      "detailId": 201,
+      "businessType": "LEAVE",
+      "businessTypeText": "请假审批",
+      "businessId": 300,
+      "applicantName": "张三",
+      "applyTime": "2026-07-10T09:00:00",
+      "currentNodeName": "部门负责人审批"
+    }
+  ]
+}
+```
+
+**业务逻辑**:
+1. 查询直接审批项：`approval_detail WHERE approverId=当前employeeId AND action='PENDING'`
+2. 查询委托审批项：查找当前人是被委托人的有效委托 → 按委托人ID查待审批 → 按 businessTypes 过滤
+3. 合并去重（按 recordId），仅保留 `approval_record.status='APPROVING'` 的项
+
+---
+
+### 2. 审批详情
+
+```plain
+GET /approval/detail/{recordId}
+```
+
+**响应格式** (`BaseResponse<ApprovalDetailVO>`):
 
 ```json
 {
   "code": 0,
   "message": "success",
   "data": {
-    "total": 5,
-    "records": [
+    "recordId": 100,
+    "businessType": "LEAVE",
+    "businessTypeText": "请假审批",
+    "businessId": 300,
+    "applicantName": "张三",
+    "status": "APPROVING",
+    "statusText": "审批中",
+    "currentStep": 1,
+    "totalSteps": 2,
+    "applyTime": "2026-07-10T09:00:00",
+    "finishedAt": null,
+    "nodeHistory": [
       {
-        "instanceId": 2001,
-        "approvalType": "LEAVE",
-        "approvalTypeDesc": "请假审批",
-        "businessId": 300,
-        "summary": "张三 - 年假 3天 (2024-07-15 ~ 2024-07-17)",
-        "applicantId": 1001,
-        "applicantName": "张三",
-        "createTime": "2024-07-10T09:00:00",
-        "timeoutTime": "2024-07-12T09:00:00",
-        "isTimeout": false
+        "nodeName": "部门负责人审批",
+        "stepOrder": 1,
+        "approverName": "李四",
+        "action": "PENDING",
+        "actionText": "待审批",
+        "comment": null,
+        "isDelegated": 0,
+        "delegatedByName": null,
+        "operateTime": null
+      },
+      {
+        "nodeName": "HR负责人审批",
+        "stepOrder": 2,
+        "approverName": "王HR",
+        "action": "PENDING",
+        "actionText": "待审批",
+        "comment": null,
+        "isDelegated": 0,
+        "delegatedByName": null,
+        "operateTime": null
       }
     ]
   }
@@ -422,261 +386,210 @@ GET    /api/v1/approvals/initiated     # 我发起的申请列表
 
 ---
 
-### 2. 审批详情
+### 3. 审批操作
+
+#### 通过
 
 ```plain
-GET    /api/v1/approvals/{instanceId}/detail    # 审批详情
+POST /approval/approve
 ```
 
-#### 响应格式
+**请求参数** (`ApprovalActionRequest`):
+
+| **参数** | **类型** | **必填** | **描述** |
+| --- | --- | --- | --- |
+| detailId | Long | 是 | 审批明细ID |
+| comment | String | 否 | 审批意见 |
+
+**处理流程**:
+1. 校验 detail 存在且 action=PENDING
+2. 校验权限（审批人本人或有效被委托人）
+3. 更新 action=APPROVE, operateTime=now
+4. advanceApproval: currentStep++ → 若超出 totalSteps 则 status=APPROVED
+
+#### 拒绝
+
+```plain
+POST /approval/reject
+```
+
+**请求参数** (`ApprovalActionRequest`):
+
+| **参数** | **类型** | **必填** | **描述** |
+| --- | --- | --- | --- |
+| detailId | Long | 是 | 审批明细ID |
+| comment | String | 否 | 拒绝原因 |
+
+**处理流程**: 校验同上 → 更新 action=REJECT → 整个 record 标记为 REJECTED, finishedAt=now
+
+#### 转交
+
+```plain
+POST /approval/transfer
+```
+
+**请求参数** (`ApprovalActionRequest`):
+
+| **参数** | **类型** | **必填** | **描述** |
+| --- | --- | --- | --- |
+| detailId | Long | 是 | 审批明细ID |
+| targetUserId | Long | 是 | 转交目标人employeeId |
+| comment | String | 否 | 转交原因 |
+
+**处理流程**:
+1. 校验 detail 和权限
+2. 原审批人标记 action=TRANSFER
+3. 创建新的 approval_detail（同节点、同步骤，审批人为目标人，action=PENDING）
+
+---
+
+### 4. 委托审批
+
+#### 我的委托列表
+
+```plain
+GET /approval/delegation/my
+```
+
+**响应格式** (`BaseResponse<List<ApprovalDelegationVO>>`):
 
 ```json
 {
   "code": 0,
   "message": "success",
-  "data": {
-    "instanceId": 2001,
-    "approvalType": "LEAVE",
-    "approvalTypeDesc": "请假审批",
-    "status": 1,
-    "statusDesc": "审批中",
-    "applicantName": "张三",
-    "applicantDept": "技术部",
-    "businessData": {
-      "leaveType": "年假",
-      "startTime": "2024-07-15 09:00",
-      "endTime": "2024-07-17 18:00",
-      "leaveDays": 3,
-      "reason": "家庭事务"
-    },
-    "history": [
-      {
-        "nodeOrder": 1,
-        "nodeName": "直接上级审批",
-        "approverName": "李四",
-        "action": 1,
-        "actionDesc": "通过",
-        "opinion": "同意",
-        "createTime": "2024-07-10T10:00:00"
-      }
-    ],
-    "currentNode": {
-      "nodeOrder": 2,
-      "nodeName": "部门负责人审批",
-      "approverId": 200,
-      "approverName": "王五"
+  "data": [
+    {
+      "id": 1,
+      "delegatorName": "李四",
+      "delegateName": "张三",
+      "businessTypes": "LEAVE,PATCH_CLOCK",
+      "startDate": "2026-07-01",
+      "endDate": "2026-07-31",
+      "status": 1,
+      "createTime": "2026-07-10T10:00:00"
     }
-  }
+  ]
 }
 ```
 
----
-
-### 3. 审批操作
+#### 创建委托
 
 ```plain
-POST   /api/v1/approvals/{instanceId}/approve   # 通过
-POST   /api/v1/approvals/{instanceId}/reject    # 拒绝
-POST   /api/v1/approvals/{instanceId}/transfer  # 转交
+POST /approval/delegation
 ```
 
-#### 通过请求参数
+**请求参数** (`DelegationRequest`):
 
 | **参数** | **类型** | **必填** | **描述** |
 | --- | --- | --- | --- |
-| opinion | String | 否 | 审批意见 |
-
-#### 拒绝请求参数
-
-| **参数** | **类型** | **必填** | **描述** |
-| --- | --- | --- | --- |
-| reason | String | 是 | 拒绝原因 |
-
-#### 转交请求参数
-
-| **参数** | **类型** | **必填** | **描述** |
-| --- | --- | --- | --- |
-| transferToId | Long | 是 | 转交目标审批人ID |
-| reason | String | 是 | 转交原因 |
-
----
-
-### 4. 撤回审批
-
-```plain
-POST   /api/v1/approvals/{instanceId}/withdraw  # 撤回（仅发起人，仅限第一级审批中）
-```
-
----
-
-### 5. 委托审批
-
-```plain
-POST   /api/v1/approval-delegations              # 设置委托
-PUT    /api/v1/approval-delegations/{id}/cancel  # 取消委托
-GET    /api/v1/approval-delegations              # 我的委托列表
-GET    /api/v1/approval-delegations/delegated-to-me  # 委托给我的列表
-```
-
-#### 设置委托请求参数
-
-| **参数** | **类型** | **必填** | **描述** |
-| --- | --- | --- | --- |
-| delegateId | Long | 是 | 被委托人ID |
+| delegateId | Long | 是 | 被委托人employeeId |
+| businessTypes | String | 否 | 委托业务类型（逗号分隔，不传=全部） |
 | startDate | Date | 是 | 委托开始日期 |
 | endDate | Date | 是 | 委托结束日期 |
-| approvalTypes | String[] | 否 | 委托审批类型，空=全部 |
 
----
+**校验规则**: 被委托人必须存在、不能委托给自己、开始日期不能晚于结束日期
 
-### 6. 审批流定义管理（系统管理员）
+#### 取消委托
 
 ```plain
-GET    /api/v1/approval-definitions              # 审批流定义列表
-GET    /api/v1/approval-definitions/{id}         # 审批流定义详情（含节点）
-POST   /api/v1/approval-definitions              # 新建审批流定义
-PUT    /api/v1/approval-definitions/{id}         # 更新审批流定义
+POST /approval/delegation/cancel/{id}
 ```
+
+**说明**: 仅委托人本人可取消自己的委托
 
 ---
 
 ## 关键技术设计
 
-### 审批流引擎
+### Service 架构
 
-审批流引擎是核心组件，提供统一的审批流转能力，与业务解耦：
-
-```java
-public interface ApprovalEngine {
-    // 发起审批
-    ApprovalInstance startApproval(String businessType, Long businessId,
-                                    Long applicantId, Map<String, Object> context);
-    // 审批通过
-    void approve(Long instanceId, Long approverId, String opinion);
-    // 拒绝
-    void reject(Long instanceId, Long approverId, String reason);
-    // 转交
-    void transfer(Long instanceId, Long approverId, Long transferToId, String reason);
-    // 撤回
-    void withdraw(Long instanceId, Long applicantId);
-    // 审批完成回调
-    void onApprovalComplete(Long instanceId, boolean isApproved);
-}
+```
+ApprovalController
+    ├── ApprovalService (审批流引擎)
+    │   ├── getPendingList()        — 待办列表（含委托）
+    │   ├── getApprovalDetail()     — 审批详情
+    │   ├── approve()               — 通过
+    │   ├── reject()                — 拒绝
+    │   ├── transfer()              — 转交
+    │   └── startApproval()         — 发起审批（供业务模块调用）
+    │
+    └── ApprovalDelegationService (委托管理)
+        ├── createDelegation()      — 创建委托
+        ├── cancelDelegation()      — 取消委托
+        ├── getMyDelegations()      — 我的委托列表
+        └── isActiveDelegate()      — 检查委托是否有效
 ```
 
-### 审批节点链快照
-
-审批流实例创建时，将审批节点链快照保存到 `node_chain` JSON 字段：
-
-```json
-[
-  { "nodeOrder": 1, "approverType": "DEPT_MANAGER", "approverId": 200, "approverName": "李四", "status": "APPROVED" },
-  { "nodeOrder": 2, "approverType": "ROLE", "roleType": "HR_MANAGER", "approverId": 300, "approverName": "王HR", "status": "PENDING", "conditionField": "isNonStandard", "conditionValue": "true" }
-]
-```
-
-好处：
-- 审批过程中即使组织架构变更，不影响已创建的审批流
-- 前端可直接读取 node_chain 渲染审批进度
-
-### 条件节点（二审开关）
-
-以入职审批为例，非标准职位或薪资超出职级范围时需要 HR 负责人二审：
+### 审批人解析 (resolveApprover)
 
 ```java
-public List<ApprovalNode> buildNodeChain(ApprovalDefinition definition,
-                                          Map<String, Object> context) {
-    List<ApprovalNode> nodes = new ArrayList<>();
-    for (NodeDefinition nodeDef : definition.getNodes()) {
-        // 检查条件节点是否启用
-        if (nodeDef.getConditionField() != null) {
-            String conditionField = nodeDef.getConditionField();
-            String expectedValue = nodeDef.getConditionValue();
-            String actualValue = String.valueOf(context.get(conditionField));
-            if (!expectedValue.equals(actualValue)) {
-                continue; // 条件不满足，跳过该节点
-            }
-        }
-        // 确定审批人
-        Long approverId = resolveApprover(nodeDef, context);
-        nodes.add(new ApprovalNode(nodeDef.getNodeOrder(), approverId, nodeDef.getTimeoutHours()));
-    }
-    return nodes;
-}
-```
-
-### 审批回调机制
-
-审批完成后通过事件机制通知业务模块：
-
-```java
-@Component
-public class ApprovalEventPublisher {
-    @Autowired
-    private ApplicationEventPublisher publisher;
-    
-    public void publishApprovalComplete(Long instanceId, String businessType,
-                                         Long businessId, boolean isApproved) {
-        publisher.publishEvent(new ApprovalCompleteEvent(this, instanceId,
-            businessType, businessId, isApproved));
-    }
-}
-
-// 各业务模块监听
-@Component
-public class OnboardingApprovalListener {
-    @EventListener
-    public void handleApprovalComplete(ApprovalCompleteEvent event) {
-        if (!"ONBOARDING".equals(event.getBusinessType())) return;
-        if (event.isApproved()) {
-            onboardingService.processHire(event.getBusinessId()); // 生成工号、创建账号...
-        } else {
-            onboardingService.markRejected(event.getBusinessId());
-        }
+private Long resolveApprover(ApprovalFlowNode node, Employee applicant) {
+    switch (node.getApproverType()) {
+        case "DEPT_MANAGER":
+            // 查申请人所在部门，取部门负责人
+            Department dept = departmentService.getById(applicant.getDepartmentId());
+            return dept != null ? dept.getManagerId() : null;
+        case "DIRECT_SUPERIOR":
+            // 查直接上级（需 employee 表扩展 reporterId 字段）
+            return null;
+        case "HR_MANAGER":
+        case "FINANCE":
+        case "BOSS":
+            // 需角色表支持，当前返回 null
+            return null;
+        case "SPECIFIED":
+            return node.getApproverId();
+        default:
+            return node.getApproverId();
     }
 }
 ```
+
+> **注意**: DEPT_MANAGER 已实现（通过 Department.managerId），其余类型（DIRECT_SUPERIOR/HR_MANAGER/FINANCE/BOSS）需要额外数据支持，当前返回 null。
 
 ### 委托审批路由
 
+委托审批在 `validateAndGetDetail()` 中自动处理：若操作人不是审批人本人，则查 `approval_delegation` 表寻找有效委托关系。找到后自动标记 `isDelegated=1` + `delegatedBy=原审批人ID`，前端可在审批历史中展示"XXX 代 YYY 审批"。
+
+### 审批流推进 (advanceApproval)
+
 ```java
-public Long resolveActualApprover(Long approverId, String approvalType) {
-    ApprovalDelegation delegation = delegationMapper.findActiveByDelegator(
-        approverId, LocalDate.now());
-    if (delegation != null) {
-        // 检查委托范围是否包含当前审批类型
-        if (delegation.getApprovalTypes() == null 
-            || delegation.getApprovalTypes().contains(approvalType)) {
-            return delegation.getDelegateId();
-        }
+private void advanceApproval(Long recordId) {
+    ApprovalRecord record = this.getById(recordId);
+    int nextStep = record.getCurrentStep() + 1;
+    if (nextStep > record.getTotalSteps()) {
+        record.setStatus("APPROVED");
+        record.setFinishedAt(new Date());
+    } else {
+        record.setCurrentStep(nextStep);
     }
-    return approverId;
+    this.updateById(record);
 }
 ```
 
-### 超时处理
+推进仅更新 currentStep，不做节点激活/关闭。前端根据 currentStep 和 stepOrder 判断哪些节点可操作。
+
+### 业务模块集成方式
+
+各业务模块（请假、补卡等）在提交申请时调用 `approvalService.startApproval()`：
 
 ```java
-@Scheduled(cron = "0 0 * * * ?") // 每小时执行
-public void handleTimeoutApprovals() {
-    List<ApprovalInstance> timeoutInstances = instanceMapper
-        .findApprovingTimeoutBefore(LocalDateTime.now().minusHours(48));
-    
-    for (ApprovalInstance instance : timeoutInstances) {
-        // 查找当前审批人的直接上级
-        Long superiorId = employeeService.getDirectSuperior(
-            instance.getCurrentNodeApproverId());
-        if (superiorId != null) {
-            // 自动升级
-            approvalEngine.escalate(instance.getId(), superiorId);
-        } else {
-            // 无上级，催办
-            notificationService.sendUrgeNotification(
-                instance.getCurrentNodeApproverId(), instance.getId());
-        }
-    }
-}
+ApprovalRecord record = approvalService.startApproval(
+    "LEAVE",           // businessType
+    leaveRequestId,    // businessId
+    employeeId,        // applicantEmployeeId
+    employeeName       // applicantName
+);
 ```
+
+## 错误码
+
+| **错误码** | **常量** | **说明** |
+| --- | --- | --- |
+| 50022 | APPROVAL_NOT_FOUND | 审批记录不存在 |
+| 50023 | APPROVAL_NOT_PENDING | 该审批节点已处理 |
+| 50024 | APPROVAL_NO_PERMISSION | 无审批权限（非审批人也非有效被委托人） |
+| 50025 | DELEGATION_NOT_FOUND | 委托记录不存在 |
 
 ## 排期
 
@@ -685,11 +598,11 @@ public void handleTimeoutApprovals() {
 | **阶段** | **内容** | **预估工期** |
 | --- | --- | --- |
 | 需求评审 | 评审审批类型汇总、审批流规则、委托审批需求 | 1天 |
-| 技术方案 | 完成系分文档评审，确认审批引擎架构、条件分支、超时升级方案 | 2天 |
+| 技术方案 | 完成系分文档评审，确认审批引擎架构 | 2天 |
 | 数据库开发 | 建表、索引优化、初始化审批流模板 | 1天 |
-| 后端开发 | 审批引擎、审批工作台API、审批详情、审批操作(通过/拒绝/转交)、委托审批、超时处理、审批流定义管理 | 7天 |
-| 前端开发 | 待办/已办列表、审批详情页（含类型动态渲染）、委托审批设置页 | 4天 |
-| 联调测试 | 前后端联调、各类型审批流转测试、委托/转交/超时场景测试 | 3天 |
+| 后端开发 | 审批引擎、审批工作台API、审批详情、审批操作(通过/拒绝/转交)、委托审批 | 5天 |
+| 前端开发 | 待办列表、审批详情页（含类型动态渲染）、委托审批设置页 | 4天 |
+| 联调测试 | 前后端联调、各类型审批流转测试、委托/转交场景测试 | 3天 |
 | 回归上线 | 全量回归、预发验证、正式上线 | 2天 |
 
-> **总预估工期**：约 20 个工作日
+> **总预估工期**：约 18 个工作日

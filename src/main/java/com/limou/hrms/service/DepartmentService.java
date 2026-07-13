@@ -21,6 +21,11 @@ public interface DepartmentService extends IService<Department> {
     List<DepartmentTreeVO> getDepartmentTree();
 
     /**
+     * 查询单个部门详情
+     */
+    DepartmentTreeVO getDepartmentDetail(Long id);
+
+    /**
      * 新增部门
      */
     Long addDepartment(DepartmentAddRequest request);

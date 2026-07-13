@@ -83,6 +83,32 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
     }
 
     @Override
+    public DepartmentTreeVO getDepartmentDetail(Long id) {
+        Department dept = this.getById(id);
+        ThrowUtils.throwIf(dept == null, ErrorCode.NOT_FOUND_ERROR, "部门不存在");
+
+        // 查负责人姓名
+        Map<Long, String> managerNameMap = Collections.emptyMap();
+        if (dept.getManagerId() != null) {
+            managerNameMap = getManagerNameMap(new HashSet<>(Collections.singletonList(dept.getManagerId())));
+        }
+
+        DepartmentTreeVO vo = new DepartmentTreeVO();
+        vo.setId(dept.getId());
+        vo.setName(dept.getDeptName());
+        vo.setCode(dept.getDeptCode());
+        vo.setParentId(dept.getParentId());
+        vo.setManagerId(dept.getManagerId());
+        vo.setManagerName(managerNameMap.get(dept.getManagerId()));
+        vo.setSortOrder(dept.getSortOrder());
+        vo.setDescription(dept.getDescription());
+        vo.setEmployeeCount((int) getEmployeeCount(dept.getId()));
+        vo.setChildren(new ArrayList<>());
+
+        return vo;
+    }
+
+    @Override
     public Long addDepartment(DepartmentAddRequest request) {
         String code = request.getCode().trim();
         String name = request.getName().trim();

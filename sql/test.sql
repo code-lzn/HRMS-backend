@@ -52,28 +52,73 @@ create table  if not exists employee
 (
     id             bigint auto_increment comment 'id' primary key,
     employeeName     varchar(128)                           not null comment '员工名称（真实姓名）',
-    userId         bigint                                 null comment '关联用户ID',
     employeeNo         VARCHAR(16)     NOT NULL                 COMMENT '工号, 格式: 年份(4)+部门编码(2)+序号(3)',
-    status         tinyint      default 1                 not null comment '状态：0-离职，1-在职，2-试用期',
+    account          VARCHAR(32)       NULL COMMENT '系统账号（=手机号）',
+    userId         bigint                                 null comment '关联用户ID',
+    status         tinyint      default 1                 not null comment '在职状态：1=试用期 2=正式 3=待离职 4=已离职',
     gender              TINYINT         NOT NULL DEFAULT 0       COMMENT '性别: 0=女, 1=男',
-    idCard             VARCHAR(256)    DEFAULT NULL             COMMENT '身份证号（加密存储）',
-    hireDate       datetime                               null comment '入职日期',
-    hireType       tinyint                                null comment '入职类型',
-    phone   varchar(32)                            null comment '联系人电话',
+    phone   varchar(32)                            null comment '手机号',
+    email                   varchar(256)                           null comment '邮箱',
     departmentId   bigint                                 null comment '部门ID',
     positionId     bigint                                 null comment '职位ID',
+    hireDate       datetime                               null comment '入职日期',
+    hireType       tinyint                                null comment '入职类型',
     salaryId       bigint                                 null comment '薪资ID',
     employmentType     VARCHAR(16)     NOT NULL                 COMMENT '录用类型: FULL_TIME=全职, PART_TIME=兼职, INTERN=实习',
-    email                   varchar(256)                           null comment '邮箱',
-    currentAddress          varchar(512)                           null comment '现居住地址',
-    emergencyContactName    varchar(128)                           null comment '紧急联系人姓名',
-    emergencyContactPhone   varchar(32)                            null comment '紧急联系人电话',
     createTime     datetime     default CURRENT_TIMESTAMP not null comment '创建时间',
     updateTime     datetime     default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',
-    isDeleted      tinyint      default 0                 not null comment '是否删除'
+    isDeleted      tinyint      default 0                 not null comment '是否删除',
+    UNIQUE KEY `uk_employee_no` (`employeeNo`),
+    KEY `idx_department_id` (`departmentId`),
+    KEY `idx_position_id` (`positionId`),
+    KEY `idx_status` (`status`),
+    KEY `idx_phone` (`phone`),
+    KEY `idx_job_level` (`jobLevel`),
+    KEY `idx_hire_date` (`hireDate`)
 ) comment '员工' collate = utf8mb4_unicode_ci;
 
-ALTER TABLE employee ADD COLUMN salaryProfileId BIGINT DEFAULT NULL COMMENT '薪资ID';
+#员工详情表----与employee一对一
+CREATE TABLE IF NOT EXISTS employee_detail (
+    id                    BIGINT UNSIGNED   NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    employeeId            BIGINT UNSIGNED   NOT NULL COMMENT '员工ID',
+    account               VARCHAR(32)       NULL COMMENT '系统账号（=手机号）',
+    idCard                VARCHAR(256)      NULL COMMENT '身份证号（加密存储）',
+    birthday              DATE              NULL COMMENT '生日',
+    registeredAddress     VARCHAR(512)      NULL COMMENT '户籍地址',
+    currentAddress        VARCHAR(512)      NULL COMMENT '现居住地址',
+    jobLevel              VARCHAR(8)        NULL COMMENT '职级',
+    directReportId        BIGINT UNSIGNED   NULL COMMENT '直接汇报人ID',
+    workLocation          VARCHAR(128)      NULL COMMENT '工作地点',
+    contractType          TINYINT           NULL COMMENT '合同类型：1=固定期限 2=无固定期限 3=劳务合同',
+    contractExpireDate    DATE              NULL COMMENT '合同到期日',
+    probationRatio        DECIMAL(5,4)      NULL COMMENT '试用期待遇比例',
+    baseSalary            DECIMAL(12,2)     NULL COMMENT '基本工资',
+    bankAccount           VARCHAR(64)       NULL COMMENT '银行账号（加密存储）',
+    bankName              VARCHAR(128)      NULL COMMENT '开户行',
+    emergencyContactName  VARCHAR(128)      NULL COMMENT '紧急联系人姓名',
+    emergencyContactPhone VARCHAR(32)       NULL COMMENT '紧急联系人电话',
+    createTime            DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updateTime            DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_employee_id (employeeId),
+    KEY idx_direct_report_id (directReportId)
+) DEFAULT CHARACTER SET = utf8mb4 COMMENT = '员工详情表';
+
+#员工档案变更日志表
+CREATE TABLE IF NOT EXISTS employee_change_log (
+    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    employeeId      BIGINT UNSIGNED NOT NULL COMMENT '员工ID',
+    fieldName       VARCHAR(64)     NOT NULL COMMENT '变更字段名',
+    oldValue        VARCHAR(512)    NULL COMMENT '变更前值',
+    newValue        VARCHAR(512)    NULL COMMENT '变更后值',
+    changeType      VARCHAR(32)     NOT NULL COMMENT 'DIRECT_EDIT/FLOW_CHANGE/SYSTEM',
+    operatorId      BIGINT UNSIGNED NULL COMMENT '操作人ID',
+    remark          VARCHAR(256)    NULL COMMENT '备注',
+    createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_employee_id (employeeId),
+    KEY idx_create_time (createTime)
+) DEFAULT CHARACTER SET = utf8mb4 COMMENT = '员工档案变更日志表';
 
 #部门表----与employee进行关联
 CREATE TABLE department (
@@ -519,3 +564,188 @@ INSERT INTO login_log (userId, loginTime, ip, device, loginType, isSuccess, fail
 (2075829151662010370, '2026-07-05 08:49:00', '192.168.1.100', 'Mozilla/5.0 Chrome/123 Windows', 1, 1, NULL),
 (2075829151662010370, '2026-07-08 08:55:00', '10.0.0.55', 'Mozilla/5.0 Safari/17 iPhone', 1, 1, NULL),
 (2075829151662010370, '2026-07-10 09:02:00', '192.168.1.100', 'Mozilla/5.0 Chrome/123 Windows', 1, 1, NULL);
+
+
+-- ============== 审批中心模块 ==============
+
+-- 审批流定义表
+CREATE TABLE IF NOT EXISTS approval_flow (
+    id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+    businessType    VARCHAR(32)     NOT NULL                 COMMENT '业务类型: ONBOARDING=入职, REGULARIZATION=转正, TRANSFER=调岗, RESIGNATION=离职, LEAVE=请假, PATCH_CLOCK=补卡, SALARY_BATCH=薪资批次',
+    flowName        VARCHAR(64)     NOT NULL                 COMMENT '审批流名称',
+    description     VARCHAR(256)    DEFAULT NULL             COMMENT '说明',
+    status          TINYINT         NOT NULL DEFAULT 1       COMMENT '状态: 1=启用, 0=禁用',
+    createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updateTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_business_type (businessType)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='审批流定义表';
+
+-- 审批节点定义表
+CREATE TABLE IF NOT EXISTS approval_flow_node (
+    id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+    flowId          BIGINT          NOT NULL                 COMMENT '审批流ID',
+    nodeName        VARCHAR(64)     NOT NULL                 COMMENT '节点名称, 如"部门负责人审批"',
+    nodeOrder       INT             NOT NULL                 COMMENT '节点顺序, 从1开始',
+    approverType    VARCHAR(16)     NOT NULL                 COMMENT '审批人类型: DEPT_MANAGER=部门负责人, HR_MANAGER=HR负责人, DIRECT_SUPERIOR=直接上级, FINANCE=财务专员, BOSS=老板, SPECIFIED=指定人',
+    approverId      BIGINT          DEFAULT NULL             COMMENT '指定审批人ID（approverType=SPECIFIED时使用）',
+    isOptional      TINYINT         NOT NULL DEFAULT 0       COMMENT '是否可选: 0=必选, 1=可选',
+    createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (id),
+    KEY idx_flow_id (flowId)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='审批节点定义表';
+
+-- 审批实例表（一次业务申请的审批记录）
+CREATE TABLE IF NOT EXISTS approval_record (
+    id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+    flowId          BIGINT          NOT NULL                 COMMENT '审批流定义ID',
+    businessType    VARCHAR(32)     NOT NULL                 COMMENT '业务类型',
+    businessId      BIGINT          NOT NULL                 COMMENT '关联业务表记录ID',
+    applicantId     BIGINT          NOT NULL                 COMMENT '申请人ID（employeeId）',
+    applicantName   VARCHAR(64)     DEFAULT NULL             COMMENT '申请人姓名（冗余，便于列表展示）',
+    currentStep     INT             NOT NULL DEFAULT 1       COMMENT '当前审批步骤',
+    totalSteps      INT             NOT NULL                 COMMENT '总步骤数',
+    status          VARCHAR(16)     NOT NULL DEFAULT 'APPROVING' COMMENT '审批状态: APPROVING=审批中, APPROVED=已通过, REJECTED=已拒绝, WITHDRAWN=已撤回',
+    finishedAt      DATETIME        DEFAULT NULL             COMMENT '审批完成时间',
+    createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '发起时间',
+    updateTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_business (businessType, businessId),
+    KEY idx_applicant_id (applicantId),
+    KEY idx_status (status),
+    KEY idx_current_step (currentStep)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='审批实例表';
+
+-- 审批明细表（每个节点的审批记录）
+CREATE TABLE IF NOT EXISTS approval_detail (
+    id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+    recordId        BIGINT          NOT NULL                 COMMENT '审批实例ID',
+    nodeId          BIGINT          NOT NULL                 COMMENT '审批节点定义ID',
+    nodeName        VARCHAR(64)     NOT NULL                 COMMENT '节点名称（快照）',
+    stepOrder       INT             NOT NULL                 COMMENT '步骤序号',
+    approverId      BIGINT          DEFAULT NULL             COMMENT '审批人ID',
+    approverName    VARCHAR(64)     DEFAULT NULL             COMMENT '审批人姓名（冗余）',
+    action          VARCHAR(16)     NOT NULL DEFAULT 'PENDING' COMMENT '审批动作: PENDING=待审批, APPROVE=通过, REJECT=拒绝, TRANSFER=转交',
+    comment         TEXT            DEFAULT NULL             COMMENT '审批意见',
+    isDelegated     TINYINT         NOT NULL DEFAULT 0       COMMENT '是否代审批: 0=否, 1=是',
+    delegatedBy     BIGINT          DEFAULT NULL             COMMENT '委托人ID（代审批时记录）',
+    operateTime     DATETIME        DEFAULT NULL             COMMENT '操作时间',
+    createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (id),
+    KEY idx_record_id (recordId),
+    KEY idx_approver_id (approverId),
+    KEY idx_action (action)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='审批明细表';
+
+-- 审批委托表
+CREATE TABLE IF NOT EXISTS approval_delegation (
+    id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+    delegatorId     BIGINT          NOT NULL                 COMMENT '委托人ID（employeeId）',
+    delegatorName   VARCHAR(64)     NOT NULL                 COMMENT '委托人姓名（冗余）',
+    delegateId      BIGINT          NOT NULL                 COMMENT '被委托人ID（employeeId）',
+    delegateName    VARCHAR(64)     NOT NULL                 COMMENT '被委托人姓名（冗余）',
+    businessTypes   VARCHAR(256)    DEFAULT NULL             COMMENT '委托业务类型（逗号分隔，NULL=全部）',
+    startDate       DATE            NOT NULL                 COMMENT '委托开始日期',
+    endDate         DATE            NOT NULL                 COMMENT '委托结束日期',
+    status          TINYINT         NOT NULL DEFAULT 1       COMMENT '状态: 1=有效, 0=已取消',
+    createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updateTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_delegator_id (delegatorId),
+    KEY idx_delegate_id (delegateId),
+    KEY idx_status_dates (status, startDate, endDate)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='审批委托表';
+
+
+-- ============== 审批中心初始化数据 ==============
+
+-- 7种审批流定义
+INSERT INTO approval_flow (id, businessType, flowName, description) VALUES
+(1, 'ONBOARDING',    '入职审批',   'HR发起 → 部门负责人 → HR负责人'),
+(2, 'REGULARIZATION','转正审批',   'HR发起 → 部门负责人 → HR负责人'),
+(3, 'TRANSFER',      '调岗审批',   'HR发起 → 原部门负责人 → 新部门负责人 → HR负责人'),
+(4, 'RESIGNATION',   '离职审批',   'HR发起 → 部门负责人 → HR负责人'),
+(5, 'LEAVE',         '请假审批',   '员工发起 → 直接上级'),
+(6, 'PATCH_CLOCK',   '补卡审批',   '员工发起 → 直接上级'),
+(7, 'SALARY_BATCH',  '薪资批次审批','HR发起 → 财务专员 → 老板');
+
+-- 各审批流节点定义
+-- 入职审批: 部门负责人 → HR负责人
+INSERT INTO approval_flow_node (flowId, nodeName, nodeOrder, approverType, isOptional) VALUES
+(1, '部门负责人', 1, 'DEPT_MANAGER', 0),
+(1, 'HR负责人',   2, 'HR_MANAGER',   1);
+
+-- 转正审批: 部门负责人 → HR负责人
+INSERT INTO approval_flow_node (flowId, nodeName, nodeOrder, approverType, isOptional) VALUES
+(2, '部门负责人', 1, 'DEPT_MANAGER', 0),
+(2, 'HR负责人',   2, 'HR_MANAGER',   0);
+
+-- 调岗审批: 原部门负责人 → 新部门负责人 → HR负责人
+INSERT INTO approval_flow_node (flowId, nodeName, nodeOrder, approverType, isOptional) VALUES
+(3, '原部门负责人', 1, 'DEPT_MANAGER', 0),
+(3, '新部门负责人', 2, 'DEPT_MANAGER', 0),
+(3, 'HR负责人',    3, 'HR_MANAGER',   0);
+
+-- 离职审批: 部门负责人 → HR负责人
+INSERT INTO approval_flow_node (flowId, nodeName, nodeOrder, approverType, isOptional) VALUES
+(4, '部门负责人', 1, 'DEPT_MANAGER', 0),
+(4, 'HR负责人',   2, 'HR_MANAGER',   0);
+
+-- 请假审批: 直接上级
+INSERT INTO approval_flow_node (flowId, nodeName, nodeOrder, approverType, isOptional) VALUES
+(5, '直接上级', 1, 'DIRECT_SUPERIOR', 0);
+
+-- 补卡审批: 直接上级
+INSERT INTO approval_flow_node (flowId, nodeName, nodeOrder, approverType, isOptional) VALUES
+(6, '直接上级', 1, 'DIRECT_SUPERIOR', 0);
+
+-- 薪资批次审批: 财务专员 → 老板
+INSERT INTO approval_flow_node (flowId, nodeName, nodeOrder, approverType, isOptional) VALUES
+(7, '财务专员', 1, 'FINANCE', 0),
+(7, '老板',    2, 'BOSS',    1);
+
+
+-- ============== 审批中心测试数据（userId=2075829151662010370, employeeId=15） ==============
+
+-- 假设员工15是部门负责人/直接上级，创建几条待审批的测试数据
+-- 记录1: 请假审批（员工15提交的请假，待员工15的直接上级审批——此处假设员工2是直接上级）
+INSERT INTO approval_record (id, flowId, businessType, businessId, applicantId, applicantName, currentStep, totalSteps, status) VALUES
+(1, 5, 'LEAVE',       100, 15, '张三', 1, 1, 'APPROVING');
+
+INSERT INTO approval_detail (recordId, nodeId, nodeName, stepOrder, approverId, approverName, action) VALUES
+(1, (SELECT id FROM approval_flow_node WHERE flowId=5 AND nodeOrder=1), '直接上级', 1, 2, '李四', 'PENDING');
+
+-- 记录2: 补卡审批（员工15提交的补卡，待审批）
+INSERT INTO approval_record (id, flowId, businessType, businessId, applicantId, applicantName, currentStep, totalSteps, status) VALUES
+(2, 6, 'PATCH_CLOCK', 101, 15, '张三', 1, 1, 'APPROVING');
+
+INSERT INTO approval_detail (recordId, nodeId, nodeName, stepOrder, approverId, approverName, action) VALUES
+(2, (SELECT id FROM approval_flow_node WHERE flowId=6 AND nodeOrder=1), '直接上级', 1, 2, '李四', 'PENDING');
+
+-- 记录3: 已完成的转正审批（员工8→部门负责人2已通过→HR负责人3已通过）
+INSERT INTO approval_record (id, flowId, businessType, businessId, applicantId, applicantName, currentStep, totalSteps, status, finishedAt) VALUES
+(3, 2, 'REGULARIZATION', 200, 8, '王五', 2, 2, 'APPROVED', '2026-07-05 16:00:00');
+
+INSERT INTO approval_detail (recordId, nodeId, nodeName, stepOrder, approverId, approverName, action, comment, operateTime) VALUES
+(3, (SELECT id FROM approval_flow_node WHERE flowId=2 AND nodeOrder=1), '部门负责人', 1, 2, '李四', 'APPROVE', '表现优秀，同意转正', '2026-07-05 10:00:00'),
+(3, (SELECT id FROM approval_flow_node WHERE flowId=2 AND nodeOrder=2), 'HR负责人',   2, 3, '赵六', 'APPROVE', '同意',             '2026-07-05 16:00:00');
+
+-- 记录4: 已拒绝的离职审批（到HR负责人节点被拒）
+INSERT INTO approval_record (id, flowId, businessType, businessId, applicantId, applicantName, currentStep, totalSteps, status, finishedAt) VALUES
+(4, 4, 'RESIGNATION', 300, 10, '钱七', 2, 2, 'REJECTED', '2026-07-03 14:00:00');
+
+INSERT INTO approval_detail (recordId, nodeId, nodeName, stepOrder, approverId, approverName, action, comment, operateTime) VALUES
+(4, (SELECT id FROM approval_flow_node WHERE flowId=4 AND nodeOrder=1), '部门负责人', 1, 2, '李四', 'APPROVE', '确认',          '2026-07-03 09:00:00'),
+(4, (SELECT id FROM approval_flow_node WHERE flowId=4 AND nodeOrder=2), 'HR负责人',   2, 3, '赵六', 'REJECT', '暂不批准离职', '2026-07-03 14:00:00');
+
+-- 记录5: 审批中的薪资批次（财务专员已通过，待老板审批）
+INSERT INTO approval_record (id, flowId, businessType, businessId, applicantId, applicantName, currentStep, totalSteps, status) VALUES
+(5, 7, 'SALARY_BATCH', 400, 3, '赵六', 2, 2, 'APPROVING');
+
+INSERT INTO approval_detail (recordId, nodeId, nodeName, stepOrder, approverId, approverName, action, comment, operateTime) VALUES
+(5, (SELECT id FROM approval_flow_node WHERE flowId=7 AND nodeOrder=1), '财务专员', 1, 4, '孙八', 'APPROVE', '薪资核算无误', '2026-07-10 09:00:00'),
+(5, (SELECT id FROM approval_flow_node WHERE flowId=7 AND nodeOrder=2), '老板',     2, 1, '周董', 'PENDING', NULL,           NULL);
+
+-- 审批委托测试数据: 员工2（李四）委托员工15（张三）在2026-07-01~2026-07-31期间审批请假和补卡
+INSERT INTO approval_delegation (delegatorId, delegatorName, delegateId, delegateName, businessTypes, startDate, endDate, status) VALUES
+(2, '李四', 15, '张三', 'LEAVE,PATCH_CLOCK', '2026-07-01', '2026-07-31', 1);

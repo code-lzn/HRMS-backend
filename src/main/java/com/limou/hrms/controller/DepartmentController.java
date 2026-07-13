@@ -12,11 +12,8 @@ import com.limou.hrms.model.dto.department.DepartmentUpdateRequest;
 import com.limou.hrms.model.vo.DepartmentMergeResultVO;
 import com.limou.hrms.model.vo.DepartmentTreeVO;
 import com.limou.hrms.service.DepartmentService;
-import io.swagger.annotations.Api;
-import io.swagger.annotations.ApiOperation;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
-
 import javax.annotation.Resource;
 import java.util.HashMap;
 import java.util.List;
@@ -40,6 +37,16 @@ public class DepartmentController {
     public BaseResponse<List<DepartmentTreeVO>> getDepartmentTree() {
         List<DepartmentTreeVO> tree = departmentService.getDepartmentTree();
         return ResultUtils.success(tree);
+    }
+
+    /**
+     * 查询单个部门详情
+     */
+    @GetMapping("/detail")
+    public BaseResponse<DepartmentTreeVO> getDepartmentDetail(@RequestParam Long id) {
+        ThrowUtils.throwIf(id == null || id <= 0, ErrorCode.PARAMS_ERROR);
+        DepartmentTreeVO detail = departmentService.getDepartmentDetail(id);
+        return ResultUtils.success(detail);
     }
 
     /**
