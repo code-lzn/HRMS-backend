@@ -7,7 +7,7 @@ import java.io.Serializable;
 import java.util.Date;
 
 /**
- * 员工主表
+ * 员工主表（字段严格匹配数据库已有列）
  */
 @TableName(value = "employee")
 @Data
@@ -19,7 +19,7 @@ public class Employee implements Serializable {
     /** 员工姓名 */
     private String employeeName;
 
-    /** 工号，格式: 年份(4)+部门编码(2)+序号(3) */
+    /** 工号 */
     private String employeeNo;
 
     /** 系统账号（=手机号） */
@@ -46,16 +46,16 @@ public class Employee implements Serializable {
     /** 职位ID */
     private Long positionId;
 
+    /** 职级 */
+    private String jobLevel;
+
     /** 入职日期 */
     private Date hireDate;
 
     /** 入职类型 */
     private Integer hireType;
 
-    /** 薪资ID */
-    private Long salaryProfileId;
-
-    /** 录用类型: FULL_TIME=全职, PART_TIME=兼职, INTERN=实习 */
+    /** 录用类型 */
     private String employmentType;
 
     /** 创建时间 */
@@ -64,9 +64,13 @@ public class Employee implements Serializable {
     /** 更新时间 */
     private Date updateTime;
 
-    /** 逻辑删除：0=否 1=是 */
+    /** 逻辑删除 */
     @TableLogic
     private Integer isDeleted;
+
+    /** 薪资ID（DB暂无，后续扩展） */
+    @TableField(exist = false)
+    private Long salaryId;
 
     @TableField(exist = false)
     private static final long serialVersionUID = 1L;

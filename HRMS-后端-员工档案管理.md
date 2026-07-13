@@ -2,10 +2,11 @@
 
 ## 变更记录
 
-| **日期** | **版本** | **修订说明** | **作者** |
-| --- | --- | --- | --- |
+| **日期**     | **版本** | **修订说明** | **作者** |
+|------------| --- | --- | --- |
 | 2026-07-08 | 1.0 | 初稿 | - |
-| 2026-07-13 | 1.2 | 补全字段定义（四分类）、可编辑性/可见性、高级搜索、字段权限 | - |
+| 2026-07-12 | 1.2 | 补全字段定义（四分类）、可编辑性/可见性、高级搜索、字段权限 | - |
+| 2026-07-13 | 1.3 | 两表拆分、新增必填校验、锁定字段拦截、系统账号自动创建、变更日志 | - |
 
 ## 项目背景
 
@@ -539,14 +540,13 @@ GET /api/employees/export?departmentIds=7&statuses=1,2
 | # | 方法 | 路径 | 说明 |
 |---|---|---|---|
 | 1 | GET | `/api/employees/list` | 员工列表（分页 + 高级搜索） |
-| 2 | GET | `/api/employees/detail` | 员工详情（四分区） |
-| 3 | POST | `/api/employees/add` | 新增员工 + 自动创建账号 |
-| 4 | PUT | `/api/employees/update` | 更新员工（字段权限控制） |
-| 5 | POST | `/api/employees/delete` | 删除员工 |
-| 6 | POST | `/api/employees/generate-employee-no` | 预生成工号 |
-| 7 | GET | `/api/employees/field-permissions` | 获取当前角色字段权限 |
-| 8 | GET | `/api/employees/change-logs` | 员工变更历史 |
-| 9 | GET | `/api/employees/export` | 批量导出 Excel |
+| 2 | GET | `/api/employees/detail` | 员工详情（四分区，敏感字段脱敏） |
+| 3 | POST | `/api/employees/add` | 新增员工 + 自动创建系统账号 |
+| 4 | PUT | `/api/employees/update` | 更新员工（锁定字段拦截 + 变更日志） |
+| 5 | POST | `/api/employees/delete` | 删除员工（软删除） |
+| 6 | GET | `/api/employees/change-logs` | 员工变更历史 |
+
+> `generate-employee-no` 和 `field-permissions` 已改为 Service 内部方法，不对外暴露。
 
 ## 关键技术设计
 
