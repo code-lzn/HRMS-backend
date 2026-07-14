@@ -19,7 +19,7 @@ public class Employee implements Serializable {
     /** 员工姓名 */
     private String employeeName;
 
-    /** 工号 */
+    /** 工号，格式: 年份(4)+部门编码(2)+序号(3) */
     private String employeeNo;
 
     /** 系统账号（=手机号） */
@@ -46,7 +46,8 @@ public class Employee implements Serializable {
     /** 职位ID */
     private Long positionId;
 
-    /** 职级 */
+    /** 职级（DB暂无，后续扩展） */
+    @TableField(exist = false)
     private String jobLevel;
 
     /** 入职日期 */
