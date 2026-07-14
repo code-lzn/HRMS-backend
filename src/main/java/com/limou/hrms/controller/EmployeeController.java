@@ -23,10 +23,7 @@ import javax.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
-import java.text.SimpleDateFormat;
-import java.util.Date;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -72,25 +69,7 @@ public class EmployeeController {
      * 员工列表（分页 + 高级搜索）
      */
     @GetMapping("/list")
-    public BaseResponse<Page<EmployeeVO>> listEmployees(
-            String keyword,
-            List<Long> departmentIds,
-            List<Long> positionIds,
-            List<Integer> statuses, List<String> jobLevels,
-            String hireDateStart,
-            String hireDateEnd,
-            Integer page,
-            Integer size) {
-        EmployeeQueryRequest request = new EmployeeQueryRequest();
-        request.setKeyword(keyword);
-        request.setDepartmentIds(departmentIds);
-        request.setPositionIds(positionIds);
-        request.setStatuses(statuses);
-        request.setJobLevels(jobLevels);
-        request.setHireDateStart(parseDate(hireDateStart));
-        request.setHireDateEnd(parseDate(hireDateEnd));
-        request.setPage(page);
-        request.setSize(size);
+    public BaseResponse<Page<EmployeeVO>> listEmployees(EmployeeQueryRequest request) {
         Page<EmployeeVO> result = employeeService.listEmployees(request);
         return ResultUtils.success(result);
     }
@@ -139,10 +118,5 @@ public class EmployeeController {
     public BaseResponse<Page<EmployeeChangeLogVO>> getChangeLogs(Long employeeId, Integer page, Integer size) {
         ThrowUtils.throwIf(employeeId == null || employeeId <= 0, ErrorCode.PARAMS_ERROR);
         return ResultUtils.success(employeeService.getChangeLogs(employeeId, page, size));
-    }
-    private Date parseDate(String dateStr) {
-        if (dateStr == null || dateStr.isEmpty()) return null;
-        try { return new SimpleDateFormat("yyyy-MM-dd").parse(dateStr); }
-        catch (Exception e) { return null; }
     }
 }
