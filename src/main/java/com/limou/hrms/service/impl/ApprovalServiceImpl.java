@@ -205,7 +205,7 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
         record.setFinishedAt(new Date());
         this.updateById(record);
         // 同步到业务表
-        syncBusinessRejected(record);
+        syncBusinessResult(record, false);
     }
 
     @Override
@@ -332,7 +332,7 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
             record.setFinishedAt(new Date());
             this.updateById(record);
             // 同步到业务表
-            syncBusinessApproved(record);
+            syncBusinessResult(record, true);
         } else {
             record.setCurrentStep(nextStep);
             this.updateById(record);
@@ -340,46 +340,47 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
     }
 
     /**
-     * 审批通过后同步到业务表（leave / makeup_punch）
+     * 审批结果同步到业务表
+     *
+     * @param record  审批记录
+     * @param isApproved  true=通过, false=拒绝
      */
-    private void syncBusinessApproved(ApprovalRecord record) {
-        Date now = new Date();
-        if (BusinessTypeEnum.LEAVE.getValue().equals(record.getBusinessType())) {
-            Leave leave = leaveMapper.selectById(record.getBusinessId());
-            if (leave != null) {
-                leave.setStatus(ApprovalStatusEnum.APPROVED.getValue());
-                leave.setApproveTime(now);
-                leaveMapper.updateById(leave);
-            }
-        } else if (BusinessTypeEnum.PATCH_CLOCK.getValue().equals(record.getBusinessType())) {
-            MakeupPunch punch = makeupPunchMapper.selectById(record.getBusinessId());
-            if (punch != null) {
-                punch.setStatus(ApprovalStatusEnum.APPROVED.getValue());
-                punch.setApproveTime(now);
-                makeupPunchMapper.updateById(punch);
-            }
-        }
-    }
+    private void syncBusinessResult(ApprovalRecord record, boolean isApproved) {
+        BusinessTypeEnum bizType = BusinessTypeEnum.getEnumByValue(record.getBusinessType());
+        if (bizType == null) return;
 
-    /**
-     * 审批拒绝后同步到业务表
-     */
-    private void syncBusinessRejected(ApprovalRecord record) {
+        Integer targetStatus = isApproved ? ApprovalStatusEnum.APPROVED.getValue()
+                                          : ApprovalStatusEnum.REJECTED.getValue();
         Date now = new Date();
-        if (BusinessTypeEnum.LEAVE.getValue().equals(record.getBusinessType())) {
-            Leave leave = leaveMapper.selectById(record.getBusinessId());
-            if (leave != null) {
-                leave.setStatus(ApprovalStatusEnum.REJECTED.getValue());
-                leave.setApproveTime(now);
-                leaveMapper.updateById(leave);
+
+        switch (bizType) {
+            case LEAVE: {
+                Leave leave = leaveMapper.selectById(record.getBusinessId());
+                if (leave != null) {
+                    leave.setStatus(targetStatus);
+                    leave.setApproveTime(now);
+                    leaveMapper.updateById(leave);
+                }
+                break;
             }
-        } else if (BusinessTypeEnum.PATCH_CLOCK.getValue().equals(record.getBusinessType())) {
-            MakeupPunch punch = makeupPunchMapper.selectById(record.getBusinessId());
-            if (punch != null) {
-                punch.setStatus(ApprovalStatusEnum.REJECTED.getValue());
-                punch.setApproveTime(now);
-                makeupPunchMapper.updateById(punch);
+            case PATCH_CLOCK: {
+                MakeupPunch punch = makeupPunchMapper.selectById(record.getBusinessId());
+                if (punch != null) {
+                    punch.setStatus(targetStatus);
+                    punch.setApproveTime(now);
+                    makeupPunchMapper.updateById(punch);
+                }
+                break;
             }
+            case ONBOARDING:
+            case REGULARIZATION:
+            case TRANSFER:
+            case RESIGNATION:
+            case SALARY_BATCH:
+                // 业务表暂未实现，后续扩展
+                log.info("业务类型 [{}] 审批完成，businessId={}, status={}",
+                        bizType.getText(), record.getBusinessId(), targetStatus);
+                break;
         }
     }
 
