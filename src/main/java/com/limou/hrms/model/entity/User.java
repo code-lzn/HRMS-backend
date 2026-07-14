@@ -15,6 +15,7 @@ import lombok.Data;
 @TableName(value ="user")
 @Data
 public class User implements Serializable {
+
     /**
      * id
      */
@@ -75,4 +76,6 @@ public class User implements Serializable {
      * 是否删除
      */
     private Integer isDelete;
+
+    private static final long serialVersionUID = 1L;
 }

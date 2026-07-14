@@ -1,0 +1,825 @@
+# HRMS-后端-权限体系
+
+## 变更记录
+
+> 记录每次修订的内容，方便追溯。
+
+| **日期** | **版本** | **修订说明** | **作者** |
+| --- | --- | --- | --- |
+| 2026-07-13 | 1.0 | 初稿 | 陆博 |
+
+## 项目背景
+
+> 对本次项目的背景以及目标进行描述，方便开发者理解需求，对齐上下文。
+
+本模块来源于 HRMS（人资管理系统）产品规格说明书中第 2 部分——权限体系。当前系统仅通过 `userRole` 字段（user/admin/ban）做粗粒度角色控制，无法满足以下需求：
+
+- **精细权限控制**：不同角色对"员工档案、薪资管理、考勤管理、审批管理、组织架构、系统管理"等模块有不同的可见/操作权限
+- **数据范围控制**：角色可看的数据范围为"全平台 / 全部员工 / 本部门及下属 / 薪资相关 / 仅本人"
+- **字段级权限**：同一个页面（如员工档案），不同角色看到的敏感字段不同（身份证号、薪资信息脱敏或隐藏）
+
+本模块基于 RBAC（Role-Based Access Control）模型，引入 `role` 表（角色-权限码）和 `user.roleId` 字段，实现三层权限控制：**功能权限 → 数据范围 → 字段权限**。
+
+### 相关资料
+
+- [人资管理系统（HRMS）详细产品规格说明书](https://yuque.antfin.com/ww89nu/ng0ckr/tttxtqry8pfycc6s)
+
+### 参与人
+
+| **项目负责人** | ... |
+| --- | --- |
+| **产品经理** | ... |
+| **设计师** | ... |
+| **工程师** | 陆博 |
+
+## 功能模块
+
+> 描述权限体系涉及的功能与场景。
+
+本模块核心功能包括：
+
+1. **角色管理**：支持角色 CRUD（增删改查）、角色分页查询、角色启用/禁用、角色权限码配置（JSON 数组）、角色字段权限配置（JSON 对象）、数据范围设置
+2. **用户-角色关联**：为系统用户分配角色，同步更新旧 `userRole` 字段保持向后兼容
+3. **功能权限校验**：三层防线——URL 拦截器（按路径匹配权限码）+ AuthInterceptor（角色字符串校验）+ @RequirePermission 注解 AOP（方法级权限码校验）
+4. **数据范围查询**：根据用户角色返回数据范围等级（1~5），业务层据此过滤 SQL 查询范围
+5. **字段级权限**：根据角色返回 `fieldPermissions` JSON，前端按角色 ID 控制敏感字段可见性
+6. **权限查询接口**：登录后查当前用户完整权限（角色信息 + 权限码列表 + 数据范围 + 字段权限）、检查是否拥有某权限码、获取系统全部可用权限码列表
+
+### 功能模块树
+
+```plain
+权限体系
+├── 角色管理
+│   ├── 角色列表（全量 / 已启用 / 分页）
+│   ├── 角色新增（唯一编码校验）
+│   ├── 角色编辑
+│   ├── 角色删除（软删除）
+│   ├── 角色启用/禁用（status 字段）
+│   ├── 角色权限配置（permissions JSON 数组）
+│   └── 角色字段权限配置（fieldPermissions JSON 对象）
+├── 用户-角色关联
+│   ├── 为用户分配角色
+│   └── 同步旧 userRole 字段（admin/user）
+├── 功能权限校验（三层防线）
+│   ├── PermissionInterceptor（URL → 权限码映射）
+│   ├── AuthInterceptor（@AuthCheck 角色字符串校验）
+│   └── PermissionAspect（@RequirePermission 注解 AOP）
+├── 数据范围控制
+│   ├── 全平台（dataScope=1）
+│   ├── 全部员工（dataScope=2）
+│   ├── 本部门及下属（dataScope=3）
+│   ├── 薪资相关（dataScope=4）
+│   └── 仅本人（dataScope=5）
+├── 字段级权限
+│   └── fieldPermissions JSON：{"字段名":{"viewable":[角色ID],"editable":[角色ID]}}
+└── 权限查询接口
+    ├── 当前用户完整权限
+    ├── 检查指定权限码
+    ├── 当前用户数据范围
+    └── 系统全部可用权限码列表
+```
+
+## 流程图
+
+> 对权限体系涉及的核心流程进行梳理。
+
+### 2-1 用户登录后获取权限流程
+
+```plain
+用户登录成功
+     │
+     ▼
+前端调用 GET /api/permission/current
+     │
+     ▼
+PermissionController.getCurrentPermissions()
+     │
+     ▼
+PermissionService.getUserPermissions(userId)
+     │
+     ├── 查 User 表 → 获取 roleId
+     ├── 查 Role 表 → 获取 roleName / roleCode / status
+     ├── 角色已禁用？→ dataScope=仅本人, permissionCodes=空
+     ├── 角色已启用？→ 解析 permissions JSON → permissionCodes 列表
+     └── 返回 fieldPermissions JSON（字段权限）
+     │
+     ▼
+前端收到 UserPermissionVO
+     │
+     ├── 根据 permissionCodes 控制菜单/按钮可见性
+     ├── 根据 dataScope 控制列表数据范围
+     └── 根据 fieldPermissions 控制详情页字段可见性
+```
+
+### 2-2 请求权限校验流程（三层防线）
+
+```plain
+HTTP 请求到达
+     │
+     ▼
+┌── 第1层: PermissionInterceptor ──────────────────┐
+│  URL 是否在映射表中？                             │
+│  ├── 是 → 查用户权限码 → 有？→ 放行              │
+│  │                   → 无？→ 403 JSON            │
+│  └── 否 → 放行                                   │
+└──────────────────────────────────────────────────┘
+     │
+     ▼
+┌── 第2层: AuthInterceptor ────────────────────────┐
+│  方法上有 @AuthCheck(mustRole="admin")？         │
+│  ├── 是 → user.userRole == "admin"？            │
+│  │       ├── 是 → 放行                           │
+│  │       └── 否 → 403                            │
+│  └── 否 → 放行                                   │
+└──────────────────────────────────────────────────┘
+     │
+     ▼
+┌── 第3层: PermissionAspect ───────────────────────┐
+│  方法上有 @RequirePermission("employee:list")？   │
+│  ├── 是 → PermissionService.hasPermission()      │
+│  │       ├── 查 User.roleId → Role              │
+│  │       ├── 角色禁用？→ false                   │
+│  │       ├── 解析 permissions JSON               │
+│  │       ├── 含 "*:*:*" → true                  │
+│  │       ├── 含 "employee:list" → true          │
+│  │       └── 否 → false → 403                    │
+│  └── 否 → 放行                                   │
+└──────────────────────────────────────────────────┘
+     │
+     ▼
+Controller 方法执行
+```
+
+### 2-3 角色分配流程
+
+```plain
+管理员调用 POST /api/role/assign {userId, roleId}
+     │
+     ▼
+RoleController.assignRole()
+     │
+     ▼
+RoleService.assignRoleToUser(userId, roleId)
+     │
+     ├── 校验用户是否存在
+     ├── 校验角色是否存在
+     ├── 更新 user.roleId = roleId
+     ├── 同步更新 user.userRole：
+     │   ├── role.roleCode == "admin" → userRole = "admin"
+     │   └── 其他 → userRole = "user"
+     └── userService.updateById(user)
+     │
+     ▼
+用户重新登录后获得新角色权限
+```
+
+## UML 图
+
+> 描述权限体系的核心类和依赖关系。
+
+### 权限体系核心领域模型
+
+```plain
+@startuml
+class Role {
+  - id: Long
+  - roleName: String             "角色名称"
+  - roleCode: String             "角色编码（唯一）"
+  - description: String          "角色描述"
+  - dataScope: Integer           "数据范围：1=全量 2=全部员工 3=本部门 4=薪资 5=仅本人"
+  - status: Integer              "状态：0=禁用 1=启用"
+  - permissions: String          "权限编码列表（JSON数组）"
+  - fieldPermissions: String     "字段权限（JSON对象）"
+  - isDelete: Integer            "软删除"
+  --
+  + getParsedPermissions(): List<String>
+  + getParsedFieldPermissions(): Map<String, Object>
+}
+
+class User {
+  - id: Long
+  - userAccount: String
+  - userRole: String             "旧角色字段 user/admin/ban"
+  - roleId: Long                 "新角色ID，关联role.id"
+  --
+  + isAdmin(): boolean
+}
+
+class UserPermissionVO {
+  - userId: Long
+  - roleId: Long
+  - roleName: String
+  - roleCode: String
+  - dataScope: Integer
+  - dataScopeDesc: String
+  - permissionCodes: List<String>
+  - permissions: String          "原始JSON"
+  - fieldPermissions: String     "原始JSON"
+}
+
+class RoleVO {
+  - id: Long
+  - roleName: String
+  - roleCode: String
+  - dataScope: Integer
+  - dataScopeDesc: String
+  - permissionCodes: List<String>
+  - permissions: String
+  - fieldPermissions: String
+  - status: Integer
+}
+
+enum DataScopeEnum {
+  ALL           "全量"
+  ALL_EMPLOYEE  "全部员工"
+  DEPARTMENT    "本部门及下属"
+  SALARY        "薪资相关"
+  SELF          "仅本人"
+}
+
+interface PermissionService {
+  + getUserPermissions(Long userId): UserPermissionVO
+  + hasPermission(Long userId, String code): boolean
+  + getUserDataScope(Long userId): Integer
+  + getUserPermissionCodes(Long userId): List<String>
+  + getFieldPermissions(Long userId): String
+  + getAllPermissionCodes(): List<String>
+}
+
+interface RoleService {
+  + getAllRoles(): List<Role>
+  + getRoleById(Long id): Role
+  + addRole(Role): boolean
+  + updateRole(Role): boolean
+  + deleteRole(Long id): boolean
+  + assignRoleToUser(Long userId, Long roleId): boolean
+}
+
+class PermissionInterceptor {
+  - URL_PERMISSION_MAP: LinkedHashMap
+  + preHandle(): boolean
+  - matchPermission(String uri): String
+}
+
+class PermissionAspect {
+  + checkPermission(ProceedingJoinPoint): Object
+}
+
+User "1" --> "0..1" Role : roleId
+UserPermissionVO ..> Role : 聚合
+RoleVO ..> Role : 转换
+PermissionService ..> User : 查询
+PermissionService ..> Role : 查询
+PermissionInterceptor ..> PermissionService : 依赖
+PermissionAspect ..> PermissionService : 依赖
+@enduml
+```
+
+## 时序图
+
+> 描述权限体系核心交互的调用时序。
+
+### 2-1 登录后获取权限时序
+
+```
+前端                    PermissionController    PermissionService       UserService      RoleService
+ │                              │                      │                    │                │
+ │ GET /permission/current      │                      │                    │                │
+ │─────────────────────────────>│                      │                    │                │
+ │                              │ getLoginUser()       │                    │                │
+ │                              │─────────────────────────────────────────>│                │
+ │                              │               User (含roleId)             │                │
+ │                              │<─────────────────────────────────────────│                │
+ │                              │ getUserPermissions() │                    │                │
+ │                              │─────────────────────>│                    │                │
+ │                              │                      │ getById(userId)    │                │
+ │                              │                      │───────────────────>│                │
+ │                              │                      │    User             │                │
+ │                              │                      │<───────────────────│                │
+ │                              │                      │ getRoleById()      │                │
+ │                              │                      │───────────────────────────────────>│
+ │                              │                      │    Role                              │
+ │                              │                      │<───────────────────────────────────│
+ │                              │                      │                                    │
+ │                              │                      │ 组装 UserPermissionVO:              │
+ │                              │                      │ - roleId, roleName, roleCode        │
+ │                              │                      │ - dataScope, dataScopeDesc          │
+ │                              │                      │ - 解析 permissions → permissionCodes│
+ │                              │                      │ - fieldPermissions                  │
+ │                              │                      │                                    │
+ │                              │   UserPermissionVO   │                                    │
+ │                              │<─────────────────────│                                    │
+ │       {code:0, data:{...}}  │                      │                                    │
+ │<─────────────────────────────│                      │                                    │
+```
+
+### 2-2 请求被权限拦截器拒绝时序
+
+```
+前端                  PermissionInterceptor        PermissionService
+ │                            │                         │
+ │ GET /api/employee/list     │                         │
+ │───────────────────────────>│                         │
+ │                            │ matchPermission(uri)    │
+ │                            │ → "employee:list"       │
+ │                            │                         │
+ │                            │ getLoginUser()          │
+ │                            │ → User(id=5, roleId=5)  │
+ │                            │                         │
+ │                            │ hasPermission(5,        │
+ │                            │   "employee:list")      │
+ │                            │────────────────────────>│
+ │                            │                         │ 查Role(5)=普通员工
+ │                            │                         │ permissions=["employee:detail",
+ │                            │                         │              "attendance:clock"]
+ │                            │                         │ 不含"employee:list"
+ │                            │        false            │
+ │                            │<────────────────────────│
+ │                            │                         │
+ │  {"code":40300,            │                         │
+ │   "message":"无权限访问，  │                         │
+ │    需要权限：employee:list"}│                        │
+ │<───────────────────────────│                         │
+```
+
+## 数据库设计
+
+> 权限体系模块涉及的核心数据表。
+
+### 角色表 role
+
+```sql
+CREATE TABLE IF NOT EXISTS `role` (
+    `id`               BIGINT AUTO_INCREMENT COMMENT 'id'
+        PRIMARY KEY,
+    `roleName`         VARCHAR(128)                       NOT NULL COMMENT '角色名称',
+    `roleCode`         VARCHAR(128)                       NOT NULL COMMENT '角色编码',
+    `description`      VARCHAR(512)                       NULL COMMENT '角色描述',
+    `dataScope`        TINYINT  DEFAULT 5                 NOT NULL COMMENT '数据范围：1=全量 2=全部员工 3=本部门及下属 4=薪资相关 5=仅本人',
+    `status`           TINYINT  DEFAULT 1                 NOT NULL COMMENT '状态：0-禁用，1-启用',
+    `permissions`      JSON                               NULL COMMENT '权限列表（JSON数组，存储权限编码）',
+    `fieldPermissions` JSON                               NULL COMMENT '字段权限',
+    `createTime`       DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '创建时间',
+    `updateTime`       DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `isDelete`         TINYINT  DEFAULT 0                 NOT NULL COMMENT '是否删除',
+    CONSTRAINT `uk_roleCode` UNIQUE (`roleCode`)
+) COMMENT '角色' COLLATE = utf8mb4_unicode_ci;
+```
+
+### 用户表 user（新增字段）
+
+```sql
+-- user 表在原有基础上新增以下字段：
+ALTER TABLE `user`
+    ADD COLUMN `roleId`     BIGINT NULL COMMENT '角色ID，关联role.id',
+    ADD COLUMN `employeeId` BIGINT NULL COMMENT '员工ID，关联employee.id';
+```
+
+### 预置角色数据
+
+```sql
+-- 系统管理员（全平台最高权限）
+INSERT INTO role (roleName, roleCode, description, dataScope, status, permissions, fieldPermissions)
+VALUES ('系统管理员', 'ADMIN', '全平台最高权限', 1, 1, '["*:*:*"]', NULL);
+
+-- HR专员（员工管理、薪资核算）
+INSERT INTO role (roleName, roleCode, description, dataScope, status, permissions, fieldPermissions)
+VALUES ('HR专员', 'HR', '员工管理、薪资核算', 2, 1,
+        '["employee:list","employee:add","employee:edit","employee:delete","salary:list","salary:view"]',
+        '{"idCard":{"viewable":[1,2]},"salaryInfo":{"viewable":[1,2,4]}}');
+
+-- 部门主管（本部门管理）
+INSERT INTO role (roleName, roleCode, description, dataScope, status, permissions, fieldPermissions)
+VALUES ('部门主管', 'MANAGER', '本部门管理', 3, 1,
+        '["employee:list","employee:edit","approval:process"]', NULL);
+
+-- 财务专员（薪资相关）
+INSERT INTO role (roleName, roleCode, description, dataScope, status, permissions, fieldPermissions)
+VALUES ('财务专员', 'FINANCE', '薪资相关', 4, 1,
+        '["salary:list","salary:view","salary:audit"]',
+        '{"salaryInfo":{"viewable":[1,2,4]}}');
+
+-- 普通员工（仅本人）
+INSERT INTO role (roleName, roleCode, description, dataScope, status, permissions, fieldPermissions)
+VALUES ('普通员工', 'EMPLOYEE', '仅本人', 5, 1,
+        '["employee:detail","attendance:clock"]',
+        '{"salaryInfo":{"viewable":[1,2,4,5]}}');
+```
+
+## API 设计
+
+### 1. 获取当前用户权限
+
+```plain
+GET /api/permission/current
+```
+
+#### 请求参数
+
+无（自动从 Session 获取当前登录用户）
+
+#### 响应格式
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "userId": "2",
+    "userAccount": "admin",
+    "userName": "系统管理员",
+    "roleId": "1",
+    "roleName": "系统管理员",
+    "roleCode": "ADMIN",
+    "dataScope": 1,
+    "dataScopeDesc": "全量",
+    "permissions": "[\"*:*:*\"]",
+    "permissionCodes": ["*:*:*"],
+    "fieldPermissions": null
+  }
+}
+```
+
+> **说明**：登录后前端首先调用此接口，根据返回的 `permissionCodes` 控制菜单/按钮可见性，根据 `dataScope` 控制数据查询范围。
+
+---
+
+### 2. 检查用户权限
+
+```plain
+GET /api/permission/check?code=employee:list
+```
+
+#### 请求参数
+
+| **参数** | **类型** | **必填** | **描述** |
+| --- | --- | --- | --- |
+| code | String | 是 | 权限编码，如 employee:list |
+
+#### 响应格式
+
+```json
+{ "code": 0, "message": "ok", "data": true }
+```
+
+---
+
+### 3. 获取用户数据范围
+
+```plain
+GET /api/permission/data-scope
+```
+
+#### 响应格式
+
+```json
+{ "code": 0, "message": "ok", "data": 1 }
+```
+
+> **说明**：返回值：1=全量 2=全部员工 3=本部门及下属 4=薪资相关 5=仅本人。业务层据此过滤 SQL 查询范围。
+
+---
+
+### 4. 获取系统全部权限码
+
+```plain
+GET /api/permission/codes
+```
+
+#### 响应格式
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": [
+    "employee:list", "employee:add", "employee:edit", "employee:delete", "employee:detail",
+    "salary:list", "salary:view", "salary:audit",
+    "approval:process",
+    "attendance:clock", "attendance:list", "attendance:manage",
+    "org:manage",
+    "system:config", "system:backup", "role:manage"
+  ]
+}
+```
+
+> **说明**：供前端角色权限分配界面使用，展示全部可分配的权限码。
+
+---
+
+### 5. 角色列表（全部）
+
+```plain
+GET /api/role/list/all
+```
+
+> **说明**：需 `role:manage` 权限。返回全量角色列表（含已禁用）。
+
+---
+
+### 6. 角色列表（已启用）
+
+```plain
+GET /api/role/list/enabled
+```
+
+> **说明**：无需登录。供登录页角色选择下拉框使用。
+
+---
+
+### 7. 角色分页查询
+
+```plain
+POST /api/role/list/page
+```
+
+#### 请求参数
+
+| **参数** | **类型** | **必填** | **描述** |
+| --- | --- | --- | --- |
+| current | int | 否 | 当前页，默认1 |
+| pageSize | int | 否 | 每页条数，默认10 |
+| roleName | String | 否 | 角色名称（模糊搜索） |
+| roleCode | String | 否 | 角色编码（精确匹配） |
+| dataScope | Integer | 否 | 数据范围过滤 |
+| status | Integer | 否 | 状态过滤 |
+| sortField | String | 否 | 排序字段 |
+| sortOrder | String | 否 | ascend/descend |
+
+#### 响应格式
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "total": 5,
+    "current": 1,
+    "size": 10,
+    "records": [
+      {
+        "id": "1",
+        "roleName": "系统管理员",
+        "roleCode": "ADMIN",
+        "description": "全平台最高权限",
+        "dataScope": 1,
+        "dataScopeDesc": "全量",
+        "permissions": "[\"*:*:*\"]",
+        "permissionCodes": ["*:*:*"],
+        "fieldPermissions": null,
+        "status": 1
+      }
+    ]
+  }
+}
+```
+
+---
+
+### 8. 查询单个角色
+
+```plain
+GET /api/role/get?id=1
+```
+
+#### 请求参数
+
+| **参数** | **类型** | **必填** | **描述** |
+| --- | --- | --- | --- |
+| id | Long | 是 | 角色ID |
+
+> **说明**：需 `role:manage` 权限。
+
+---
+
+### 9. 新增角色
+
+```plain
+POST /api/role/add
+```
+
+#### 请求参数
+
+| **参数** | **类型** | **必填** | **描述** |
+| --- | --- | --- | --- |
+| roleName | String | 是 | 角色名称 |
+| roleCode | String | 是 | 角色编码（唯一） |
+| description | String | 否 | 角色描述 |
+| dataScope | Integer | 否 | 数据范围，默认5 |
+| permissions | String | 否 | 权限编码 JSON 数组 |
+| fieldPermissions | String | 否 | 字段权限 JSON 对象 |
+
+> **说明**：需 `role:manage` 权限。`roleCode` 重复时返回"角色编码已存在"错误。
+
+---
+
+### 10. 更新角色
+
+```plain
+POST /api/role/update
+```
+
+#### 请求参数
+
+| **参数** | **类型** | **必填** | **描述** |
+| --- | --- | --- | --- |
+| id | Long | 是 | 角色ID |
+| roleName | String | 否 | 角色名称 |
+| roleCode | String | 否 | 角色编码 |
+| description | String | 否 | 角色描述 |
+| dataScope | Integer | 否 | 数据范围 |
+| status | Integer | 否 | 状态：0-禁用 1-启用 |
+| permissions | String | 否 | 权限编码 JSON 数组 |
+| fieldPermissions | String | 否 | 字段权限 JSON 对象 |
+
+> **说明**：需 `role:manage` 权限。禁用角色后，该角色下的用户权限立即失效（`isRoleActive()` 返回 false）。
+
+---
+
+### 11. 删除角色
+
+```plain
+POST /api/role/delete?id=1
+```
+
+#### 请求参数
+
+| **参数** | **类型** | **必填** | **描述** |
+| --- | --- | --- | --- |
+| id | Long | 是 | 角色ID |
+
+> **说明**：需 `role:manage` 权限。采用 MyBatis-Plus 逻辑删除（isDelete=1）。
+
+---
+
+### 12. 为用户分配角色
+
+```plain
+POST /api/role/assign
+```
+
+#### 请求参数
+
+| **参数** | **类型** | **必填** | **描述** |
+| --- | --- | --- | --- |
+| userId | Long | 是 | 用户ID |
+| roleId | Long | 是 | 角色ID |
+
+> **说明**：需 `role:manage` 权限。分配时自动同步 `user.userRole` 字段（roleCode="ADMIN" → userRole="admin"），保持与旧权限系统兼容。
+
+---
+
+### 13. 权限码常量（代码层引用）
+
+```java
+// 在 Controller 方法上使用注解控制权限
+@RequirePermission(PermissionConstant.EMPLOYEE_LIST)
+public BaseResponse<Page<Employee>> listEmployees() { ... }
+
+// 所有可用权限码
+PermissionConstant.EMPLOYEE_LIST    = "employee:list"     // 员工列表
+PermissionConstant.EMPLOYEE_ADD     = "employee:add"      // 新增员工
+PermissionConstant.EMPLOYEE_EDIT    = "employee:edit"     // 编辑员工
+PermissionConstant.EMPLOYEE_DELETE  = "employee:delete"   // 删除员工
+PermissionConstant.EMPLOYEE_DETAIL  = "employee:detail"   // 员工详情
+PermissionConstant.SALARY_LIST      = "salary:list"       // 薪资列表
+PermissionConstant.SALARY_VIEW      = "salary:view"       // 薪资查看
+PermissionConstant.SALARY_AUDIT     = "salary:audit"      // 薪资审核
+PermissionConstant.APPROVAL_PROCESS = "approval:process"  // 审批处理
+PermissionConstant.ATTENDANCE_CLOCK = "attendance:clock"  // 打卡
+PermissionConstant.ATTENDANCE_LIST  = "attendance:list"   // 考勤列表
+PermissionConstant.ATTENDANCE_MANAGE= "attendance:manage" // 考勤管理
+PermissionConstant.ORG_MANAGE       = "org:manage"        // 组织架构管理
+PermissionConstant.SYSTEM_CONFIG    = "system:config"     // 系统配置
+PermissionConstant.SYSTEM_BACKUP    = "system:backup"     // 数据备份
+PermissionConstant.ROLE_MANAGE      = "role:manage"       // 角色管理
+PermissionConstant.SUPER_ADMIN      = "*:*:*"             // 超级通配符
+```
+
+## 关键技术设计
+
+### 三层权限防线
+
+| 层级 | 实现 | 机制 | 适用范围 |
+| --- | --- | --- | --- |
+| 第1层 | `PermissionInterceptor` | URL → 权限码映射表匹配，未命中放行 | 全局（零侵入） |
+| 第2层 | `AuthInterceptor` | 检查 `@AuthCheck(mustRole)` 注解 | 旧角色系统兼容 |
+| 第3层 | `PermissionAspect` | 检查 `@RequirePermission` 注解 | 新权限系统（精细控制） |
+
+### 权限码格式规范
+
+```
+模块:操作
+───── ────
+employee  :  list    → 员工列表
+salary    :  view    → 薪资查看
+system    :  config  → 系统配置
+*         :  *       → 超级通配符（管理员拥有所有权限）
+
+模块：employee / salary / approval / attendance / org / system / role
+操作：list / add / edit / delete / detail / view / audit / process / clock / manage / config / backup
+```
+
+### 新旧权限体系兼容方案
+
+```
+旧体系：user.userRole = "admin" / "user" / "ban"
+  └── AuthInterceptor → 检查 @AuthCheck(mustRole="admin")
+
+新体系：user.roleId → role 表
+  └── PermissionInterceptor → URL 匹配权限码
+  └── PermissionAspect → @RequirePermission 注解
+
+桥梁：assignRoleToUser() 同步更新两个字段
+  ├── role.roleCode = "ADMIN" → user.userRole = "admin"
+  └── 其他 → user.userRole = "user"
+```
+
+### 数据权限过滤方案
+
+业务 Controller 在查询前获取当前用户 `dataScope`，按等级过滤：
+
+```java
+Integer scope = permissionService.getUserDataScope(currentUser.getId());
+switch (scope) {
+    case 1: // ALL - 全平台，不加过滤
+        break;
+    case 2: // ALL_EMPLOYEE - 全部员工，不加过滤
+        break;
+    case 3: // DEPARTMENT - 本部门及下属
+        queryWrapper.in("departmentId", getSubDeptIds(currentUser.getDeptId()));
+        break;
+    case 4: // SALARY - 仅薪资相关
+        // 仅薪资模块使用，其他模块不返回数据
+        break;
+    case 5: // SELF - 仅本人
+        queryWrapper.eq("id", currentUser.getId());
+        break;
+}
+```
+
+### 字段级权限控制方案
+
+| **字段** | HR 专员 | 部门主管 | 普通员工 | 财务专员 | 系统管理员 |
+| --- | --- | --- | --- | --- | --- |
+| 姓名 | 查看 | 查看 | 查看（仅自己） | - | 查看 |
+| 手机号 | 查看 | 查看 | 查看（仅自己） | - | 查看 |
+| 身份证号 | 查看 | 不可见 | 查看（仅自己） | - | 查看 |
+| 薪资信息 | 查看 | 不可见 | 查看（仅自己） | 查看 | - |
+| 紧急联系人 | 查看 | 不可见 | 查看（仅自己） | - | 查看 |
+| 银行卡号 | 查看 | 不可见 | 查看（仅自己） | - | 查看 |
+
+> 字段级权限通过 `role.fieldPermissions` JSON 配置，前端调用 `/api/permission/current` 获取后控制字段显隐。
+
+### 角色禁用即时生效
+
+角色 `status` 设为 0（禁用）后，`isRoleActive()` 立即返回 false，该角色下所有用户的：
+- `permissionCodes` → 空列表
+- `dataScope` → 仅本人（5）
+- `fieldPermissions` → null
+
+无需用户重新登录，下次 API 调用即刻生效。
+
+### URL 权限映射表（可扩展）
+
+```java
+// PermissionInterceptor 中维护的映射表，按需增删
+URL_PERMISSION_MAP.put("/api/employee/list",     "employee:list");
+URL_PERMISSION_MAP.put("/api/employee/add",      "employee:add");
+URL_PERMISSION_MAP.put("/api/employee/edit",     "employee:edit");
+URL_PERMISSION_MAP.put("/api/employee/delete",   "employee:delete");
+URL_PERMISSION_MAP.put("/api/employee/detail",   "employee:detail");
+URL_PERMISSION_MAP.put("/api/salary/list",       "salary:list");
+URL_PERMISSION_MAP.put("/api/salary/view",       "salary:view");
+URL_PERMISSION_MAP.put("/api/salary/audit",      "salary:audit");
+URL_PERMISSION_MAP.put("/api/approval/process",  "approval:process");
+URL_PERMISSION_MAP.put("/api/attendance/clock",  "attendance:clock");
+URL_PERMISSION_MAP.put("/api/attendance/list",   "attendance:list");
+URL_PERMISSION_MAP.put("/api/attendance/manage", "attendance:manage");
+URL_PERMISSION_MAP.put("/api/department/add",    "org:manage");
+URL_PERMISSION_MAP.put("/api/department/update", "org:manage");
+URL_PERMISSION_MAP.put("/api/department/delete", "org:manage");
+URL_PERMISSION_MAP.put("/api/role/list/all",     "role:manage");
+URL_PERMISSION_MAP.put("/api/role/add",          "role:manage");
+URL_PERMISSION_MAP.put("/api/role/update",       "role:manage");
+URL_PERMISSION_MAP.put("/api/role/delete",       "role:manage");
+URL_PERMISSION_MAP.put("/api/role/assign",       "role:manage");
+URL_PERMISSION_MAP.put("/api/system/config",     "system:config");
+URL_PERMISSION_MAP.put("/api/system/backup",     "system:backup");
+```
+
+## 排期
+
+> 对研发时间计划进行排期。
+
+| **阶段** | **内容** | **预估工期** |
+| --- | --- | --- |
+| 需求评审 | 评审权限体系设计，确认角色定义与权限码规范 | 0.5天 |
+| 技术方案 | 完成系分文档评审，确认三层防线架构与新旧兼容方案 | 1天 |
+| 数据库开发 | 建 role 表、user 表新增字段、初始化5个预置角色 | 0.5天 |
+| 后端开发 | 角色CRUD、权限校验核心逻辑、三层防线实现、权限查询接口 | 3天 |
+| 前端开发 | 角色管理页、权限分配页、菜单/按钮权限控制、字段权限控制 | 3天 |
+| 联调测试 | 前后端联调、5个角色权限场景全覆盖测试、禁用角色即时生效测试 | 2天 |
+| 回归上线 | 全量回归、预发验证、正式上线 | 1天 |
+
+> **总预估工期**：约 11 个工作日
