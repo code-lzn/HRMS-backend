@@ -274,7 +274,7 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
                     .eq(Attendance::getEmployeeId, employeeId)
                     .eq(Attendance::getAttendanceDate, DateUtil.parseDate(dateStr))
                     .one();
-            if (record != null && record.getStatus() == AttendanceStatusEnum.LEAVE.getValue()) {
+            if (record != null && Objects.equals(record.getStatus(), AttendanceStatusEnum.LEAVE.getValue())) {
                 if (record.getPunchInTime() != null || record.getPunchOutTime() != null) {
                     // 有打卡记录：还原为正常
                     record.setStatus(AttendanceStatusEnum.NORMAL.getValue());
