@@ -7,8 +7,11 @@ import org.apache.commons.lang3.ObjectUtils;
 
 public enum UserRoleEnum {
 
-    USER("用户", "user"),
-    ADMIN("管理员", "admin"),
+    USER("普通员工", "user"),
+    ADMIN("系统管理员", "admin"),
+    HR("HR专员", "hr"),
+    DEPT_HEAD("部门主管", "dept_head"),
+    FINANCE("财务专员", "finance"),
     BAN("被封号", "ban");
 
     private final String text;

@@ -16,14 +16,29 @@ public interface UserConstant {
     //  region 权限
 
     /**
-     * 默认角色
+     * 默认角色（普通员工）
      */
     String DEFAULT_ROLE = "user";
 
     /**
-     * 管理员角色
+     * 系统管理员角色
      */
     String ADMIN_ROLE = "admin";
+
+    /**
+     * HR专员角色
+     */
+    String HR_ROLE = "hr";
+
+    /**
+     * 部门主管角色
+     */
+    String DEPT_HEAD_ROLE = "dept_head";
+
+    /**
+     * 财务专员角色
+     */
+    String FINANCE_ROLE = "finance";
 
     /**
      * 被封号

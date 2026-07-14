@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.limou.hrms.mapper.EmployeeMapper">
+
+    <select id="countActiveByDept" resultType="com.limou.hrms.model.entity.DeptEmployeeCount">
+        SELECT ewi.department_id AS departmentId, COUNT(*) AS cnt
+        FROM employee_work_info ewi
+        JOIN employee e ON ewi.employee_id = e.id
+        WHERE e.status IN
+        <foreach item="item" collection="activeStatuses" open="(" separator="," close=")">
+            #{item}
+        </foreach>
+        AND e.is_deleted = 0
+        GROUP BY ewi.department_id
+    </select>
+
+</mapper>

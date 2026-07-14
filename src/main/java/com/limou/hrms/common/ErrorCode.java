@@ -1,9 +1,12 @@
 package com.limou.hrms.common;
 
+import lombok.Getter;
+
 /**
  * 自定义错误码
  *
  */
+@Getter
 public enum ErrorCode {
 
     SUCCESS(0, "ok"),
@@ -13,7 +16,22 @@ public enum ErrorCode {
     NOT_FOUND_ERROR(40400, "请求数据不存在"),
     FORBIDDEN_ERROR(40300, "禁止访问"),
     SYSTEM_ERROR(50000, "系统内部异常"),
-    OPERATION_ERROR(50001, "操作失败");
+    OPERATION_ERROR(50001, "操作失败"),
+
+    // region 组织架构管理 (30xxx)
+    DEPARTMENT_NOT_FOUND(30000, "部门不存在"),
+    DEPARTMENT_NAME_DUPLICATE(30001, "部门名称已存在"),
+    DEPARTMENT_CODE_DUPLICATE(30002, "部门编码已存在"),
+    DEPARTMENT_HAS_CHILDREN(30003, "该部门下存在子部门，请先删除子部门"),
+    DEPARTMENT_HAS_EMPLOYEES(30004, "该部门下有在职员工，请先转移员工"),
+    DEPARTMENT_MAX_DEPTH_EXCEEDED(30005, "超过最大层级深度5级"),
+    DEPARTMENT_SORT_ORDER_DUPLICATE(30006, "同级部门中排序序号重复"),
+    DEPARTMENT_CIRCULAR_REF(30007, "不能将部门移动到自身或子部门下"),
+    POSITION_NOT_FOUND(30010, "职位不存在"),
+    POSITION_HAS_EMPLOYEES(30011, "该职位下有在职员工关联，请先调整员工职位"),
+    POSITION_LEVEL_RANGE_INVALID(30012, "职级范围不合法"),
+    POSITION_NAME_DUPLICATE(30013, "同一部门下职位名称重复");
+    // endregion
 
     /**
      * 状态码
@@ -28,14 +46,6 @@ public enum ErrorCode {
     ErrorCode(int code, String message) {
         this.code = code;
         this.message = message;
-    }
-
-    public int getCode() {
-        return code;
-    }
-
-    public String getMessage() {
-        return message;
     }
 
 }
