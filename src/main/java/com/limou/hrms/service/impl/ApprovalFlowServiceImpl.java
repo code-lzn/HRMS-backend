@@ -326,7 +326,7 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
     public Page<ProcessedItemVO> getProcessedList(Long employeeId, ApprovalQuery query) {
         QueryWrapper<ApprovalNode> nodeQw = new QueryWrapper<>();
         nodeQw.eq("approver_id", employeeId)
-               .in("status", NodeStatus.APPROVED.getCode(), NodeStatus.REJECTED.getCode(), NodeStatus.TRANSFERRED.getCode())
+               .in("status", NodeStatus.APPROVED.getCode(), NodeStatus.REJECTED.getCode(), NodeStatus.TRANSFERRED.getCode(), NodeStatus.TIMEOUT.getCode())
                .orderByDesc("operate_time");
 
         Page<ApprovalNode> nodePage = approvalNodeMapper.selectPage(
@@ -439,6 +439,9 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
     }
 
     private void validateNodePending(ApprovalNode node) {
+        if (NodeStatus.TIMEOUT.getCode() == node.getStatus()) {
+            throw new BusinessException(ErrorCode.APPROVAL_NODE_TIMEOUT);
+        }
         if (NodeStatus.PENDING.getCode() != node.getStatus()) {
             throw new BusinessException(ErrorCode.APPROVAL_NODE_ALREADY_HANDLED);
         }

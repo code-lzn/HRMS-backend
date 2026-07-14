@@ -8,7 +8,8 @@ public enum NodeStatus {
     PENDING(1, "待审批"),
     APPROVED(2, "已通过"),
     REJECTED(3, "已拒绝"),
-    TRANSFERRED(4, "已转交");
+    TRANSFERRED(4, "已转交"),
+    TIMEOUT(5, "已超时");
 
     private final int code;
     private final String desc;

@@ -20,7 +20,8 @@ public enum ErrorCode {
     APPROVAL_NODE_NOT_FOUND(40002, "审批节点不存在"),
     APPROVAL_NODE_NOT_OWNER(40003, "该节点不属于当前用户"),
     APPROVAL_NODE_ALREADY_HANDLED(40004, "该节点已被处理"),
-    APPROVAL_CANCEL_ONLY_FIRST_NODE(40005, "仅第一节点可撤回");
+    APPROVAL_CANCEL_ONLY_FIRST_NODE(40005, "仅第一节点可撤回"),
+    APPROVAL_NODE_TIMEOUT(40011, "审批已超时，无法操作");
 
     /**
      * 状态码
