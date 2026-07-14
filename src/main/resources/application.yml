@@ -20,23 +20,25 @@ spring:
   # todo 需替换配置
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: XXX
-    username: XXX
-    password: XXX
+    url: jdbc:mysql://120.26.212.131:3306/szml1
+    username: szml1
+    password: 5539d601c3e3f931
   # Redis 配置
 
 cos:
   client:
-    accessKey: xxx
-    secretKey: xxx
-    region: xxx
-    bucket: xxx
+    bucket: ai-code-mother-1367496754
+    region: ap-guangzhou
+    secretId: your-secret-id
+    secretKey: your-secret-key
+    host: https://ai-code-mother-1367496754.cos.ap-guangzhou.myqcloud.com
+
   # todo 需替换配置，然后取消注释
-#  redis:
-#    database: 1
-#    host: localhost
-#    port: 6379
-#    timeout: 5000
+  redis:
+    database: 1
+    host: localhost
+    port: 6379
+    timeout: 5000
   # Elasticsearch 配置
   # todo 需替换配置，然后取消注释
 #  elasticsearch:
