@@ -274,14 +274,15 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
                     .eq(Attendance::getEmployeeId, employeeId)
                     .eq(Attendance::getAttendanceDate, DateUtil.parseDate(dateStr))
                     .one();
-            if (record != null && record.getStatus() == AttendanceStatusEnum.LEAVE.getValue()) {
-                // 还原：如果有打卡记录就保留原始状态，否则标记缺卡
+            if (record != null && Objects.equals(record.getStatus(), AttendanceStatusEnum.LEAVE.getValue())) {
                 if (record.getPunchInTime() != null || record.getPunchOutTime() != null) {
+                    // 有打卡记录：还原为正常
                     record.setStatus(AttendanceStatusEnum.NORMAL.getValue());
+                    attendanceService.updateById(record);
                 } else {
-                    record.setStatus(AttendanceStatusEnum.MISSING.getValue());
+                    // 无打卡记录：该记录是请假时创建的，直接删除
+                    attendanceService.removeById(record.getId());
                 }
-                attendanceService.updateById(record);
             }
             cursor = DateUtil.offsetDay(cursor, 1);
         }

@@ -83,7 +83,7 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
             record.setPunchOutLocation(location);
 
             // 如果上班打卡正常、下班也正常打卡，则状态改为正常
-            if (record.getStatus() != AttendanceStatusEnum.LATE.getValue()) {
+            if (!Objects.equals(record.getStatus(), AttendanceStatusEnum.LATE.getValue())) {
                 record.setStatus(AttendanceStatusEnum.NORMAL.getValue());
             }
         }
