@@ -5,9 +5,12 @@ import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.exception.ThrowUtils;
 import com.limou.hrms.mapper.ApprovalRecordMapper;
 import com.limou.hrms.mapper.EmployeeDetailMapper;
+import com.limou.hrms.mapper.LeaveMapper;
+import com.limou.hrms.mapper.MakeupPunchMapper;
 import com.limou.hrms.model.entity.*;
 import com.limou.hrms.model.enums.ApprovalActionEnum;
 import com.limou.hrms.model.enums.ApprovalRecordStatusEnum;
+import com.limou.hrms.model.enums.ApprovalStatusEnum;
 import com.limou.hrms.model.enums.ApproverTypeEnum;
 import com.limou.hrms.model.enums.BusinessTypeEnum;
 import com.limou.hrms.model.vo.ApprovalDetailVO;
@@ -46,6 +49,12 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
 
     @Resource
     private EmployeeDetailMapper employeeDetailMapper;
+
+    @Resource
+    private LeaveMapper leaveMapper;
+
+    @Resource
+    private MakeupPunchMapper makeupPunchMapper;
 
     @Override
     public List<ApprovalPendingVO> getPendingList(Long employeeId) {
@@ -195,6 +204,8 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
         record.setStatus(ApprovalRecordStatusEnum.REJECTED.getValue());
         record.setFinishedAt(new Date());
         this.updateById(record);
+        // 同步到业务表
+        syncBusinessRejected(record);
     }
 
     @Override
@@ -319,11 +330,59 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
             // 所有节点已通过
             record.setStatus(ApprovalRecordStatusEnum.APPROVED.getValue());
             record.setFinishedAt(new Date());
+            this.updateById(record);
+            // 同步到业务表
+            syncBusinessApproved(record);
         } else {
             record.setCurrentStep(nextStep);
+            this.updateById(record);
         }
-        this.updateById(record);
     }
+
+    /**
+     * 审批通过后同步到业务表（leave / makeup_punch）
+     */
+    private void syncBusinessApproved(ApprovalRecord record) {
+        Date now = new Date();
+        if (BusinessTypeEnum.LEAVE.getValue().equals(record.getBusinessType())) {
+            Leave leave = leaveMapper.selectById(record.getBusinessId());
+            if (leave != null) {
+                leave.setStatus(ApprovalStatusEnum.APPROVED.getValue());
+                leave.setApproveTime(now);
+                leaveMapper.updateById(leave);
+            }
+        } else if (BusinessTypeEnum.PATCH_CLOCK.getValue().equals(record.getBusinessType())) {
+            MakeupPunch punch = makeupPunchMapper.selectById(record.getBusinessId());
+            if (punch != null) {
+                punch.setStatus(ApprovalStatusEnum.APPROVED.getValue());
+                punch.setApproveTime(now);
+                makeupPunchMapper.updateById(punch);
+            }
+        }
+    }
+
+    /**
+     * 审批拒绝后同步到业务表
+     */
+    private void syncBusinessRejected(ApprovalRecord record) {
+        Date now = new Date();
+        if (BusinessTypeEnum.LEAVE.getValue().equals(record.getBusinessType())) {
+            Leave leave = leaveMapper.selectById(record.getBusinessId());
+            if (leave != null) {
+                leave.setStatus(ApprovalStatusEnum.REJECTED.getValue());
+                leave.setApproveTime(now);
+                leaveMapper.updateById(leave);
+            }
+        } else if (BusinessTypeEnum.PATCH_CLOCK.getValue().equals(record.getBusinessType())) {
+            MakeupPunch punch = makeupPunchMapper.selectById(record.getBusinessId());
+            if (punch != null) {
+                punch.setStatus(ApprovalStatusEnum.REJECTED.getValue());
+                punch.setApproveTime(now);
+                makeupPunchMapper.updateById(punch);
+            }
+        }
+    }
+
     /**
      * 解析审批人
      *
