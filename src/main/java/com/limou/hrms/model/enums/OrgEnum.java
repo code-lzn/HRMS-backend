@@ -5,15 +5,23 @@ package com.limou.hrms.model.enums;
  */
 public enum OrgEnum {
 
-    MAX_DEPT_DEPTH(5);
+    MAX_DEPT_DEPTH(5, "最大部门层级深度");
 
-    private final int value;
+    private final int code;
+    private final String desc;
 
-    OrgEnum(int value) {
-        this.value = value;
+    OrgEnum(int code, String desc) {
+        this.code = code;
+        this.desc = desc;
     }
 
-    public int getValue() {
-        return value;
+    public int getCode() { return code; }
+    public String getDesc() { return desc; }
+
+    public static String getDesc(int code) {
+        for (OrgEnum t : values()) {
+            if (t.code == code) return t.desc;
+        }
+        return "未知";
     }
 }
