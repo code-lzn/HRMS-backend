@@ -77,5 +77,5 @@ public class User implements Serializable {
      */
     private Integer isDelete;
 
-    private static final long serialVersionUID = 1L;
+    private static final long serialVersionUID = 5722402489699486655L;
 }
