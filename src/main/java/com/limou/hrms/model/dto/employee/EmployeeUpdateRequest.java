@@ -1,5 +1,6 @@
 package com.limou.hrms.model.dto.employee;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -37,22 +38,22 @@ public class EmployeeUpdateRequest implements Serializable {
     private String jobLevel;
 
     /** 入职日期 */
+    @JsonFormat(pattern = "yyyy-MM-dd")
     private Date hireDate;
-
-    /** 入职类型 */
-    private Integer hireType;
 
     /** 录用类型 */
     private String employmentType;
 
     // ---- 详情表字段 ----
     private String idCard;
+    @JsonFormat(pattern = "yyyy-MM-dd")
     private Date birthday;
     private String registeredAddress;
     private String currentAddress;
     private Long directReportId;
     private String workLocation;
     private Integer contractType;
+    @JsonFormat(pattern = "yyyy-MM-dd")
     private Date contractExpireDate;
     private BigDecimal probationRatio;
     private BigDecimal baseSalary;

@@ -5,12 +5,13 @@
 | **日期** | **版本** | **修订说明** | **作者** |
 | --- | --- | --- | --- |
 | 2026-07-13 | 1.0 | 初稿 | - |
+| 2026-07-14 | 1.1 | 修正 API 路径（/employees → /employee）、移除不存在的工号/导出端点、修正参数名 | - |
 
 ## 一、测试范围
 
 | 模块 | 接口数 | 说明 |
 |---|---|---|
-| 员工管理 | 7 | 列表查询、详情、新增、更新、删除、工号生成、导出 |
+| 员工管理 | 6 | 列表查询、详情、新增、更新、删除、变更历史 |
 
 ## 二、测试环境
 
@@ -25,7 +26,7 @@
 
 ## 三、员工管理测试用例
 
-### 3.1 查询员工列表 — `GET /api/employees/list`
+### 3.1 查询员工列表 — `GET /api/employee/list`
 
 | # | 用例名称 | 操作 | 预期结果 |
 |---|---|---|---|
@@ -35,15 +36,15 @@
 | TC-E-004 | 关键词搜索工号 | `?keyword=2025` | 返回工号包含"2025"的员工 |
 | TC-E-005 | 按部门筛选 | `?departmentIds=7` | 只返回 departmentId=7 的员工 |
 | TC-E-006 | 按职位筛选 | `?positionIds=3` | 只返回 positionId=3 的员工 |
-| TC-E-007 | 按状态筛选 | `?status=1` | 只返回在职员工 |
+| TC-E-007 | 按状态筛选 | `?statuses=1` | 只返回在职员工 |
 | TC-E-008 | 按离职状态 | `?statuses=4` | 只返回已离职员工 |
-| TC-E-009 | 组合筛选 | `?departmentId=7&status=2&keyword=李` | 同时满足所有条件 |
+| TC-E-009 | 组合筛选 | `?departmentIds=7&statuses=2&keyword=李` | 同时满足所有条件 |
 | TC-E-010 | 无匹配结果 | `?keyword=不存在的名字` | code=0，`total=0`，`records=[]` |
 | TC-E-011 | 部门名正确 | 正常查询 | `departmentName` 为部门表对应名称 |
 | TC-E-012 | 职位名正确 | 正常查询 | `positionName` 为职位表对应名称 |
 | TC-E-013 | 大数据分页 | `?page=100&size=50` | 正常返回或空数组 |
 
-### 3.2 查询员工详情 — `GET /api/employees/detail`
+### 3.2 查询员工详情 — `GET /api/employee/detail`
 
 | # | 用例名称 | 操作 | 预期结果 |
 |---|---|---|---|
@@ -56,26 +57,26 @@
 | TC-E-026 | 查询已删除员工 | 员工已软删除 | code≠0，提示"员工不存在" |
 | TC-E-027 | 参数非法 | `GET ?id=0` 或不传 | code=40000 |
 
-### 3.3 新增员工 — `POST /api/employees/add`
+### 3.3 新增员工 — `POST /api/employee/add`
 
 | # | 用例名称 | 操作 | 预期结果 |
 |---|---|---|---|
-| TC-E-030 | 正常新增 | `{employeeName:"张三", gender:1, hireDate:"2025-01-15", departmentId:7, positionId:3, employmentType:"FULL_TIME"}` | code=0，返回 `id` 和自动生成的 `employeeNo` |
-| TC-E-031 | 最少必填字段 | 只传必填字段（姓名+入职日期+录用类型） | code=0 |
+| TC-E-030 | 正常新增 | `{employeeName:"张三", gender:1, phone:"13800000001", departmentId:7, positionId:3, employmentType:"FULL_TIME"}` | code=0，返回新员工 `id` |
+| TC-E-031 | 最少必填字段 | 只传必填字段（姓名+性别+手机号+录用类型+部门+职位） | code=0 |
 | TC-E-032 | 全部字段 | 传所有可选字段 | code=0，所有字段写入 |
 | TC-E-033 | 姓名为空 | `{employeeName:"", ...}` | code≠0，提示"姓名不能为空" |
 | TC-E-034 | 部门不存在 | `{..., departmentId:99999}` | code≠0，提示"部门不存在" |
 | TC-E-035 | 部门不传 | 不传 `departmentId` | code≠0，提示"部门必填" |
 | TC-E-036 | 职位不存在 | `{..., positionId:99999}` | code≠0，提示"职位不存在" |
-| TC-E-037 | 工号自动生成 | 正常新增 | 返回的 `employeeNo` 格式：`年份(4) + 部门编码(2) + 序号(3)` |
-| TC-E-038 | 工号唯一 | 连续新增两个同部门员工 | 工号序号递增，不重复 |
+| TC-E-037 | 工号自动生成 | 正常新增 → 查详情 | 详情中 `employeeNo` 格式：`年份(4) + 部门编码(2) + 序号(3)` |
+| TC-E-038 | 工号唯一 | 连续新增两个同部门员工 → 查详情对比 | 工号序号递增，不重复 |
 | TC-E-039 | 性别边界 | `gender:0`（女） | code=0 |
 | TC-E-040 | 录用类型枚举 | `employmentType:"PART_TIME"` | code=0 |
 | TC-E-041 | 非法录用类型 | `employmentType:"INVALID"` | 视校验规则决定 |
 | TC-E-042 | 超长姓名 | employeeName 超 64 字符 | code≠0 |
 | TC-E-043 | 邮箱格式 | `email:"not-an-email"` | 视校验规则，建议前端拦截 |
 
-### 3.4 更新员工 — `PUT /api/employees/update`
+### 3.4 更新员工 — `PUT /api/employee/update`
 
 | # | 用例名称 | 操作 | 预期结果 |
 |---|---|---|---|
@@ -90,7 +91,7 @@
 | TC-E-058 | 工号不可修改 | 不传 employeeNo 字段 | 更新不影响工号 |
 | TC-E-059 | 部分字段更新 | 只传需要改的字段 | 其他字段不受影响 |
 
-### 3.5 删除员工 — `POST /api/employees/delete`
+### 3.5 删除员工 — `POST /api/employee/delete`
 
 | # | 用例名称 | 操作 | 预期结果 |
 |---|---|---|---|
@@ -100,23 +101,7 @@
 | TC-E-073 | 员工不存在 | `{id:99999}` | code≠0，提示"员工不存在" |
 | TC-E-074 | 重复删除 | 对已删除员工再次删除 | code≠0，提示"员工不存在" |
 
-### 3.6 生成工号 — `POST /api/employees/generate-employee-no`
-
-| # | 用例名称 | 操作 | 预期结果 |
-|---|---|---|---|
-| TC-E-080 | 正常生成 | `{departmentId:7}` | code=0，返回格式正确的工号 |
-| TC-E-081 | 部门不存在 | `{departmentId:99999}` | code≠0 |
-| TC-E-082 | 不传部门 | `{}` | 视校验规则 |
-| TC-E-083 | 工号格式正确 | 正常调用 | `employeeNo` 长度=9，年份+部门编码+3位序号 |
-| TC-E-084 | 同部门连续生成 | 连续调用 | 序号递增，不重复 |
-
-### 3.7 导出 Excel — `GET /api/employees/export`
-
-| # | 用例名称 | 操作 | 预期结果 |
-|---|---|---|---|
-| TC-E-090 | 正常导出 | 不传参数 | 返回 Excel 文件流 |
-| TC-E-091 | 按条件导出 | `?departmentId=7&status=1` | 仅导出符合条件的数据 |
-| TC-E-092 | 无数据导出 | 筛选条件无匹配 | 导出空表格或提示 |
+> 注：工号生成（`generateEmployeeNo`）和字段权限（`getFieldPermissions`）已改为 Service 内部方法，不对外暴露 Controller 端点。
 
 ---
 
@@ -168,9 +153,7 @@
 | 新增员工 | 14 |
 | 更新员工 | 10 |
 | 删除员工 | 5 |
-| 工号生成 | 5 |
-| 导出 | 3 |
 | 集成场景 | 6 |
 | 边界异常 | 7 |
 | 跨模块联测 | 5 |
-| **合计** | **76** |
+| **合计** | **68** |
