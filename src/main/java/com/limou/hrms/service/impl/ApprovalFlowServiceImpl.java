@@ -43,8 +43,8 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
     private UserMapper userMapper;
 
     /** Spring 自动注入所有 ApprovalCallback 实现（各业务模块），可能为空 */
-    @Resource
-    private List<ApprovalCallback> callbacks;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private List<ApprovalCallback> callbacks = new ArrayList<>();
 
     @Override
     @Transactional(rollbackFor = Exception.class)
