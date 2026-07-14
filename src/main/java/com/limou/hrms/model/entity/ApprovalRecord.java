@@ -31,7 +31,27 @@ public class ApprovalRecord implements Serializable {
      SALARY_BATCH("SALARY_BATCH", "薪资批次审批");*/
     private String businessType;
 
-    /** 关联业务表记录ID */
+
+    /** 关联业务表记录ID
+     * 对，businessId 是一个多态外键。它存的是不同业务表的主键 ID，具体是哪张表由 businessType 决定。
+     *
+     * businessType = "LEAVE"        → businessId → leave 表的 id
+     * businessType = "PATCH_CLOCK"  → businessId → makeup_punch 表的 id
+     *
+     * 在代码里就是这么用的：
+     *
+     * // LeaveServiceImpl.apply() — 传入请假记录ID
+     * approvalService.startApproval("LEAVE", request.getId(), ...);
+     *
+     * // MakeupPunchServiceImpl.apply() — 传入补卡记录ID
+     * approvalService.startApproval("PATCH_CLOCK", request.getId(), ...);
+     *
+     * 审批通过后回写业务表时，也是靠这个组合查找：
+     *
+     * if ("LEAVE".equals(record.getBusinessType())) {
+     * Leave leave = leaveMapper.selectById(record.getBusinessId());  // 查 leave 表
+     * }
+     * */
     private Long businessId;
 
     /** 申请人ID（employeeId） */
