@@ -6,7 +6,12 @@ package com.limou.hrms.model.enums;
 public enum ApprovalBizType {
 
     ONBOARDING("ONBOARDING", "入职审批"),
-    PROBATION("PROBATION", "转正审批");
+    PROBATION("PROBATION", "转正审批"),
+    TRANSFER("TRANSFER", "调岗审批"),
+    RESIGNATION("RESIGNATION", "离职审批"),
+    LEAVE("LEAVE", "请假审批"),
+    CARD_REPLENISH("CARD_REPLENISH", "补卡审批"),
+    SALARY_BATCH("SALARY_BATCH", "薪资批次审批");
 
     private final String code;
     private final String desc;
