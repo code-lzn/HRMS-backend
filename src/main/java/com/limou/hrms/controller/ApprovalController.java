@@ -8,16 +8,23 @@ import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.exception.ThrowUtils;
 import com.limou.hrms.model.dto.approval.ApprovalActionDTO;
 import com.limou.hrms.model.entity.ApprovalInstance;
+import com.limou.hrms.model.entity.ApprovalDelegate;
 import com.limou.hrms.model.entity.User;
 import com.limou.hrms.model.enums.ApprovalBizType;
 import com.limou.hrms.model.query.ApprovalQuery;
 import com.limou.hrms.model.vo.ApprovalInstanceVO;
 import com.limou.hrms.model.vo.PendingItemVO;
 import com.limou.hrms.model.vo.ProcessedItemVO;
+import com.limou.hrms.service.ApprovalDelegateService;
 import com.limou.hrms.service.ApprovalFlowService;
 import com.limou.hrms.service.UserService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
@@ -34,6 +41,8 @@ public class ApprovalController {
     @Resource
     private ApprovalFlowService approvalFlowService;
     @Resource
+    private ApprovalDelegateService approvalDelegateService;
+    @Resource
     private UserService userService;
 
     // ==================== 查询接口 ====================
@@ -45,6 +54,18 @@ public class ApprovalController {
     public BaseResponse<Page<PendingItemVO>> getPendingList(ApprovalQuery query, HttpServletRequest request) {
         Long employeeId = getCurrentEmployeeId(request);
         Page<PendingItemVO> result = approvalFlowService.getPendingList(employeeId, query);
+        return ResultUtils.success(result);
+    }
+
+    /**
+     * 获取待办数量（含委托）
+     */
+    @GetMapping("/pending-count")
+    public BaseResponse<Map<String, Long>> getPendingCount(HttpServletRequest request) {
+        Long employeeId = getCurrentEmployeeId(request);
+        long count = approvalFlowService.getPendingCount(employeeId);
+        Map<String, Long> result = new HashMap<>();
+        result.put("count", count);
         return ResultUtils.success(result);
     }
 
@@ -123,6 +144,41 @@ public class ApprovalController {
         Long employeeId = getCurrentEmployeeId(request);
         approvalFlowService.cancel(instanceId, employeeId);
         return ResultUtils.success("ok");
+    }
+
+    // ==================== 委托审批接口 ====================
+
+    /**
+     * 设置委托审批
+     */
+    @PostMapping("/delegates")
+    public BaseResponse<ApprovalDelegate> createDelegate(@RequestBody Map<String, Object> body, HttpServletRequest request) {
+        Long delegateId = Long.valueOf(body.get("delegateId").toString());
+        LocalDateTime startTime = LocalDateTime.parse(body.get("startTime").toString());
+        LocalDateTime endTime = LocalDateTime.parse(body.get("endTime").toString());
+        Long employeeId = getCurrentEmployeeId(request);
+        ApprovalDelegate result = approvalDelegateService.createDelegate(employeeId, delegateId, startTime, endTime);
+        return ResultUtils.success(result);
+    }
+
+    /**
+     * 取消委托审批
+     */
+    @DeleteMapping("/delegates/{id}")
+    public BaseResponse<?> cancelDelegate(@PathVariable Long id, HttpServletRequest request) {
+        Long employeeId = getCurrentEmployeeId(request);
+        approvalDelegateService.cancelDelegate(id, employeeId);
+        return ResultUtils.success(null);
+    }
+
+    /**
+     * 查询我的委托
+     */
+    @GetMapping("/delegates/my")
+    public BaseResponse<Map<String, List<ApprovalDelegate>>> getMyDelegates(HttpServletRequest request) {
+        Long employeeId = getCurrentEmployeeId(request);
+        Map<String, List<ApprovalDelegate>> result = approvalDelegateService.getMyDelegates(employeeId);
+        return ResultUtils.success(result);
     }
 
     // ==================== 辅助方法 ====================

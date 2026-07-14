@@ -51,6 +51,11 @@ public interface ApprovalFlowService {
     void cancel(Long instanceId, Long operatorId);
 
     /**
+     * 获取待办数量（含委托）
+     */
+    long getPendingCount(Long employeeId);
+
+    /**
      * 查询待办列表
      */
     Page<PendingItemVO> getPendingList(Long employeeId, ApprovalQuery query);

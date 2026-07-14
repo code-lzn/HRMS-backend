@@ -15,6 +15,7 @@ import com.limou.hrms.model.enums.NodeStatus;
 import com.limou.hrms.model.query.ApprovalQuery;
 import com.limou.hrms.model.vo.*;
 import com.limou.hrms.service.ApprovalCallback;
+import com.limou.hrms.service.ApprovalDelegateService;
 import com.limou.hrms.service.ApprovalFlowService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -41,6 +42,8 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
     private EmployeeMapper employeeMapper;
     @Resource
     private UserMapper userMapper;
+    @Resource
+    private ApprovalDelegateService approvalDelegateService;
 
     /** Spring 自动注入所有 ApprovalCallback 实现（各业务模块），可能为空 */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
@@ -80,13 +83,45 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
     }
 
     @Override
+    public long getPendingCount(Long employeeId) {
+        // 1. 自己的待办
+        long myCount = approvalNodeMapper.selectCount(
+                new QueryWrapper<ApprovalNode>()
+                        .eq("approver_id", employeeId)
+                        .eq("status", NodeStatus.PENDING.getCode()));
+
+        // 2. 委托给我的（别人委托给 currentUser，委托有效期内）
+        // SELECT COUNT(*) FROM approval_node n
+        // WHERE n.status = 1 AND n.approver_id IN (
+        //   SELECT d.delegator_id FROM approval_delegate d
+        //   WHERE d.delegate_id = ? AND d.enabled = 1
+        //   AND NOW() BETWEEN d.start_time AND d.end_time
+        // )
+        Long delegatedCount = approvalNodeMapper.selectCount(
+                new QueryWrapper<ApprovalNode>()
+                        .eq("status", NodeStatus.PENDING.getCode())
+                        .inSql("approver_id",
+                                "SELECT d.delegator_id FROM approval_delegate d " +
+                                "WHERE d.delegate_id = " + employeeId + " " +
+                                "AND d.enabled = 1 AND NOW() BETWEEN d.start_time AND d.end_time"));
+
+        return myCount + delegatedCount;
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public void approve(Long nodeId, Long employeeId, String comment) {
         ApprovalNode node = getNodeOrThrow(nodeId);
         validateNodeOwner(node, employeeId);
         validateNodePending(node);
 
+        // 若当前用户是受委托人（approver_id != employeeId），记录原始审批人
+        if (!node.getApproverId().equals(employeeId) && node.getOriginalApproverId() == null) {
+            node.setOriginalApproverId(node.getApproverId());
+        }
+
         // 更新当前节点
+        node.setApproverId(employeeId);
         node.setStatus(NodeStatus.APPROVED.getCode());
         node.setComment(comment);
         node.setOperateTime(LocalDateTime.now());
@@ -125,7 +160,13 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
         validateNodeOwner(node, employeeId);
         validateNodePending(node);
 
+        // 若当前用户是受委托人，记录原始审批人
+        if (!node.getApproverId().equals(employeeId) && node.getOriginalApproverId() == null) {
+            node.setOriginalApproverId(node.getApproverId());
+        }
+
         // 更新节点
+        node.setApproverId(employeeId);
         node.setStatus(NodeStatus.REJECTED.getCode());
         node.setComment(comment);
         node.setOperateTime(LocalDateTime.now());
@@ -157,11 +198,18 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "目标审批人不存在");
         }
 
-        // 记录原审批人
-        node.setOriginalApproverId(fromEmployeeId);
+        // 若当前用户是受委托人，记录原始审批人
+        if (!node.getApproverId().equals(fromEmployeeId) && node.getOriginalApproverId() == null) {
+            node.setOriginalApproverId(node.getApproverId());
+        }
+
+        // 记录原审批人（当前操作人）
+        if (node.getOriginalApproverId() == null) {
+            node.setOriginalApproverId(fromEmployeeId);
+        }
         // 更换审批人
         node.setApproverId(toEmployeeId);
-        // 状态保持待审批（不改成已转交，让新审批人重新审批）
+        // 状态保持待审批
         node.setStatus(NodeStatus.PENDING.getCode());
         node.setComment(null);
         node.setOperateTime(LocalDateTime.now());
@@ -196,19 +244,54 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
 
     @Override
     public Page<PendingItemVO> getPendingList(Long employeeId, ApprovalQuery query) {
-        // 查当前用户待审批的节点
+        // 1. 查当前用户待审批的节点（自己的）
         QueryWrapper<ApprovalNode> nodeQw = new QueryWrapper<>();
         nodeQw.eq("approver_id", employeeId)
                .eq("status", NodeStatus.PENDING.getCode())
                .orderByDesc("create_time");
 
-        // 分页查节点
         Page<ApprovalNode> nodePage = approvalNodeMapper.selectPage(
                 new Page<>(query.getCurrent(), query.getPageSize()), nodeQw
         );
 
+        // 2. 查委托给我的节点（别人委托给我，在有效期内）
+        QueryWrapper<ApprovalNode> delegateQw = new QueryWrapper<>();
+        delegateQw.eq("status", NodeStatus.PENDING.getCode())
+                  .inSql("approver_id",
+                          "SELECT d.delegator_id FROM approval_delegate d " +
+                          "WHERE d.delegate_id = " + employeeId + " " +
+                          "AND d.enabled = 1 AND NOW() BETWEEN d.start_time AND d.end_time")
+                  .orderByDesc("create_time");
+
+        // 复用同类分页；这里直接查所有，后面合并
+        java.util.List<ApprovalNode> delegateNodes = approvalNodeMapper.selectList(delegateQw);
+
+        // 3. 合并两个来源（去重），按 create_time 排序
+        Set<Long> seenIds = new HashSet<>();
+        List<ApprovalNode> allNodes = new ArrayList<>();
+        for (ApprovalNode node : nodePage.getRecords()) {
+            seenIds.add(node.getId());
+            allNodes.add(node);
+        }
+        for (ApprovalNode node : delegateNodes) {
+            if (!seenIds.contains(node.getId())) {
+                allNodes.add(node);
+            }
+        }
+        allNodes.sort((a, b) -> b.getCreateTime().compareTo(a.getCreateTime()));
+
+        // 4. 分页处理（内存分页）
+        int total = allNodes.size();
+        int fromIndex = (int) ((query.getCurrent() - 1) * query.getPageSize());
+        int toIndex = Math.min(fromIndex + (int) query.getPageSize(), total);
+        if (fromIndex >= total) {
+            allNodes = new ArrayList<>();
+        } else {
+            allNodes = allNodes.subList(fromIndex, toIndex);
+        }
+
         // 关联 instance 信息组装 VO
-        List<PendingItemVO> records = nodePage.getRecords().stream().map(node -> {
+        List<PendingItemVO> records = allNodes.stream().map(node -> {
             ApprovalInstance instance = approvalInstanceMapper.selectById(node.getInstanceId());
             PendingItemVO vo = new PendingItemVO();
             vo.setInstanceId(node.getInstanceId());
@@ -234,7 +317,7 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
                     .collect(Collectors.toList());
         }
 
-        Page<PendingItemVO> result = new Page<>(nodePage.getCurrent(), nodePage.getSize(), nodePage.getTotal());
+        Page<PendingItemVO> result = new Page<>(query.getCurrent(), query.getPageSize(), total);
         result.setRecords(records);
         return result;
     }
@@ -347,7 +430,11 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
 
     private void validateNodeOwner(ApprovalNode node, Long employeeId) {
         if (!node.getApproverId().equals(employeeId)) {
-            throw new BusinessException(ErrorCode.APPROVAL_NODE_NOT_OWNER);
+            // 检查当前用户是否为 node 审批人的有效委托人
+            Long resolvedApprover = approvalDelegateService.resolveApprover(node.getApproverId());
+            if (!employeeId.equals(resolvedApprover)) {
+                throw new BusinessException(ErrorCode.APPROVAL_NODE_NOT_OWNER);
+            }
         }
     }
 
