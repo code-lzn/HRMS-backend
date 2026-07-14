@@ -33,10 +33,10 @@
 | TC-E-002 | 默认分页 | 不传 page/size | 使用默认值（page=1, size=20） |
 | TC-E-003 | 关键词搜索 | `?keyword=张三` | 返回姓名或工号匹配"张三"的员工 |
 | TC-E-004 | 关键词搜索工号 | `?keyword=2025` | 返回工号包含"2025"的员工 |
-| TC-E-005 | 按部门筛选 | `?departmentId=7` | 只返回 departmentId=7 的员工 |
-| TC-E-006 | 按职位筛选 | `?positionId=3` | 只返回 positionId=3 的员工 |
+| TC-E-005 | 按部门筛选 | `?departmentIds=7` | 只返回 departmentId=7 的员工 |
+| TC-E-006 | 按职位筛选 | `?positionIds=3` | 只返回 positionId=3 的员工 |
 | TC-E-007 | 按状态筛选 | `?status=1` | 只返回在职员工 |
-| TC-E-008 | 按离职状态 | `?status=0` | 只返回离职员工 |
+| TC-E-008 | 按离职状态 | `?statuses=4` | 只返回已离职员工 |
 | TC-E-009 | 组合筛选 | `?departmentId=7&status=2&keyword=李` | 同时满足所有条件 |
 | TC-E-010 | 无匹配结果 | `?keyword=不存在的名字` | code=0，`total=0`，`records=[]` |
 | TC-E-011 | 部门名正确 | 正常查询 | `departmentName` 为部门表对应名称 |
@@ -65,7 +65,7 @@
 | TC-E-032 | 全部字段 | 传所有可选字段 | code=0，所有字段写入 |
 | TC-E-033 | 姓名为空 | `{employeeName:"", ...}` | code≠0，提示"姓名不能为空" |
 | TC-E-034 | 部门不存在 | `{..., departmentId:99999}` | code≠0，提示"部门不存在" |
-| TC-E-035 | 部门不传 | 不传 `departmentId` | code=0，`departmentId=null` |
+| TC-E-035 | 部门不传 | 不传 `departmentId` | code≠0，提示"部门必填" |
 | TC-E-036 | 职位不存在 | `{..., positionId:99999}` | code≠0，提示"职位不存在" |
 | TC-E-037 | 工号自动生成 | 正常新增 | 返回的 `employeeNo` 格式：`年份(4) + 部门编码(2) + 序号(3)` |
 | TC-E-038 | 工号唯一 | 连续新增两个同部门员工 | 工号序号递增，不重复 |
@@ -80,8 +80,8 @@
 | # | 用例名称 | 操作 | 预期结果 |
 |---|---|---|---|
 | TC-E-050 | 正常更新 | `{id:101, email:"new@example.com"}` | code=0，更新成功 |
-| TC-E-051 | 更新部门 | `{id:101, departmentId:8}` | code=0，部门变更 |
-| TC-E-052 | 更新职位 | `{id:101, positionId:4}` | code=0，职位变更 |
+| TC-E-051 | 更新部门（锁定字段） | `{id:101, departmentId:8}` | code≠0，部门为锁定字段，需走调岗流程 |
+| TC-E-052 | 更新职位（锁定字段） | `{id:101, positionId:4}` | code≠0，职位为锁定字段，需走调岗流程 |
 | TC-E-053 | 更新姓名 | `{id:101, employeeName:"张四"}` | code=0 |
 | TC-E-054 | 更新部门不存在 | `{id:101, departmentId:99999}` | code≠0 |
 | TC-E-055 | 更新职位不存在 | `{id:101, positionId:99999}` | code≠0 |

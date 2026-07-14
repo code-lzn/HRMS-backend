@@ -3,7 +3,7 @@ package com.limou.hrms.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.limou.hrms.common.ErrorCode;
-import com.limou.hrms.constant.OrgConstant.PositionSequence;
+import com.limou.hrms.model.enums.PositionSequence;
 import com.limou.hrms.exception.ThrowUtils;
 import com.limou.hrms.mapper.DepartmentMapper;
 import com.limou.hrms.mapper.EmployeeMapper;
@@ -17,6 +17,7 @@ import com.limou.hrms.model.vo.PositionVO;
 import com.limou.hrms.model.vo.SequenceLevelVO;
 import com.limou.hrms.service.PositionService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
@@ -222,25 +223,13 @@ public class PositionServiceImpl extends ServiceImpl<PositionMapper, Position> i
 
     private PositionVO convertToVO(Position position, Map<Long, String> deptNameMap) {
         PositionVO vo = new PositionVO();
-        vo.setId(position.getId());
-        vo.setName(position.getName());
-        vo.setSequence(position.getSequence());
-
+        BeanUtils.copyProperties(position, vo);
+        // 计算字段
         PositionSequence seq = PositionSequence.fromCode(position.getSequence());
         vo.setSequenceName(seq != null ? seq.getName() : "未知");
-
-        vo.setDepartmentId(position.getDepartmentId());
         vo.setDepartmentName(position.getDepartmentId() != null
-                ? deptNameMap.getOrDefault(position.getDepartmentId(), "未知部门")
-                : "全公司通用");
-
-        vo.setLevelMin(position.getLevelMin());
-        vo.setLevelMax(position.getLevelMax());
+                ? deptNameMap.getOrDefault(position.getDepartmentId(), "未知部门") : "全公司通用");
         vo.setLevelRange(position.getLevelMin() + "-" + position.getLevelMax());
-        vo.setDefaultProbationMonths(position.getDefaultProbationMonths());
-        vo.setDescription(position.getDescription());
-        vo.setCreateTime(position.getCreateTime());
-
         return vo;
     }
 
