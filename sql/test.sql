@@ -63,7 +63,6 @@ create table  if not exists employee
     positionId     bigint          null comment '职位ID',
     jobLevel       VARCHAR(8)      NULL COMMENT '职级，如P5、M2',
     hireDate       datetime        null comment '入职日期',
-    hireType       tinyint         null comment '入职类型',
     salaryId       bigint          null comment '薪资ID',
     employmentType VARCHAR(16)     NOT NULL COMMENT '录用类型: FULL_TIME=全职, PART_TIME=兼职, INTERN=实习',
     createTime     datetime     default CURRENT_TIMESTAMP not null comment '创建时间',
