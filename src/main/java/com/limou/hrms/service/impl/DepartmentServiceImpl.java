@@ -126,8 +126,8 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
             Department parentDept = this.getById(parentId);
             ThrowUtils.throwIf(parentDept == null, ErrorCode.NOT_FOUND_ERROR, "上级部门不存在或已被删除");
             int parentDepth = calculateDepth(parentId);
-            ThrowUtils.throwIf(parentDepth + 1 > OrgEnum.MAX_DEPT_DEPTH.getValue(),
-                    ErrorCode.OPERATION_ERROR, "已达到最大层级深度 " + OrgEnum.MAX_DEPT_DEPTH.getValue() + " 级");
+            ThrowUtils.throwIf(parentDepth + 1 > OrgEnum.MAX_DEPT_DEPTH.getCode(),
+                    ErrorCode.OPERATION_ERROR, "已达到最大层级深度 " + OrgEnum.MAX_DEPT_DEPTH.getCode() + " 级");
         }
 
         // 4. 校验同级部门名称不重复
@@ -330,7 +330,7 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
             Department dept = this.getById(currentId);
             if (dept == null) break;
             currentId = dept.getParentId();
-            if (depth > OrgEnum.MAX_DEPT_DEPTH.getValue() + 1) break;
+            if (depth > OrgEnum.MAX_DEPT_DEPTH.getCode() + 1) break;
         }
         return depth;
     }
