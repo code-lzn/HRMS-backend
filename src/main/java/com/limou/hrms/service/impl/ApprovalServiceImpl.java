@@ -4,7 +4,12 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.exception.ThrowUtils;
 import com.limou.hrms.mapper.ApprovalRecordMapper;
+import com.limou.hrms.mapper.EmployeeDetailMapper;
 import com.limou.hrms.model.entity.*;
+import com.limou.hrms.model.enums.ApprovalActionEnum;
+import com.limou.hrms.model.enums.ApprovalRecordStatusEnum;
+import com.limou.hrms.model.enums.ApproverTypeEnum;
+import com.limou.hrms.model.enums.BusinessTypeEnum;
 import com.limou.hrms.model.vo.ApprovalDetailVO;
 import com.limou.hrms.model.vo.ApprovalPendingVO;
 import com.limou.hrms.service.*;
@@ -39,12 +44,15 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
     @Resource
     private DepartmentService departmentService;
 
+    @Resource
+    private EmployeeDetailMapper employeeDetailMapper;
+
     @Override
     public List<ApprovalPendingVO> getPendingList(Long employeeId) {
         // 1. 直接审批：当前人是审批人且状态为 PENDING
         List<ApprovalDetail> directList = approvalDetailService.lambdaQuery()
                 .eq(ApprovalDetail::getApproverId, employeeId)
-                .eq(ApprovalDetail::getAction, "PENDING")
+                .eq(ApprovalDetail::getAction, ApprovalActionEnum.PENDING.getValue())
                 .list();
 
         // 2. 委托审批：当前人是被委托人，且委托在有效期内
@@ -73,7 +81,7 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
 
             List<ApprovalDetail> tempList = approvalDetailService.lambdaQuery()
                     .in(ApprovalDetail::getApproverId, delegatorIds)
-                    .eq(ApprovalDetail::getAction, "PENDING")
+                    .eq(ApprovalDetail::getAction, ApprovalActionEnum.PENDING.getValue())
                     .list();
 
             for (ApprovalDetail detail : tempList) {
@@ -97,7 +105,7 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
             if (!seenRecordIds.add(detail.getRecordId())) continue; // 去重
 
             ApprovalRecord record = this.getById(detail.getRecordId());
-            if (record == null || !"APPROVING".equals(record.getStatus())) continue;
+            if (record == null || !ApprovalRecordStatusEnum.APPROVING.getValue().equals(record.getStatus())) continue;
 
             ApprovalPendingVO vo = new ApprovalPendingVO();
             vo.setRecordId(record.getId());
@@ -163,7 +171,7 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
     public void approve(Long detailId, Long employeeId, String comment) {
         ApprovalDetail detail = validateAndGetDetail(detailId, employeeId);
 
-        detail.setAction("APPROVE");
+        detail.setAction(ApprovalActionEnum.APPROVE.getValue());
         detail.setComment(comment);
         detail.setOperateTime(new Date());
         approvalDetailService.updateById(detail);
@@ -177,14 +185,14 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
     public void reject(Long detailId, Long employeeId, String comment) {
         ApprovalDetail detail = validateAndGetDetail(detailId, employeeId);
 
-        detail.setAction("REJECT");
+        detail.setAction(ApprovalActionEnum.REJECT.getValue());
         detail.setComment(comment);
         detail.setOperateTime(new Date());
         approvalDetailService.updateById(detail);
 
         // 整个审批流标记为已拒绝
         ApprovalRecord record = this.getById(detail.getRecordId());
-        record.setStatus("REJECTED");
+        record.setStatus(ApprovalRecordStatusEnum.REJECTED.getValue());
         record.setFinishedAt(new Date());
         this.updateById(record);
     }
@@ -195,7 +203,7 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
         ApprovalDetail detail = validateAndGetDetail(detailId, employeeId);
 
         // 原审批人标记为转交
-        detail.setAction("TRANSFER");
+        detail.setAction(ApprovalActionEnum.TRANSFER.getValue());
         detail.setComment(comment);
         detail.setOperateTime(new Date());
         approvalDetailService.updateById(detail);
@@ -211,7 +219,7 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
         newDetail.setStepOrder(detail.getStepOrder());
         newDetail.setApproverId(targetEmployeeId);
         newDetail.setApproverName(targetEmp.getEmployeeName());
-        newDetail.setAction("PENDING");
+        newDetail.setAction(ApprovalActionEnum.PENDING.getValue());
         newDetail.setIsDelegated(0);
         approvalDetailService.save(newDetail);
     }
@@ -243,7 +251,7 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
         record.setApplicantName(applicantName);
         record.setCurrentStep(1);
         record.setTotalSteps(nodes.size());
-        record.setStatus("APPROVING");
+        record.setStatus(ApprovalRecordStatusEnum.APPROVING.getValue());
         this.save(record);
 
         // 创建审批明细节点
@@ -264,7 +272,7 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
             detail.setStepOrder(node.getNodeOrder());
             detail.setApproverId(approverId);
             detail.setApproverName(approverName);
-            detail.setAction(i == 0 ? "PENDING" : "PENDING"); // 只有第一个节点是 PENDING，后续节点等前面的通过后才变为 PENDING
+            detail.setAction(ApprovalActionEnum.PENDING.getValue()); // 只有第一个节点是 PENDING，后续节点等前面的通过后才变为 PENDING
             // 实际上所有节点都先创建为 PENDING，前端按 stepOrder 过滤即可
             // 但为了精确，可以让第一个节点 PENDING，其余保持为 PENDING 也行
             detail.setIsDelegated(0);
@@ -279,7 +287,7 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
     private ApprovalDetail validateAndGetDetail(Long detailId, Long employeeId) {
         ApprovalDetail detail = approvalDetailService.getById(detailId);
         ThrowUtils.throwIf(detail == null, ErrorCode.APPROVAL_NOT_FOUND);
-        ThrowUtils.throwIf(!"PENDING".equals(detail.getAction()), ErrorCode.APPROVAL_NOT_PENDING);
+        ThrowUtils.throwIf(!ApprovalActionEnum.PENDING.getValue().equals(detail.getAction()), ErrorCode.APPROVAL_NOT_PENDING);
 
         // 检查权限：是审批人本人，或者是有效被委托人
         boolean hasPermission = Objects.equals(detail.getApproverId(), employeeId);
@@ -309,20 +317,29 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
         int nextStep = record.getCurrentStep() + 1;
         if (nextStep > record.getTotalSteps()) {
             // 所有节点已通过
-            record.setStatus("APPROVED");
+            record.setStatus(ApprovalRecordStatusEnum.APPROVED.getValue());
             record.setFinishedAt(new Date());
         } else {
             record.setCurrentStep(nextStep);
         }
         this.updateById(record);
     }
+    /**
+     * 解析审批人
+     *
+     * @param node      节点
+     * @param applicant 申请人
+     * @return 审批人
+     */
 
     private Long resolveApprover(ApprovalFlowNode node, Employee applicant) {
         if (applicant == null) return null;
 
-        switch (node.getApproverType()) {
-            case "DEPT_MANAGER":
-                // 查找申请人的部门负责人
+        ApproverTypeEnum approverType = ApproverTypeEnum.getEnumByValue(node.getApproverType());
+        if (approverType == null) return node.getApproverId();
+
+        switch (approverType) {
+            case DEPT_MANAGER:
                 if (applicant.getDepartmentId() != null) {
                     Department dept = departmentService.getById(applicant.getDepartmentId());
                     if (dept != null && dept.getManagerId() != null) {
@@ -330,21 +347,17 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
                     }
                 }
                 return null;
-            case "DIRECT_SUPERIOR":
-                // 查找直接上级：通过 applicant 的 employee 找到其直接上级
-                // employee 表中暂无 reporterId，从测试数据可知 employee 15 的直接上级是 employee 2
-                // 实际生产需要扩展 employee 表添加上级字段
-                return null;
-            case "HR_MANAGER":
-                // 返回 HR 负责人（从角色表或约定 ID）
-                return null;
-            case "FINANCE":
-                // 返回财务专员
-                return null;
-            case "BOSS":
-                // 返回老板
-                return null;
-            case "SPECIFIED":
+            case DIRECT_SUPERIOR: {
+                EmployeeDetail detail = employeeDetailMapper.selectOne(
+                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<EmployeeDetail>()
+                                .eq(EmployeeDetail::getEmployeeId, applicant.getId())
+                );
+                return detail != null ? detail.getDirectReportId() : null;
+            }
+            case HR_MANAGER:
+            case FINANCE:
+            case BOSS:
+            case SPECIFIED:
                 return node.getApproverId();
             default:
                 return node.getApproverId();
@@ -354,38 +367,17 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
     // ========== 文本映射 ==========
 
     private String getBusinessTypeText(String businessType) {
-        if (businessType == null) return "未知";
-        switch (businessType) {
-            case "ONBOARDING": return "入职审批";
-            case "REGULARIZATION": return "转正审批";
-            case "TRANSFER": return "调岗审批";
-            case "RESIGNATION": return "离职审批";
-            case "LEAVE": return "请假审批";
-            case "PATCH_CLOCK": return "补卡审批";
-            case "SALARY_BATCH": return "薪资批次审批";
-            default: return businessType;
-        }
+        BusinessTypeEnum enumVal = BusinessTypeEnum.getEnumByValue(businessType);
+        return enumVal != null ? enumVal.getText() : (businessType != null ? businessType : "未知");
     }
 
     private String getStatusText(String status) {
-        if (status == null) return "未知";
-        switch (status) {
-            case "APPROVING": return "审批中";
-            case "APPROVED": return "已通过";
-            case "REJECTED": return "已拒绝";
-            case "WITHDRAWN": return "已撤回";
-            default: return status;
-        }
+        ApprovalRecordStatusEnum enumVal = ApprovalRecordStatusEnum.getEnumByValue(status);
+        return enumVal != null ? enumVal.getText() : (status != null ? status : "未知");
     }
 
     private String getActionText(String action) {
-        if (action == null) return "未知";
-        switch (action) {
-            case "PENDING": return "待审批";
-            case "APPROVE": return "通过";
-            case "REJECT": return "拒绝";
-            case "TRANSFER": return "转交";
-            default: return action;
-        }
+        ApprovalActionEnum enumVal = ApprovalActionEnum.getEnumByValue(action);
+        return enumVal != null ? enumVal.getText() : (action != null ? action : "未知");
     }
 }

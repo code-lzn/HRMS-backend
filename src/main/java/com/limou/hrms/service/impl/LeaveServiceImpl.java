@@ -6,17 +6,20 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.constant.AttendanceConstant;
 import com.limou.hrms.exception.ThrowUtils;
+import com.limou.hrms.mapper.EmployeeDetailMapper;
 import com.limou.hrms.mapper.LeaveMapper;
-import com.limou.hrms.model.entity.Attendance;
-import com.limou.hrms.model.entity.Employee;
-import com.limou.hrms.model.entity.Leave;
+import com.limou.hrms.model.entity.*;
+import com.limou.hrms.model.enums.ApprovalRecordStatusEnum;
 import com.limou.hrms.model.enums.ApprovalStatusEnum;
+import com.limou.hrms.model.enums.BusinessTypeEnum;
 import com.limou.hrms.model.enums.LeaveTypeEnum;
+import com.limou.hrms.model.enums.ProgressNodeStatusEnum;
 import com.limou.hrms.model.vo.LeaveProgressVO;
 import com.limou.hrms.model.vo.LeaveVO;
 import com.limou.hrms.service.AttendanceService;
 import com.limou.hrms.service.EmployeeService;
 import com.limou.hrms.service.LeaveService;
+import com.limou.hrms.service.ApprovalService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
@@ -44,6 +47,13 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
     @Resource
     private AttendanceService attendanceService;
 
+    @Resource
+    private EmployeeDetailMapper employeeDetailMapper;
+
+    @Resource
+    private ApprovalService approvalService;
+
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public LeaveVO apply(Long userId, Integer leaveType, String startDate, String endDate, String reason) {
@@ -66,6 +76,8 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
                 .ge(Leave::getEndDate, start)
                 .count();
         ThrowUtils.throwIf(overlapCount > 0, ErrorCode.LEAVE_OVERLAP_ERROR);
+        //去detail表查询审批人id
+        EmployeeDetail employeeDetail = employeeDetailMapper.selectById(emp.getId());
 
         Leave request = new Leave();
         request.setEmployeeId(emp.getId());
@@ -75,10 +87,14 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
         request.setEndDate(end);
         request.setTotalDays(BigDecimal.valueOf(days));
         request.setReason(reason);
+        request.setApproverId(employeeDetail.getDirectReportId());
         request.setStatus(AttendanceConstant.APPROVAL_STATUS_PENDING);
 
         boolean saved = this.save(request);
         ThrowUtils.throwIf(!saved, ErrorCode.OPERATION_ERROR, "请假申请失败");
+
+        // 同步到审批中心
+        approvalService.startApproval(BusinessTypeEnum.LEAVE.getValue(), request.getId(), emp.getId(), emp.getEmployeeName());
 
         // 同步更新考勤记录状态为"请假"
         updateAttendanceForLeave(emp.getId(), start, end);
@@ -138,7 +154,7 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
         // 节点1: 提交申请
         LeaveProgressVO.ProgressNode submitNode = new LeaveProgressVO.ProgressNode();
         submitNode.setNodeName("提交申请");
-        submitNode.setStatus(0); // 已完成
+        submitNode.setStatus(ProgressNodeStatusEnum.COMPLETED.getValue());
         submitNode.setOperatorName(emp != null ? emp.getEmployeeName() : null);
         submitNode.setOperateTime(request.getCreateTime());
         submitNode.setComment(request.getReason());
@@ -148,18 +164,18 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
         LeaveProgressVO.ProgressNode approveNode = new LeaveProgressVO.ProgressNode();
         approveNode.setNodeName("审批");
         if (request.getStatus() == AttendanceConstant.APPROVAL_STATUS_PENDING) {
-            approveNode.setStatus(1); // 进行中
+            approveNode.setStatus(ProgressNodeStatusEnum.IN_PROGRESS.getValue());
             approveNode.setOperatorName(null);
             approveNode.setOperateTime(null);
             approveNode.setComment(null);
         } else if (request.getStatus() == AttendanceConstant.APPROVAL_STATUS_CANCELLED) {
-            approveNode.setStatus(2); // 未开始/已跳过
+            approveNode.setStatus(ProgressNodeStatusEnum.NOT_STARTED.getValue());
             approveNode.setNodeName("审批（已撤销）");
             approveNode.setOperatorName(null);
             approveNode.setOperateTime(null);
             approveNode.setComment("申请人已撤销此申请");
         } else {
-            approveNode.setStatus(0); // 已完成
+            approveNode.setStatus(ProgressNodeStatusEnum.COMPLETED.getValue());
             Employee approver = request.getApproverId() != null
                     ? employeeService.lambdaQuery().eq(Employee::getId, request.getApproverId()).one()
                     : null;
@@ -186,6 +202,17 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
         request.setStatus(AttendanceConstant.APPROVAL_STATUS_CANCELLED);
         boolean updated = this.updateById(request);
         ThrowUtils.throwIf(!updated, ErrorCode.OPERATION_ERROR, "撤销失败");
+
+        // 同步到审批中心：更新审批记录状态为 WITHDRAWN
+        ApprovalRecord approvaRecord = approvalService.lambdaQuery()
+                .eq(ApprovalRecord::getBusinessType, BusinessTypeEnum.LEAVE.getValue())
+                .eq(ApprovalRecord::getBusinessId, requestId)
+                .one();
+        if (approvaRecord != null) {
+            approvaRecord.setStatus(ApprovalRecordStatusEnum.WITHDRAWN.getValue());
+            approvaRecord.setFinishedAt(new Date());
+            approvalService.updateById(approvaRecord);
+        }
 
         // 还原考勤状态
         revertAttendanceForLeave(request.getEmployeeId(), request.getStartDate(), request.getEndDate());

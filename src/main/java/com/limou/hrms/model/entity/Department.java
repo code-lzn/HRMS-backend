@@ -2,6 +2,7 @@ package com.limou.hrms.model.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
 
+import java.io.Serializable;
 import java.util.Date;
 import lombok.Data;
 
@@ -11,7 +12,7 @@ import lombok.Data;
  */
 @TableName(value ="department")
 @Data
-public class Department {
+public class Department implements Serializable {
     /**
      * 主键ID
      */
