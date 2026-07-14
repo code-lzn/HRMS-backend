@@ -83,11 +83,11 @@ UED：选填
 
 | 接口 | 说明 |
 | --- | --- |
-| `GET /api/employees/list` | 员工列表（分页+高级搜索） |
+| `GET /api/employee/list` | 员工列表（分页+高级搜索） |
 | `GET /api/departments/tree` | 部门下拉数据源 |
 | `GET /api/positions/list` | 职位下拉数据源 |
 | `GET /api/positions/sequences` | 职级下拉数据源 |
-| `GET /api/employees/export` | 批量导出 |
+| `GET /api/employee/export` | 批量导出 |
 
 ---
 
@@ -164,8 +164,8 @@ UED：选填
 
 | 接口 | 说明 |
 | --- | --- |
-| `GET /api/employees/detail?id={id}` | 员工详情 |
-| `GET /api/employees/field-permissions` | 字段权限 |
+| `GET /api/employee/detail?id={id}` | 员工详情 |
+| `GET /api/employee/field-permissions` | 字段权限 |
 
 ---
 
@@ -229,12 +229,12 @@ UED：选填
 
 | 接口 | 说明 |
 | --- | --- |
-| `POST /api/employees/add` | 新增员工 |
-| `POST /api/employees/generate-employee-no` | 预生成工号（可选） |
+| `POST /api/employee/add` | 新增员工 |
+| `POST /api/employee/generate-employee-no` | 预生成工号（可选） |
 | `GET /api/departments/tree` | 部门下拉 |
 | `GET /api/positions/list` | 职位下拉 |
 | `GET /api/positions/sequences` | 职级数据 |
-| `GET /api/employees/list` | 汇报人搜索 |
+| `GET /api/employee/list` | 汇报人搜索 |
 
 ---
 
@@ -268,8 +268,8 @@ UED：选填
 
 | 接口 | 说明 |
 | --- | --- |
-| `PUT /api/employees/update` | 更新员工 |
-| `GET /api/employees/field-permissions` | 获取字段权限 |
+| `PUT /api/employee/update` | 更新员工 |
+| `GET /api/employee/field-permissions` | 获取字段权限 |
 
 ---
 
@@ -290,7 +290,7 @@ UED：选填
 
 | 接口 | 说明 |
 | --- | --- |
-| `GET /api/employees/change-logs?employeeId={id}` | 变更历史 |
+| `GET /api/employee/change-logs?employeeId={id}` | 变更历史 |
 
 ---
 

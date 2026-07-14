@@ -213,7 +213,7 @@ CREATE TABLE IF NOT EXISTS `employee_change_log` (
 ### 1. 查询员工列表
 
 ```
-GET /api/employees/list?keyword=张三&departmentIds=7,8&positionIds=3&statuses=1,2&jobLevels=P5,P6&hireDateStart=2025-01-01&hireDateEnd=2025-12-31&page=1&size=20
+GET /api/employee/list?keyword=张三&departmentIds=7,8&positionIds=3&statuses=1,2&jobLevels=P5,P6&hireDateStart=2025-01-01&hireDateEnd=2025-12-31&page=1&size=20
 ```
 
 **请求参数**（Query String）：
@@ -262,7 +262,7 @@ GET /api/employees/list?keyword=张三&departmentIds=7,8&positionIds=3&statuses=
 ### 2. 查询员工详情
 
 ```
-GET /api/employees/detail?id=101
+GET /api/employee/detail?id=101
 ```
 
 **响应格式**（四分区结构）：
@@ -327,7 +327,7 @@ GET /api/employees/detail?id=101
 ### 3. 新增员工
 
 ```
-POST /api/employees/add
+POST /api/employee/add
 Content-Type: application/json
 ```
 
@@ -417,7 +417,7 @@ Content-Type: application/json
 ### 4. 更新员工
 
 ```
-PUT /api/employees/update
+PUT /api/employee/update
 Content-Type: application/json
 ```
 
@@ -448,7 +448,7 @@ Content-Type: application/json
 ### 5. 删除员工
 
 ```
-POST /api/employees/delete
+POST /api/employee/delete
 Content-Type: application/json
 ```
 
@@ -461,7 +461,7 @@ Content-Type: application/json
 ### 6. 生成工号
 
 ```
-POST /api/employees/generate-employee-no
+POST /api/employee/generate-employee-no
 Content-Type: application/json
 ```
 
@@ -474,7 +474,7 @@ Content-Type: application/json
 ### 7. 获取字段权限
 
 ```
-GET /api/employees/field-permissions
+GET /api/employee/field-permissions
 ```
 
 > 根据当前登录用户角色返回可见字段、可编辑字段、锁定字段列表，前端据此控制页面渲染。
@@ -497,7 +497,7 @@ GET /api/employees/field-permissions
 ### 8. 获取员工变更历史
 
 ```
-GET /api/employees/change-logs?employeeId=101&page=1&size=20
+GET /api/employee/change-logs?employeeId=101&page=1&size=20
 ```
 
 **响应格式**：
@@ -528,7 +528,7 @@ GET /api/employees/change-logs?employeeId=101&page=1&size=20
 ### 9. 批量导出员工
 
 ```
-GET /api/employees/export?departmentIds=7&statuses=1,2
+GET /api/employee/export?departmentIds=7&statuses=1,2
 ```
 
 > 按筛选条件导出 Excel，返回文件流。
@@ -539,12 +539,12 @@ GET /api/employees/export?departmentIds=7&statuses=1,2
 
 | # | 方法 | 路径 | 说明 |
 |---|---|---|---|
-| 1 | GET | `/api/employees/list` | 员工列表（分页 + 高级搜索） |
-| 2 | GET | `/api/employees/detail` | 员工详情（四分区，敏感字段脱敏） |
-| 3 | POST | `/api/employees/add` | 新增员工 + 自动创建系统账号 |
-| 4 | PUT | `/api/employees/update` | 更新员工（锁定字段拦截 + 变更日志） |
-| 5 | POST | `/api/employees/delete` | 删除员工（软删除） |
-| 6 | GET | `/api/employees/change-logs` | 员工变更历史 |
+| 1 | GET | `/api/employee/list` | 员工列表（分页 + 高级搜索） |
+| 2 | GET | `/api/employee/detail` | 员工详情（四分区，敏感字段脱敏） |
+| 3 | POST | `/api/employee/add` | 新增员工 + 自动创建系统账号 |
+| 4 | PUT | `/api/employee/update` | 更新员工（锁定字段拦截 + 变更日志） |
+| 5 | POST | `/api/employee/delete` | 删除员工（软删除） |
+| 6 | GET | `/api/employee/change-logs` | 员工变更历史 |
 
 > `generate-employee-no` 和 `field-permissions` 已改为 Service 内部方法，不对外暴露。
 
@@ -563,7 +563,7 @@ GET /api/employees/export?departmentIds=7&statuses=1,2
 
 ### 字段权限控制
 
-通过 `GET /api/employees/field-permissions` 返回当前角色权限：
+通过 `GET /api/employee/field-permissions` 返回当前角色权限：
 
 | 字段 | HR | 部门主管 | 普通员工 | 财务 |
 | --- | --- | --- | --- | --- |
