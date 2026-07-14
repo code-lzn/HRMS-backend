@@ -53,8 +53,6 @@ public class Employee implements Serializable {
     /** 入职日期 */
     private Date hireDate;
 
-    /** 入职类型 */
-    private Integer hireType;
 
     /** 录用类型 */
     private String employmentType;
@@ -69,9 +67,6 @@ public class Employee implements Serializable {
     @TableLogic
     private Integer isDeleted;
 
-    /** 薪资ID（DB暂无，后续扩展） */
-    @TableField(exist = false)
-    private Long salaryId;
 
     @TableField(exist = false)
     private static final long serialVersionUID = 1L;

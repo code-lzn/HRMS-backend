@@ -10,7 +10,9 @@ import com.limou.hrms.model.entity.Attendance;
 import com.limou.hrms.model.entity.Employee;
 import com.limou.hrms.model.entity.MakeupPunch;
 import com.limou.hrms.model.enums.ApprovalStatusEnum;
+import com.limou.hrms.model.enums.AttendanceStatusEnum;
 import com.limou.hrms.model.enums.MakeupPunchTypeEnum;
+import com.limou.hrms.model.enums.PunchTypeEnum;
 import com.limou.hrms.model.vo.MakeupPunchVO;
 import com.limou.hrms.service.ApprovalService;
 import com.limou.hrms.service.AttendanceService;
@@ -57,7 +59,7 @@ public class MakeupPunchServiceImpl extends ServiceImpl<MakeupPunchMapper, Makeu
         request.setPunchType(punchType);
         request.setPunchTime(DateUtil.parseDateTime(punchTime));
         request.setReason(reason);
-        request.setStatus(AttendanceConstant.APPROVAL_STATUS_PENDING);
+        request.setStatus(ApprovalStatusEnum.PENDING.getValue());
 
         boolean saved = this.save(request);
         ThrowUtils.throwIf(!saved, ErrorCode.OPERATION_ERROR, "补卡申请失败");
@@ -73,7 +75,7 @@ public class MakeupPunchServiceImpl extends ServiceImpl<MakeupPunchMapper, Makeu
     public MakeupPunchVO approve(Long requestId, Integer result, String comment, Long approverId) {
         MakeupPunch request = this.getById(requestId);
         ThrowUtils.throwIf(request == null, ErrorCode.NOT_FOUND_ERROR, "补卡申请不存在");
-        ThrowUtils.throwIf(request.getStatus() != AttendanceConstant.APPROVAL_STATUS_PENDING,
+        ThrowUtils.throwIf(request.getStatus() != ApprovalStatusEnum.PENDING.getValue(),
                 ErrorCode.APPROVAL_NOT_PENDING_ERROR);
 
         Date now = new Date();
@@ -86,7 +88,7 @@ public class MakeupPunchServiceImpl extends ServiceImpl<MakeupPunchMapper, Makeu
         ThrowUtils.throwIf(!updated, ErrorCode.OPERATION_ERROR, "审批失败");
 
         // 审批通过后，更新打卡记录
-        if (Objects.equals(result, AttendanceConstant.APPROVAL_STATUS_APPROVED)) {
+        if (Objects.equals(result, ApprovalStatusEnum.APPROVED.getValue())) {
             updateAttendanceRecord(request);
         }
 
@@ -138,12 +140,12 @@ public class MakeupPunchServiceImpl extends ServiceImpl<MakeupPunchMapper, Makeu
             record.setEmployeeId(makeup.getEmployeeId());
             record.setUserId(makeup.getUserId());
             record.setAttendanceDate(makeup.getPunchDate());
-            record.setStatus(AttendanceConstant.ATTENDANCE_STATUS_NORMAL);
-            record.setPunchInType(AttendanceConstant.PUNCH_TYPE_WEB);
-            record.setPunchOutType(AttendanceConstant.PUNCH_TYPE_WEB);
+            record.setStatus(AttendanceStatusEnum.NORMAL.getValue());
+            record.setPunchInType(PunchTypeEnum.WEB.getValue());
+            record.setPunchOutType(PunchTypeEnum.WEB.getValue());
         }
 
-        if (Objects.equals(makeup.getPunchType(), AttendanceConstant.MAKEUP_TYPE_PUNCH_IN)) {
+        if (Objects.equals(makeup.getPunchType(), MakeupPunchTypeEnum.PUNCH_IN.getValue())) {
             record.setPunchInTime(makeup.getPunchTime());
         } else {
             record.setPunchOutTime(makeup.getPunchTime());
@@ -151,7 +153,7 @@ public class MakeupPunchServiceImpl extends ServiceImpl<MakeupPunchMapper, Makeu
 
         // 补卡后状态恢复正常
         if (record.getPunchInTime() != null && record.getPunchOutTime() != null) {
-            record.setStatus(AttendanceConstant.ATTENDANCE_STATUS_NORMAL);
+            record.setStatus(AttendanceStatusEnum.NORMAL.getValue());
         }
 
         attendanceService.saveOrUpdate(record);
