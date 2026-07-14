@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.limou.hrms.builder.ApprovalNodeBuilder;
 import com.limou.hrms.builder.ApprovalNodeBuilderFactory;
+import com.limou.hrms.builder.ApproverResolver;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.mapper.*;
@@ -41,9 +42,9 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
     @Resource
     private EmployeeMapper employeeMapper;
     @Resource
-    private UserMapper userMapper;
-    @Resource
     private ApprovalDelegateService approvalDelegateService;
+    @Resource
+    private ApproverResolver approverResolver;
 
     /** Spring 自动注入所有 ApprovalCallback 实现（各业务模块），可能为空 */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
@@ -57,7 +58,7 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
         List<ApprovalNode> nodes = builder.build(bizId, applicantId);
 
         // 2. 生成审批标题
-        String applicantName = getEmployeeName(applicantId);
+        String applicantName = approverResolver.getEmployeeName(applicantId);
         String title = applicantName + "的" + bizType.getDesc();
 
         // 3. 保存审批实例
@@ -302,7 +303,7 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
                 vo.setBizTypeDesc(bizType != null ? bizType.getDesc() : instance.getBizType());
                 vo.setTitle(instance.getTitle());
                 vo.setApplicantId(instance.getApplicantId());
-                vo.setApplicantName(getEmployeeName(instance.getApplicantId()));
+                vo.setApplicantName(approverResolver.getEmployeeName(instance.getApplicantId()));
                 vo.setCreateTime(instance.getCreateTime());
             }
             vo.setNodeName(node.getNodeName());
@@ -343,7 +344,7 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
                 ApprovalBizType bizType = ApprovalBizType.fromCode(instance.getBizType());
                 vo.setBizTypeDesc(bizType != null ? bizType.getDesc() : instance.getBizType());
                 vo.setTitle(instance.getTitle());
-                vo.setApplicantName(getEmployeeName(instance.getApplicantId()));
+                vo.setApplicantName(approverResolver.getEmployeeName(instance.getApplicantId()));
             }
             vo.setNodeName(node.getNodeName());
             vo.setNodeStatus(node.getStatus());
@@ -384,7 +385,7 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
         ApprovalStatus as = ApprovalStatus.fromCode(instance.getStatus());
         vo.setStatusDesc(as != null ? as.getDesc() : "");
         vo.setApplicantId(instance.getApplicantId());
-        vo.setApplicantName(getEmployeeName(instance.getApplicantId()));
+        vo.setApplicantName(approverResolver.getEmployeeName(instance.getApplicantId()));
         vo.setCurrentNodeOrder(instance.getCurrentNodeOrder());
         vo.setCreateTime(instance.getCreateTime());
 
@@ -394,10 +395,10 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
             nvo.setNodeName(node.getNodeName());
             nvo.setNodeOrder(node.getNodeOrder());
             nvo.setApproverId(node.getApproverId());
-            nvo.setApproverName(getEmployeeName(node.getApproverId()));
+            nvo.setApproverName(approverResolver.getEmployeeName(node.getApproverId()));
             nvo.setOriginalApproverId(node.getOriginalApproverId());
             nvo.setOriginalApproverName(node.getOriginalApproverId() != null
-                    ? getEmployeeName(node.getOriginalApproverId()) : null);
+                    ? approverResolver.getEmployeeName(node.getOriginalApproverId()) : null);
             nvo.setStatus(node.getStatus());
             NodeStatus ns = NodeStatus.fromCode(node.getStatus());
             nvo.setStatusDesc(ns != null ? ns.getDesc() : "");
@@ -445,17 +446,6 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
         if (NodeStatus.PENDING.getCode() != node.getStatus()) {
             throw new BusinessException(ErrorCode.APPROVAL_NODE_ALREADY_HANDLED);
         }
-    }
-
-    /**
-     * 根据 employee.id 获取员工姓名
-     */
-    private String getEmployeeName(Long employeeId) {
-        if (employeeId == null) return null;
-        Employee emp = employeeMapper.selectById(employeeId);
-        if (emp == null) return null;
-        User user = userMapper.selectById(emp.getUserId());
-        return user != null ? user.getUserName() : emp.getEmployeeNo();
     }
 
     /**

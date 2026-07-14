@@ -1,9 +1,7 @@
 package com.limou.hrms.builder;
 
-import com.limou.hrms.mapper.EmployeeMapper;
 import com.limou.hrms.mapper.SalaryBatchMapper;
 import com.limou.hrms.model.entity.ApprovalNode;
-import com.limou.hrms.model.entity.Employee;
 import com.limou.hrms.model.entity.SalaryBatch;
 import com.limou.hrms.model.enums.ApprovalBizType;
 import com.limou.hrms.model.enums.NodeStatus;
@@ -22,7 +20,7 @@ public class SalaryBatchNodeBuilder implements ApprovalNodeBuilder {
     @Resource
     private SalaryBatchMapper salaryBatchMapper;
     @Resource
-    private EmployeeMapper employeeMapper;
+    private ApproverResolver approverResolver;
 
     @Override
     public List<ApprovalNode> build(Long bizId, Long applicantId) {
@@ -32,41 +30,19 @@ public class SalaryBatchNodeBuilder implements ApprovalNodeBuilder {
         }
 
         List<ApprovalNode> nodes = new ArrayList<>();
-        int order = 1;
 
         // Node 1: 财务专员
-        ApprovalNode node1 = new ApprovalNode();
-        node1.setNodeName("财务专员审批");
-        node1.setNodeOrder(order);
-        node1.setApproverId(resolveFinanceApprover());
-        node1.setStatus(NodeStatus.PENDING.getCode());
-        nodes.add(node1);
+        Long financeApproverId = approverResolver.resolveFinanceApprover();
+        if (financeApproverId != null) {
+            ApprovalNode node1 = new ApprovalNode();
+            node1.setNodeName("财务专员审批");
+            node1.setNodeOrder(1);
+            node1.setApproverId(financeApproverId);
+            node1.setStatus(NodeStatus.PENDING.getCode());
+            nodes.add(node1);
+        }
 
         return nodes;
-    }
-
-    /**
-     * 查找财务专员。查 user 表 user_role='finance'，映射到 employee 表。
-     */
-    private Long resolveFinanceApprover() {
-        List<Employee> financeEmployees = employeeMapper.selectList(
-                new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<Employee>()
-                        .inSql("user_id", "SELECT id FROM user WHERE user_role = 'finance' AND is_deleted = 0")
-                        .eq("is_deleted", 0)
-                        .last("LIMIT 1")
-        );
-        if (!financeEmployees.isEmpty()) {
-            return financeEmployees.get(0).getId();
-        }
-        List<Employee> all = employeeMapper.selectList(
-                new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<Employee>()
-                        .eq("is_deleted", 0)
-                        .last("LIMIT 1")
-        );
-        if (!all.isEmpty()) {
-            return all.get(0).getId();
-        }
-        return 1L;
     }
 
     @Override
