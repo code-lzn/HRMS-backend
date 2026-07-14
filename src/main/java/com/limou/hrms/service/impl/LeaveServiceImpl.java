@@ -13,6 +13,7 @@ import com.limou.hrms.model.enums.ApprovalRecordStatusEnum;
 import com.limou.hrms.model.enums.ApprovalStatusEnum;
 import com.limou.hrms.model.enums.BusinessTypeEnum;
 import com.limou.hrms.model.enums.LeaveTypeEnum;
+import com.limou.hrms.model.enums.ProgressNodeStatusEnum;
 import com.limou.hrms.model.vo.LeaveProgressVO;
 import com.limou.hrms.model.vo.LeaveVO;
 import com.limou.hrms.service.AttendanceService;
@@ -153,7 +154,7 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
         // 节点1: 提交申请
         LeaveProgressVO.ProgressNode submitNode = new LeaveProgressVO.ProgressNode();
         submitNode.setNodeName("提交申请");
-        submitNode.setStatus(0); // 已完成
+        submitNode.setStatus(ProgressNodeStatusEnum.COMPLETED.getValue());
         submitNode.setOperatorName(emp != null ? emp.getEmployeeName() : null);
         submitNode.setOperateTime(request.getCreateTime());
         submitNode.setComment(request.getReason());
@@ -163,18 +164,18 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
         LeaveProgressVO.ProgressNode approveNode = new LeaveProgressVO.ProgressNode();
         approveNode.setNodeName("审批");
         if (request.getStatus() == AttendanceConstant.APPROVAL_STATUS_PENDING) {
-            approveNode.setStatus(1); // 进行中
+            approveNode.setStatus(ProgressNodeStatusEnum.IN_PROGRESS.getValue());
             approveNode.setOperatorName(null);
             approveNode.setOperateTime(null);
             approveNode.setComment(null);
         } else if (request.getStatus() == AttendanceConstant.APPROVAL_STATUS_CANCELLED) {
-            approveNode.setStatus(2); // 未开始/已跳过
+            approveNode.setStatus(ProgressNodeStatusEnum.NOT_STARTED.getValue());
             approveNode.setNodeName("审批（已撤销）");
             approveNode.setOperatorName(null);
             approveNode.setOperateTime(null);
             approveNode.setComment("申请人已撤销此申请");
         } else {
-            approveNode.setStatus(0); // 已完成
+            approveNode.setStatus(ProgressNodeStatusEnum.COMPLETED.getValue());
             Employee approver = request.getApproverId() != null
                     ? employeeService.lambdaQuery().eq(Employee::getId, request.getApproverId()).one()
                     : null;
@@ -204,7 +205,7 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
 
         // 同步到审批中心：更新审批记录状态为 WITHDRAWN
         ApprovalRecord approvaRecord = approvalService.lambdaQuery()
-                .eq(ApprovalRecord::getBusinessType, "LEAVE")
+                .eq(ApprovalRecord::getBusinessType, BusinessTypeEnum.LEAVE.getValue())
                 .eq(ApprovalRecord::getBusinessId, requestId)
                 .one();
         if (approvaRecord != null) {

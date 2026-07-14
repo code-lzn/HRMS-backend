@@ -22,7 +22,13 @@ public class ApprovalRecord implements Serializable {
     /** 审批流定义ID */
     private Long flowId;
 
-    /** 业务类型 */
+    /** 业务类型     ONBOARDING("ONBOARDING", "入职审批"),
+     REGULARIZATION("REGULARIZATION", "转正审批"),
+     TRANSFER("TRANSFER", "调岗审批"),
+     RESIGNATION("RESIGNATION", "离职审批"),
+     LEAVE("LEAVE", "请假审批"),
+     PATCH_CLOCK("PATCH_CLOCK", "补卡审批"),
+     SALARY_BATCH("SALARY_BATCH", "薪资批次审批");*/
     private String businessType;
 
     /** 关联业务表记录ID */
