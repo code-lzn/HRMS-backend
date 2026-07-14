@@ -75,3 +75,8 @@ knife4j:
         api-rule: package
         api-rule-resources:
           - com.limou.hrms.controller
+
+# 审批中心默认配置（dev/prd 环境可按需覆盖）
+approval:
+  hr-node:
+    enabled: true  # HR负责人审批节点开关
