@@ -60,7 +60,7 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
     private UserMapper userMapper;
 
     private static final Set<String> EDITABLE_FIELDS = Set.of("email", "currentAddress", "emergencyContactName");
-    private static final Set<String> LOCKED_FIELDS = Set.of("phone", "idCard", "departmentId", "positionId", "jobLevel", "directReportId", "workLocation", "hireType", "employmentType", "contractType", "contractExpireDate", "probationRatio", "baseSalary", "bankAccount", "bankName");
+    private static final Set<String> LOCKED_FIELDS = Set.of("phone", "idCard", "departmentId", "positionId", "jobLevel", "directReportId", "workLocation", "employmentType", "contractType", "contractExpireDate", "probationRatio", "baseSalary", "bankAccount", "bankName");
     private static final String SALT = "hrms";
 
     // ==================== 员工档案管理 ====================
@@ -162,9 +162,7 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
         emp.setEmail(request.getEmail());
         emp.setDepartmentId(request.getDepartmentId());
         emp.setPositionId(request.getPositionId());
-        emp.setJobLevel(request.getJobLevel());
         emp.setHireDate(request.getHireDate());
-        emp.setHireType(request.getHireType());
         emp.setEmploymentType(request.getEmploymentType());
         this.save(emp);
 
@@ -182,6 +180,7 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
         detail.setBaseSalary(request.getBaseSalary());
         detail.setBankAccount(request.getBankAccount());
         detail.setBankName(request.getBankName());
+        detail.setJobLevel(request.getJobLevel());
         detail.setEmergencyContactName(request.getEmergencyContactName());
         detail.setEmergencyContactPhone(request.getEmergencyContactPhone());
         employeeDetailMapper.insert(detail);
@@ -299,7 +298,8 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
 
         Department department = departmentService.getById(emp.getDepartmentId());
         Position position = positionService.getById(emp.getPositionId());
-        EmpSalaryProfile salary = emp.getSalaryId() != null ? salaryProfileService.getById(emp.getSalaryId()) : null;
+        EmpSalaryProfile salary = salaryProfileService.lambdaQuery()
+                .eq(EmpSalaryProfile::getEmployeeId, emp.getId()).one();
         EmpProfileVO vo = new EmpProfileVO();
         BeanUtils.copyProperties(emp, vo);
         if (detail != null) BeanUtils.copyProperties(detail, vo);
