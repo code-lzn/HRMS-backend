@@ -40,10 +40,12 @@ public class ApprovalDelegateServiceImpl extends ServiceImpl<ApprovalDelegateMap
     public ApprovalDelegate createDelegate(Long delegatorId, Long delegateId, LocalDateTime startTime, LocalDateTime endTime) {
         // 校验：不能委托给自己
         if (delegatorId.equals(delegateId)) {
+            log.warn("不能委托给自己: delegatorId={}, delegateId={}", delegatorId, delegateId);
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "不能委托给自己");
         }
         // 校验：endTime > startTime
         if (!endTime.isAfter(startTime)) {
+            log.warn("结束时间必须晚于开始时间: startTime={}, endTime={}", startTime, endTime);
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "结束时间必须晚于开始时间");
         }
         // 校验：时间不重叠
@@ -54,6 +56,8 @@ public class ApprovalDelegateServiceImpl extends ServiceImpl<ApprovalDelegateMap
                         .lt("start_time", endTime)
                         .gt("end_time", startTime));
         if (overlap > 0) {
+            log.warn("委托时间与已有委托冲突: delegatorId={}, delegateId={}, startTime={}, endTime={}",
+                    delegatorId, delegateId, startTime, endTime);
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "委托时间与已有委托冲突");
         }
 
@@ -74,9 +78,12 @@ public class ApprovalDelegateServiceImpl extends ServiceImpl<ApprovalDelegateMap
     public void cancelDelegate(Long delegateId, Long delegatorId) {
         ApprovalDelegate delegate = approvalDelegateMapper.selectById(delegateId);
         if (delegate == null) {
+            log.warn("委托不存在: delegateId={}", delegateId);
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "委托不存在");
         }
         if (!delegate.getDelegatorId().equals(delegatorId)) {
+            log.warn("仅委托人可取消委托: delegateId={}, delegatorId={}",
+                    delegateId, delegatorId);
             throw new BusinessException(ErrorCode.FORBIDDEN_ERROR, "仅委托人可取消委托");
         }
         delegate.setEnabled(0);

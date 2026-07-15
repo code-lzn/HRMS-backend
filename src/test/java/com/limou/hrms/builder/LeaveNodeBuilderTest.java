@@ -70,6 +70,7 @@ class LeaveNodeBuilderTest {
         assertEquals(2, nodes.size());
         assertEquals("直接上级审批", nodes.get(0).getNodeName());
         assertEquals("部门负责人审批", nodes.get(1).getNodeName());
+        assertEquals(DIRECT_LEADER_ID, nodes.get(0).getApproverId());
         assertEquals(DEPT_MANAGER_ID, nodes.get(1).getApproverId());
     }
 
@@ -82,6 +83,8 @@ class LeaveNodeBuilderTest {
         List<ApprovalNode> nodes = builder.build(BIZ_ID, APPLICANT_ID);
 
         assertEquals(1, nodes.size());
+        assertEquals("直接上级审批", nodes.get(0).getNodeName());
+        assertEquals(DIRECT_LEADER_ID, nodes.get(0).getApproverId());
     }
 
     /** 病假 1天 → 仅直接上级 */
@@ -93,6 +96,8 @@ class LeaveNodeBuilderTest {
         List<ApprovalNode> nodes = builder.build(BIZ_ID, APPLICANT_ID);
 
         assertEquals(1, nodes.size());
+        assertEquals("直接上级审批", nodes.get(0).getNodeName());
+        assertEquals(DIRECT_LEADER_ID, nodes.get(0).getApproverId());
     }
 
     /** 病假 2天 → 直接上级 + 部门负责人 */
@@ -104,7 +109,10 @@ class LeaveNodeBuilderTest {
         List<ApprovalNode> nodes = builder.build(BIZ_ID, APPLICANT_ID);
 
         assertEquals(2, nodes.size());
+        assertEquals("直接上级审批", nodes.get(0).getNodeName());
+        assertEquals(DIRECT_LEADER_ID, nodes.get(0).getApproverId());
         assertEquals("部门负责人审批", nodes.get(1).getNodeName());
+        assertEquals(DEPT_MANAGER_ID, nodes.get(1).getApproverId());
     }
 
     /** 事假 0.5天 → 仅直接上级 */
@@ -116,6 +124,8 @@ class LeaveNodeBuilderTest {
         List<ApprovalNode> nodes = builder.build(BIZ_ID, APPLICANT_ID);
 
         assertEquals(1, nodes.size());
+        assertEquals("直接上级审批", nodes.get(0).getNodeName());
+        assertEquals(DIRECT_LEADER_ID, nodes.get(0).getApproverId());
     }
 
     /** 事假 2天 → 直接上级 + 部门负责人 */

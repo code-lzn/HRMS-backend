@@ -175,6 +175,7 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
     @CacheEvict(value = "pendingCount", key = "#employeeId")
     public void reject(Long nodeId, Long employeeId, String comment) {
         if (StringUtils.isBlank(comment)) {
+            log.warn("拒绝时必须填写审批意见，不能为空: comment={}, nodeId={}", comment, nodeId);
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "拒绝时必须填写审批意见");
         }
         ApprovalNode node = getNodeOrThrow(nodeId);
@@ -192,6 +193,7 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
         node.setComment(comment);
         node.setOperateTime(LocalDateTime.now());
         approvalNodeMapper.updateById(node);
+        log.info("审批节点已拒绝: nodeId={}", nodeId);
 
         // 更新实例
         ApprovalInstance instance = getInstanceOrThrow(node.getInstanceId());
@@ -200,7 +202,7 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
 
         // 触发拒绝回调
         invokeCallback(instance, false);
-        log.info("审批已拒绝: instanceId={}", instance.getId());
+        log.info("审批实例已拒绝: instanceId={}", instance.getId());
     }
 
     @Override
@@ -212,11 +214,13 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
         validateNodePending(node);
 
         if (toEmployeeId.equals(fromEmployeeId)) {
+            log.warn("不能转交给自己: nodeId={}", nodeId);
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "不能转交给自己");
         }
         // 验证目标审批人存在
         Employee target = employeeMapper.selectById(toEmployeeId);
         if (target == null) {
+            log.warn("目标审批人不存在: nodeId={}", nodeId);
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "目标审批人不存在");
         }
 
@@ -456,6 +460,7 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
     private ApprovalNode getNodeOrThrow(Long nodeId) {
         ApprovalNode node = approvalNodeMapper.selectById(nodeId);
         if (node == null) {
+            log.warn("审批节点不存在: nodeId={}", nodeId);
             throw new BusinessException(ErrorCode.APPROVAL_NODE_NOT_FOUND);
         }
         return node;
@@ -464,6 +469,7 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
     private ApprovalInstance getInstanceOrThrow(Long instanceId) {
         ApprovalInstance instance = approvalInstanceMapper.selectById(instanceId);
         if (instance == null) {
+            log.warn("审批实例不存在: instanceId={}", instanceId);
             throw new BusinessException(ErrorCode.APPROVAL_INSTANCE_NOT_FOUND);
         }
         return instance;
@@ -474,6 +480,8 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
             // 检查当前用户是否为 node 审批人的有效委托人
             Long resolvedApprover = approvalDelegateService.resolveApprover(node.getApproverId());
             if (!employeeId.equals(resolvedApprover)) {
+                log.warn("当前用户不是审批人有效委托人: nodeId={}, employeeId={}",
+                        node.getId(), employeeId);
                 throw new BusinessException(ErrorCode.APPROVAL_NODE_NOT_OWNER);
             }
         }
@@ -481,9 +489,11 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
 
     private void validateNodePending(ApprovalNode node) {
         if (NodeStatus.TIMEOUT.getCode() == node.getStatus()) {
+            log.warn("审批节点超时: nodeId={}", node.getId());
             throw new BusinessException(ErrorCode.APPROVAL_NODE_TIMEOUT);
         }
         if (NodeStatus.PENDING.getCode() != node.getStatus()) {
+            log.warn("审批节点已处理, 不能重复操作: nodeId={}", node.getId());
             throw new BusinessException(ErrorCode.APPROVAL_NODE_ALREADY_HANDLED);
         }
     }
