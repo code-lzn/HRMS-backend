@@ -386,7 +386,7 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
 
     private int validateParentAndDepth(Long parentId) {
         if (parentId == null) {
-            return 1;
+            throw new BusinessException(ErrorCode.DEPARTMENT_PARENT_REQUIRED);
         }
         getUndeletedDeptOrThrow(parentId);
         int level = calculateLevel(parentId);

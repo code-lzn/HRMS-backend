@@ -27,8 +27,9 @@ public class DepartmentCreateRequest implements Serializable {
     private String code;
 
     /**
-     * 上级部门ID，不传或null表示根部门
+     * 上级部门ID（必填，不允许创建根部门）
      */
+    @NotNull(message = "必须指定上级部门")
     private Long parentId;
 
     /**

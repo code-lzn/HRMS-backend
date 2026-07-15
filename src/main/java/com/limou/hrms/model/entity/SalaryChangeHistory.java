@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import java.io.Serializable;
+import java.time.LocalDate;
 import java.util.Date;
 import lombok.Data;
 
@@ -41,7 +42,7 @@ public class SalaryChangeHistory implements Serializable {
     /**
      * 生效日期
      */
-    private Date effectiveDate;
+    private LocalDate effectiveDate;
 
     /**
      * 操作人 ID（HR）→ user.id

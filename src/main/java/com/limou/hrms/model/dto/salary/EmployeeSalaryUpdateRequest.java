@@ -4,6 +4,7 @@ import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.io.Serializable;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.Date;
 import lombok.Data;
 
@@ -33,7 +34,7 @@ public class EmployeeSalaryUpdateRequest implements Serializable {
     private BigDecimal performanceBase;
 
     @ApiModelProperty("生效日期")
-    private Date effectiveDate;
+    private LocalDate effectiveDate;
 
     @ApiModelProperty("变更备注")
     private String remark;

@@ -27,6 +27,7 @@ public enum ErrorCode {
     DEPARTMENT_MAX_DEPTH_EXCEEDED(30005, "超过最大层级深度5级"),
     DEPARTMENT_SORT_ORDER_DUPLICATE(30006, "同级部门中排序序号重复"),
     DEPARTMENT_CIRCULAR_REF(30007, "不能将部门移动到自身或子部门下"),
+    DEPARTMENT_PARENT_REQUIRED(30008, "必须指定上级部门，不允许创建根部门"),
     POSITION_NOT_FOUND(30010, "职位不存在"),
     POSITION_HAS_EMPLOYEES(30011, "该职位下有在职员工关联，请先调整员工职位"),
     POSITION_LEVEL_RANGE_INVALID(30012, "职级范围不合法"),
