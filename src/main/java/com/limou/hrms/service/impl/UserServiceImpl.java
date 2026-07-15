@@ -21,6 +21,7 @@ import com.limou.hrms.model.vo.UserVO;
 import com.limou.hrms.service.EmployeeService;
 import com.limou.hrms.service.LoginLogService;
 import com.limou.hrms.service.PasswordHistoryService;
+import com.limou.hrms.service.PermissionService;
 import com.limou.hrms.service.UserService;
 import com.limou.hrms.utils.SqlUtils;
 import java.util.ArrayList;
@@ -35,6 +36,7 @@ import javax.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.util.DigestUtils;
 
@@ -62,6 +64,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
     @Resource
     private RoleMapper roleMapper;
+
+    @Lazy
+    @Resource
+    private PermissionService permissionService;
 
     @Override
     public long userRegister(String userAccount, String userPassword, String checkPassword) {
@@ -231,7 +237,19 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
     @Override
     public boolean isAdmin(User user) {
-        return user != null && UserRoleEnum.ADMIN.getValue().equals(user.getUserRole());
+        if (user == null) {
+            return false;
+        }
+        // 旧版：userRole 字段为 admin
+        if (UserRoleEnum.ADMIN.getValue().equals(user.getUserRole())) {
+            return true;
+        }
+        // 新版 RBAC：通过 roleId 关联的角色拥有管理员等效权限
+        if (user.getRoleId() != null) {
+            return permissionService.hasPermission(user.getId(), "*:*:*") ||
+                   permissionService.hasPermission(user.getId(), "role:manage");
+        }
+        return false;
     }
 
     /**
