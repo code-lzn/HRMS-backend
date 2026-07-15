@@ -1,4 +1,4 @@
-package com.limou.hrms.config;
+package com.limou.hrms.interceptor;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.limou.hrms.mapper.EmployeeMapper;

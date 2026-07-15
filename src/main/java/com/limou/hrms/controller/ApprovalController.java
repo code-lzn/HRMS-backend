@@ -267,14 +267,14 @@ public class ApprovalController {
     /**
      * 从请求属性获取当前操作人的 employee.id。
      *
-     * <p>由 {@link com.limou.hrms.config.EmployeeResolveInterceptor} 在请求进入时
+     * <p>由 {@link com.limou.hrms.interceptor.EmployeeResolveInterceptor} 在请求进入时
      * 解析并写入 {@code currentEmployeeId} 属性，无需每次查 DB。
      */
     private Long getCurrentEmployeeId() {
         ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.currentRequestAttributes();
         HttpServletRequest request = attrs.getRequest();
         Long employeeId = (Long) request.getAttribute(
-                com.limou.hrms.config.EmployeeResolveInterceptor.CURRENT_EMPLOYEE_ID);
+                com.limou.hrms.interceptor.EmployeeResolveInterceptor.CURRENT_EMPLOYEE_ID);
         if (employeeId == null) {
             throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR, "未登录或未关联员工档案");
         }

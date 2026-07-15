@@ -1,5 +1,6 @@
 package com.limou.hrms.config;
 
+import com.limou.hrms.interceptor.EmployeeResolveInterceptor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
