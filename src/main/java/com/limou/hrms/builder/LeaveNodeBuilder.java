@@ -1,6 +1,5 @@
 package com.limou.hrms.builder;
 
-import com.limou.hrms.config.ApprovalConfig;
 import com.limou.hrms.mapper.DepartmentMapper;
 import com.limou.hrms.mapper.EmployeeWorkInfoMapper;
 import com.limou.hrms.mapper.LeaveRequestMapper;
@@ -43,8 +42,6 @@ public class LeaveNodeBuilder implements ApprovalNodeBuilder {
     private EmployeeWorkInfoMapper employeeWorkInfoMapper;
     @Resource
     private DepartmentMapper departmentMapper;
-    @Resource
-    private ApprovalConfig approvalConfig;
     @Resource
     private ApproverResolver approverResolver;
 

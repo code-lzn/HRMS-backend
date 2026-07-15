@@ -1,6 +1,5 @@
 package com.limou.hrms.builder;
 
-import com.limou.hrms.config.ApprovalConfig;
 import com.limou.hrms.mapper.DepartmentMapper;
 import com.limou.hrms.mapper.EmployeeWorkInfoMapper;
 import com.limou.hrms.mapper.ResignationApplicationMapper;
@@ -17,7 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 离职审批节点构建器：Node1=部门负责人 → Node2=HR负责人（可配置开关）
+ * 离职审批节点构建器：Node1=部门负责人 → Node2=HR负责人（必须）
  */
 @Component
 public class ResignationNodeBuilder implements ApprovalNodeBuilder {
@@ -28,8 +27,6 @@ public class ResignationNodeBuilder implements ApprovalNodeBuilder {
     private EmployeeWorkInfoMapper employeeWorkInfoMapper;
     @Resource
     private DepartmentMapper departmentMapper;
-    @Resource
-    private ApprovalConfig approvalConfig;
     @Resource
     private ApproverResolver approverResolver;
 
@@ -63,17 +60,15 @@ public class ResignationNodeBuilder implements ApprovalNodeBuilder {
         node1.setStatus(NodeStatus.PENDING.getCode());
         nodes.add(node1);
 
-        // Node 2: HR负责人（可配置开关，默认开启）
-        if (approvalConfig.getHrNode().isEnabled()) {
-            Long hrApproverId = approverResolver.resolveHrApprover();
-            if (hrApproverId != null) {
-                ApprovalNode node2 = new ApprovalNode();
-                node2.setNodeName("HR负责人审批");
-                node2.setNodeOrder(order);
-                node2.setApproverId(hrApproverId);
-                node2.setStatus(NodeStatus.PENDING.getCode());
-                nodes.add(node2);
-            }
+        // Node 2: HR负责人（必须）
+        Long hrApproverId = approverResolver.resolveHrApprover();
+        if (hrApproverId != null) {
+            ApprovalNode node2 = new ApprovalNode();
+            node2.setNodeName("HR负责人审批");
+            node2.setNodeOrder(order);
+            node2.setApproverId(hrApproverId);
+            node2.setStatus(NodeStatus.PENDING.getCode());
+            nodes.add(node2);
         }
 
         return nodes;
