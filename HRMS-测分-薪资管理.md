@@ -7,6 +7,7 @@
 | **日期** | **版本** | **修订说明** | **作者** |
 | --- | --- | --- | --- |
 | 2026-07-13 | 1.0 | 初稿 | 陆博 |
+| 2026-07-15 | 2.0 | API 路径统一为 /api/salary-manage/*；增补权限测试 | 陆博 |
 
 ## 项目背景
 
@@ -73,7 +74,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `GET /api/v1/salary-accounts` |
+| 接口 | `GET /api/salary-manage/accounts` |
 | 前置条件 | HR 专员登录 |
 | 测试步骤 | 调用接口 |
 | 预期结果 | code=0，返回所有未删除的账套列表，每个账套含工资项目子列表 |
@@ -83,7 +84,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `POST /api/v1/salary-accounts` |
+| 接口 | `POST /api/salary-manage/accounts` |
 | 前置条件 | HR 专员登录 |
 | 测试步骤 | 提交完整账套信息（名称/适用范围/生效日期 + 工资项目列表） |
 | 预期结果 | code=0，返回新账套 ID，数据库写入成功 |
@@ -93,7 +94,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `POST /api/v1/salary-accounts` |
+| 接口 | `POST /api/salary-manage/accounts` |
 | 前置条件 | HR 专员登录 |
 | 测试步骤 | 账套名称为空 |
 | 预期结果 | code=40000，参数校验失败 |
@@ -103,7 +104,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `POST /api/v1/salary-accounts` |
+| 接口 | `POST /api/salary-manage/accounts` |
 | 前置条件 | HR 专员登录 |
 | 测试步骤 | scopeType 传 99 |
 | 预期结果 | code=40000，参数校验失败 |
@@ -113,7 +114,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `PUT /api/v1/salary-accounts/{id}` |
+| 接口 | `PUT /api/salary-manage/accounts/{id}` |
 | 前置条件 | HR 专员登录 |
 | 测试步骤 | 修改账套名称或适用范围 |
 | 预期结果 | code=0，更新成功 |
@@ -123,7 +124,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `PUT /api/v1/salary-accounts/{id}` |
+| 接口 | `PUT /api/salary-manage/accounts/{id}` |
 | 前置条件 | HR 专员登录 |
 | 测试步骤 | id=999999 |
 | 预期结果 | code=40400，账套不存在 |
@@ -133,7 +134,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `DELETE /api/v1/salary-accounts/{id}` |
+| 接口 | `DELETE /api/salary-manage/accounts/{id}` |
 | 前置条件 | HR 专员登录，账套未被任何员工薪资档案引用 |
 | 测试步骤 | 调用删除 |
 | 预期结果 | code=0，软删除成功 |
@@ -143,7 +144,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `DELETE /api/v1/salary-accounts/{id}` |
+| 接口 | `DELETE /api/salary-manage/accounts/{id}` |
 | 前置条件 | HR 专员登录，账套已被员工薪资档案引用 |
 | 测试步骤 | 调用删除 |
 | 预期结果 | code=50001，提示"该账套已被员工引用，无法删除" |
@@ -153,7 +154,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `POST /api/v1/salary-accounts/{id}/copy` |
+| 接口 | `POST /api/salary-manage/accounts/{id}/copy` |
 | 前置条件 | HR 专员登录 |
 | 测试步骤 | 复制账套 A → 新账套 B |
 | 预期结果 | code=0，账套 B 名称自动加"(副本)"后缀，工资项目结构与 A 一致 |
@@ -163,7 +164,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `POST /api/v1/salary-accounts/{id}/items` |
+| 接口 | `POST /api/salary-manage/accounts/{id}/items` |
 | 前置条件 | HR 专员登录 |
 | 测试步骤 | 添加"绩效奖金"项目，类型=变动收入，公式=base×0.3 |
 | 预期结果 | code=0，返回项目 ID，列表刷新 |
@@ -173,7 +174,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `POST /api/v1/salary-accounts/{id}/items` |
+| 接口 | `POST /api/salary-manage/accounts/{id}/items` |
 | 前置条件 | HR 专员登录 |
 | 测试步骤 | 项目名称为空 |
 | 预期结果 | code=40000 |
@@ -183,7 +184,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `PUT /api/v1/salary-items/{id}` |
+| 接口 | `PUT /api/salary-manage/items/{id}` |
 | 前置条件 | HR 专员登录 |
 | 测试步骤 | 修改计算公式 |
 | 预期结果 | code=0，更新成功 |
@@ -193,7 +194,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `DELETE /api/v1/salary-items/{id}` |
+| 接口 | `DELETE /api/salary-manage/items/{id}` |
 | 前置条件 | HR 专员登录 |
 | 测试步骤 | 删除某个非必填项目 |
 | 预期结果 | code=0 |
@@ -203,7 +204,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `PUT /api/v1/salary-accounts/{id}/items/sort` |
+| 接口 | `PUT /api/salary-manage/accounts/{id}/items/sort` |
 | 前置条件 | HR 专员登录 |
 | 测试步骤 | 提交排序后的项目 ID 数组 |
 | 预期结果 | code=0，项目 sortOrder 更新 |
@@ -227,7 +228,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `GET /api/v1/employee-salaries/{employeeId}` |
+| 接口 | `GET /api/salary-manage/employee-salaries/{employeeId}` |
 | 前置条件 | HR 专员登录 |
 | 测试步骤 | 传入有效 employeeId |
 | 预期结果 | code=0，返回薪资档案（账套信息/基本工资/津贴基数/社保基数/公积金基数/绩效基数） |
@@ -237,7 +238,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `GET /api/v1/employee-salaries/{employeeId}` |
+| 接口 | `GET /api/salary-manage/employee-salaries/{employeeId}` |
 | 前置条件 | HR 专员登录 |
 | 测试步骤 | employeeId=999999 |
 | 预期结果 | code=40400 |
@@ -247,7 +248,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `GET /api/v1/employee-salaries/{employeeId}` |
+| 接口 | `GET /api/salary-manage/employee-salaries/{employeeId}` |
 | 前置条件 | 部门主管登录，查询非本部门员工 |
 | 测试步骤 | 传入其他部门员工的 employeeId |
 | 预期结果 | code=40300 或返回空（数据范围过滤） |
@@ -257,7 +258,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `PUT /api/v1/employee-salaries/{employeeId}` |
+| 接口 | `PUT /api/salary-manage/employee-salaries/{employeeId}` |
 | 前置条件 | HR 专员登录 |
 | 测试步骤 | 修改基本工资从 10000 → 12000 |
 | 预期结果 | code=0，数据库更新，调薪历史表新增一条记录 |
@@ -267,7 +268,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `PUT /api/v1/employee-salaries/{employeeId}` |
+| 接口 | `PUT /api/salary-manage/employee-salaries/{employeeId}` |
 | 前置条件 | 员工为试用期状态，probationRatio=0.8 |
 | 测试步骤 | 设置基本工资 10000 |
 | 预期结果 | 核算时自动按 10000×0.8=8000 计算 |
@@ -277,7 +278,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `PUT /api/v1/employee-salaries/{employeeId}` |
+| 接口 | `PUT /api/salary-manage/employee-salaries/{employeeId}` |
 | 前置条件 | HR 专员登录 |
 | 测试步骤 | 基本工资输入负数、社保基数超上限 |
 | 预期结果 | code=40000，参数校验失败 |
@@ -287,7 +288,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `GET /api/v1/employee-salaries/{employeeId}/history` |
+| 接口 | `GET /api/salary-manage/employee-salaries/{employeeId}/history` |
 | 前置条件 | HR 专员登录 |
 | 测试步骤 | 调用接口 |
 | 预期结果 | code=0，返回调薪历史列表（含变更前后值/变更类型/操作人/时间） |
@@ -297,7 +298,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `GET /api/v1/employee-salaries/{employeeId}` |
+| 接口 | `GET /api/salary-manage/employee-salaries/{employeeId}` |
 | 前置条件 | 普通员工登录，查看自己的 employeeId |
 | 测试步骤 | 调用接口 |
 | 预期结果 | code=0，可见基本工资和津贴，社保基数等部分字段可能脱敏 |
@@ -307,7 +308,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `GET /api/v1/employee-salaries/{employeeId}` |
+| 接口 | `GET /api/salary-manage/employee-salaries/{employeeId}` |
 | 前置条件 | 普通员工登录，查其他员工的 employeeId |
 | 测试步骤 | 调用接口 |
 | 预期结果 | code=40300 或被数据范围过滤拒绝 |
@@ -321,7 +322,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `POST /api/v1/salary-batches` |
+| 接口 | `POST /api/salary-manage/batches` |
 | 前置条件 | HR 专员登录 |
 | 测试步骤 | `{"salaryMonth":"2026-07"}` |
 | 预期结果 | code=0，返回批次信息，status=0（草稿），batchNo 自动生成（如 SAL202607001） |
@@ -331,7 +332,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `POST /api/v1/salary-batches` |
+| 接口 | `POST /api/salary-manage/batches` |
 | 前置条件 | 已存在"2026-07"的核算批次 |
 | 测试步骤 | 再次提交 `{"salaryMonth":"2026-07"}` |
 | 预期结果 | code=40000，提示"该月份已存在核算批次" |
@@ -341,7 +342,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `POST /api/v1/salary-batches` |
+| 接口 | `POST /api/salary-manage/batches` |
 | 前置条件 | HR 专员登录 |
 | 测试步骤 | salaryMonth="abc" |
 | 预期结果 | code=40000 |
@@ -351,7 +352,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `POST /api/v1/salary-batches/{id}/prepare` |
+| 接口 | `POST /api/salary-manage/batches/{id}/prepare` |
 | 前置条件 | 批次状态=草稿 |
 | 测试步骤 | 触发数据准备 |
 | 预期结果 | 异步执行：锁定考勤→拉取请假→拉取加班→拉取档案。完成后 status→"准备完成" |
@@ -361,7 +362,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `POST /api/v1/salary-batches/{id}/calculate` |
+| 接口 | `POST /api/salary-manage/batches/{id}/calculate` |
 | 前置条件 | 数据准备完成，500 个员工各有完整薪资档案 |
 | 测试步骤 | 触发计算 |
 | 预期结果 | 异步分批计算（每批100人），status→"计算中"→"待确认"。全员薪资明细写入 salary_detail 表 |
@@ -450,7 +451,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `GET /api/v1/salary-batches/{id}/preview?page=1&size=20` |
+| 接口 | `GET /api/salary-manage/batches/{id}/preview?page=1&size=20` |
 | 前置条件 | 计算完成 |
 | 测试步骤 | 调用接口 |
 | 预期结果 | code=0，返回批次汇总（totalEmployees/totalGrossPay/totalNetPay/totalTax）+ 分页明细 |
@@ -460,7 +461,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `GET /api/v1/salary-batches/{id}/anomalies` |
+| 接口 | `GET /api/salary-manage/batches/{id}/anomalies` |
 | 前置条件 | 计算完成，存在异常项 |
 | 测试步骤 | 调用接口 |
 | 预期结果 | code=0，仅返回 `isAbnormal>0` 的明细记录 |
@@ -470,7 +471,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `PUT /api/v1/salary-batches/{id}/adjust` |
+| 接口 | `PUT /api/salary-manage/batches/{id}/adjust` |
 | 前置条件 | 计算完成，状态=待确认 |
 | 测试步骤 | 给员工 A 追加调整额 +500，原因="补发上月加班费" |
 | 预期结果 | code=0，明细的 manualAdjustment=500，recalculateNetPay 后实发增加 |
@@ -480,7 +481,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `PUT /api/v1/salary-batches/{id}/adjust` |
+| 接口 | `PUT /api/salary-manage/batches/{id}/adjust` |
 | 前置条件 | 状态=待确认 |
 | 测试步骤 | 仅传调整金额，adjustmentReason 为空 |
 | 预期结果 | code=40000，必填校验失败 |
@@ -490,7 +491,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `POST /api/v1/salary-batches/{id}/submit` |
+| 接口 | `POST /api/salary-manage/batches/{id}/submit` |
 | 前置条件 | 状态=待确认 |
 | 测试步骤 | HR 提交审批 |
 | 预期结果 | code=0，status→"审批中"，不可再手动调整 |
@@ -500,7 +501,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `POST /api/v1/salary-batches/{id}/submit` |
+| 接口 | `POST /api/salary-manage/batches/{id}/submit` |
 | 前置条件 | 状态=草稿（未计算） |
 | 测试步骤 | 直接提交 |
 | 预期结果 | code=40000，提示"请先完成数据准备和计算" |
@@ -524,7 +525,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `POST /api/v1/salary-batches/{id}/approve` |
+| 接口 | `POST /api/salary-manage/batches/{id}/approve` |
 | 前置条件 | 财务专员登录，批次已提交审批 |
 | 测试步骤 | 调用审批通过 |
 | 预期结果 | code=0，若需老板审批则 status→待老板审批，否则 status→已通过 |
@@ -534,7 +535,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `POST /api/v1/salary-batches/{id}/reject` |
+| 接口 | `POST /api/salary-manage/batches/{id}/reject` |
 | 前置条件 | 财务专员登录 |
 | 测试步骤 | `{"reason":"社保基数计算有误，请重新核算"}` |
 | 预期结果 | code=0，status→"已驳回"，batch 备注记录驳回原因 |
@@ -544,7 +545,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `POST /api/v1/salary-batches/{id}/reject` |
+| 接口 | `POST /api/salary-manage/batches/{id}/reject` |
 | 前置条件 | 财务专员登录 |
 | 测试步骤 | reason 为空 |
 | 预期结果 | code=40000，必填校验失败 |
@@ -563,7 +564,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `POST /api/v1/salary-batches/{id}/mark-paid` |
+| 接口 | `POST /api/salary-manage/batches/{id}/mark-paid` |
 | 前置条件 | 批次已通过审批 |
 | 测试步骤 | 标记已发放 |
 | 预期结果 | code=0，status→已发放，工资条对员工可见 |
@@ -573,7 +574,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `POST /api/v1/salary-batches/{id}/approve` |
+| 接口 | `POST /api/salary-manage/batches/{id}/approve` |
 | 前置条件 | 普通员工登录（无审批权限） |
 | 测试步骤 | 调用审批通过 |
 | 预期结果 | code=40300 |
@@ -669,7 +670,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `GET /api/v1/salary-statistics/cost-trend?months=6` |
+| 接口 | `GET /api/salary-manage/statistics/cost-trend?months=6` |
 | 前置条件 | 财务专员登录 |
 | 测试步骤 | 调用接口 |
 | 预期结果 | code=0，返回最近6个月每月薪资总额数组 |
@@ -679,7 +680,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `GET /api/v1/salary-statistics/dept-distribution?month=2026-07` |
+| 接口 | `GET /api/salary-manage/statistics/dept-distribution?month=2026-07` |
 | 前置条件 | HR 专员登录 |
 | 测试步骤 | 调用接口 |
 | 预期结果 | code=0，返回各部门薪资合计/均值/人数 |
@@ -689,7 +690,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `GET /api/v1/salary-statistics/composition?month=2026-07` |
+| 接口 | `GET /api/salary-manage/statistics/composition?month=2026-07` |
 | 前置条件 | HR 专员登录 |
 | 测试步骤 | 调用接口 |
 | 预期结果 | code=0，返回基本工资/绩效/津贴/加班等各项合计及占比 |
@@ -699,7 +700,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `GET /api/v1/salary-statistics/social-comparison?month=2026-07` |
+| 接口 | `GET /api/salary-manage/statistics/social-comparison?month=2026-07` |
 | 前置条件 | 财务专员登录 |
 | 测试步骤 | 调用接口 |
 | 预期结果 | code=0，返回企业/个人社保和公积金各项金额 |
@@ -709,7 +710,7 @@
 
 | **项目** | **内容** |
 | --- | --- |
-| 接口 | `GET /api/v1/salary-statistics/variation-distribution?month=2026-07` |
+| 接口 | `GET /api/salary-manage/statistics/variation-distribution?month=2026-07` |
 | 前置条件 | HR 专员登录 |
 | 测试步骤 | 调用接口 |
 | 预期结果 | code=0，返回变动率区间（0%~10%/10%~30%/30%+等）人数分布 |
@@ -1346,3 +1347,4 @@
 | **日期** | **版本** | **修订说明** | **作者** |
 | --- | --- | --- | --- |
 | 2026-07-13 | 1.0 | 初稿 | 陆博 |
+| 2026-07-15 | 2.0 | API 路径统一为 /api/salary-manage/*；增补权限测试 | 陆博 |
