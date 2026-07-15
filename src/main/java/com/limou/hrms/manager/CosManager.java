@@ -18,7 +18,7 @@ public class CosManager {
     @Resource
     private CosClientConfig cosClientConfig;
 //
-    @Resource
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
     private COSClient cosClient;
 
     /**
@@ -29,6 +29,9 @@ public class CosManager {
      * @return
      */
     public PutObjectResult putObject(String key, String localFilePath) {
+        if (cosClient == null) {
+            throw new IllegalStateException("COSClient 未初始化，请检查 cos.client 配置");
+        }
         PutObjectRequest putObjectRequest = new PutObjectRequest(cosClientConfig.getBucket(), key,
                 new File(localFilePath));
         return cosClient.putObject(putObjectRequest);
@@ -42,6 +45,9 @@ public class CosManager {
      * @return
      */
     public PutObjectResult putObject(String key, File file) {
+        if (cosClient == null) {
+            throw new IllegalStateException("COSClient 未初始化，请检查 cos.client 配置");
+        }
         PutObjectRequest putObjectRequest = new PutObjectRequest(cosClientConfig.getBucket(), key,
                 file);
         return cosClient.putObject(putObjectRequest);

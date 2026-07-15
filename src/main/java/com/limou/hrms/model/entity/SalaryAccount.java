@@ -10,65 +10,44 @@ import java.util.Date;
 import lombok.Data;
 
 /**
- * 帖子
- *
-
+ * 薪资账套
  */
-@TableName(value = "post")
+@TableName(value = "salary_account")
 @Data
-public class Post implements Serializable {
+public class SalaryAccount implements Serializable {
 
-    /**
-     * id
-     */
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
     /**
-     * 标题
+     * 账套名称，如"标准职员工资"
      */
-    private String title;
+    private String name;
 
     /**
-     * 内容
+     * 适用范围类型：1=部门, 2=职位, 3=职级
      */
-    private String content;
+    private Integer scopeType;
 
     /**
-     * 标签列表 json
+     * 适用范围 ID 列表，逗号分隔；NULL 表示全员适用
      */
-    private String tags;
+    private String scopeIds;
 
     /**
-     * 点赞数
+     * 生效日期
      */
-    private Integer thumbNum;
+    private Date effectiveDate;
 
     /**
-     * 收藏数
+     * 逻辑删除：0=正常, 1=删除
      */
-    private Integer favourNum;
+    @TableLogic(value = "0", delval = "1")
+    private Integer isDeleted;
 
-    /**
-     * 创建用户 id
-     */
-    private Long userId;
-
-    /**
-     * 创建时间
-     */
     private Date createTime;
 
-    /**
-     * 更新时间
-     */
     private Date updateTime;
-
-    /**
-     * 是否删除
-     */
-    @TableLogic
-    private Integer isDelete;
 
     @TableField(exist = false)
     private static final long serialVersionUID = 1L;
