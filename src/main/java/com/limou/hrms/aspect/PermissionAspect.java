@@ -39,16 +39,9 @@ public class PermissionAspect {
 
     @Around("@annotation(com.limou.hrms.annotation.RequirePermission)")
     public Object checkPermission(ProceedingJoinPoint joinPoint) throws Throwable {
-        ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
-        if (attributes == null) {
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "无法获取请求上下文");
-        }
+        ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.currentRequestAttributes();
         HttpServletRequest request = attributes.getRequest();
-        User currentUser = userService.getLoginUserPermitNull(request);
-
-        if (currentUser == null) {
-            throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
-        }
+        User currentUser = userService.getLoginUser(request);
 
         MethodSignature signature = (MethodSignature) joinPoint.getSignature();
         Method method = signature.getMethod();

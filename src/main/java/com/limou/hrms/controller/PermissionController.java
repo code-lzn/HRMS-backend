@@ -1,9 +1,7 @@
 package com.limou.hrms.controller;
 
 import com.limou.hrms.common.BaseResponse;
-import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.common.ResultUtils;
-import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.model.entity.User;
 import com.limou.hrms.model.vo.UserPermissionVO;
 import com.limou.hrms.service.PermissionService;
@@ -28,30 +26,21 @@ public class PermissionController {
 
     @GetMapping("/current")
     public BaseResponse<UserPermissionVO> getCurrentPermissions(HttpServletRequest request) {
-        User currentUser = userService.getLoginUserPermitNull(request);
-        if (currentUser == null) {
-            throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
-        }
+        User currentUser = userService.getLoginUser(request);
         UserPermissionVO vo = permissionService.getUserPermissions(currentUser.getId());
         return ResultUtils.success(vo);
     }
 
     @GetMapping("/check")
     public BaseResponse<Boolean> checkPermission(HttpServletRequest request, @RequestParam String code) {
-        User currentUser = userService.getLoginUserPermitNull(request);
-        if (currentUser == null) {
-            throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
-        }
+        User currentUser = userService.getLoginUser(request);
         boolean has = permissionService.hasPermission(currentUser.getId(), code);
         return ResultUtils.success(has);
     }
 
     @GetMapping("/data-scope")
     public BaseResponse<Integer> getDataScope(HttpServletRequest request) {
-        User currentUser = userService.getLoginUserPermitNull(request);
-        if (currentUser == null) {
-            throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
-        }
+        User currentUser = userService.getLoginUser(request);
         Integer dataScope = permissionService.getUserDataScope(currentUser.getId());
         return ResultUtils.success(dataScope);
     }

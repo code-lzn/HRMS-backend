@@ -4,6 +4,7 @@ import cn.hutool.json.JSONUtil;
 import com.limou.hrms.common.BaseResponse;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.common.ResultUtils;
+import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.model.enums.PermissionUrlEnum;
 import com.limou.hrms.model.entity.User;
 import com.limou.hrms.service.PermissionService;
@@ -53,8 +54,10 @@ public class PermissionInterceptor implements HandlerInterceptor {
         }
 
         // 获取当前登录用户
-        User currentUser = userService.getLoginUserPermitNull(request);
-        if (currentUser == null) {
+        User currentUser;
+        try {
+            currentUser = userService.getLoginUser(request);
+        } catch (BusinessException e) {
             log.warn("权限拦截: 未登录用户访问受保护接口 {}", uri);
             writeJson(response, ErrorCode.NOT_LOGIN_ERROR, "请先登录");
             return false;
