@@ -1,8 +1,7 @@
 package com.limou.hrms.builder;
 
-import com.limou.hrms.mapper.ProbationApplicationMapper;
-import com.limou.hrms.model.entity.ApprovalNode;
-import com.limou.hrms.model.entity.ProbationApplication;
+import com.limou.hrms.mapper.*;
+import com.limou.hrms.model.entity.*;
 import com.limou.hrms.model.enums.ApprovalBizType;
 import com.limou.hrms.model.enums.NodeStatus;
 import org.springframework.stereotype.Component;
@@ -20,6 +19,10 @@ public class ProbationNodeBuilder implements ApprovalNodeBuilder {
     @Resource
     private ProbationApplicationMapper probationApplicationMapper;
     @Resource
+    private EmployeeWorkInfoMapper employeeWorkInfoMapper;
+    @Resource
+    private DepartmentMapper departmentMapper;
+    @Resource
     private ApproverResolver approverResolver;
 
     @Override
@@ -29,15 +32,26 @@ public class ProbationNodeBuilder implements ApprovalNodeBuilder {
             throw new IllegalArgumentException("转正申请不存在: " + bizId);
         }
 
+        EmployeeWorkInfo workInfo = employeeWorkInfoMapper.selectOne(
+                new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<EmployeeWorkInfo>()
+                        .eq("employee_id", app.getEmployeeId()));
+        if (workInfo == null) {
+            throw new IllegalArgumentException("员工工作信息不存在");
+        }
+
+        Department dept = departmentMapper.selectById(workInfo.getDepartmentId());
+        if (dept == null || dept.getManagerId() == null) {
+            throw new IllegalArgumentException("部门或部门负责人不存在");
+        }
+
         List<ApprovalNode> nodes = new ArrayList<>();
         int order = 1;
 
         // Node 1: 部门负责人
-        Long deptId = approverResolver.resolveDepartmentId(app.getEmployeeId());
         ApprovalNode node1 = new ApprovalNode();
         node1.setNodeName("部门负责人审批");
         node1.setNodeOrder(order++);
-        node1.setApproverId(approverResolver.resolveDeptManager(deptId));
+        node1.setApproverId(dept.getManagerId());
         node1.setStatus(NodeStatus.PENDING.getCode());
         nodes.add(node1);
 
