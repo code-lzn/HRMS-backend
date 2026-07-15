@@ -12,6 +12,8 @@ import com.limou.hrms.model.vo.*;
 import com.limou.hrms.service.SalChangeLogService;
 import com.limou.hrms.service.SalTaxCumulativeService;
 import com.limou.hrms.service.SalaryBizService;
+import com.limou.hrms.service.ApprovalService;
+import com.limou.hrms.model.enums.BusinessTypeEnum;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -68,6 +70,12 @@ public class SalaryBizServiceImpl implements SalaryBizService {
     private AttendanceMapper attendanceMapper;
     @Resource
     private LeaveMapper leaveMapper;
+    @Resource
+    private ApprovalService approvalService;
+    @Resource
+    private ApprovalRecordMapper approvalRecordMapper;
+    @Resource
+    private ApprovalDetailMapper approvalDetailMapper;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -479,48 +487,122 @@ public class SalaryBizServiceImpl implements SalaryBizService {
     }
 
     @Override
-    public void submitForApproval(Long batchId, Long operatorId) {
+    public void submitForApproval(Long batchId, Long userId) {
         SalaryBatch batch = salaryBatchMapper.selectById(batchId);
         ThrowUtils.throwIf(batch == null, ErrorCode.NOT_FOUND_ERROR, "批次不存在");
         ThrowUtils.throwIf(!"PENDING_CONFIRM".equals(batch.getStatus()),
                 ErrorCode.OPERATION_ERROR, "当前状态不允许提交审批");
 
+        // 查找申请人（通过userId关联employee）
+        Employee emp = employeeMapper.selectOne(
+                new LambdaQueryWrapper<Employee>().eq(Employee::getUserId, userId));
+        ThrowUtils.throwIf(emp == null, ErrorCode.NOT_FOUND_ERROR, "当前用户未关联员工档案");
+
         batch.setStatus("APPROVING");
         batch.setUpdatedAt(new Date());
         salaryBatchMapper.updateById(batch);
 
-        log.info("提交审批: batchId={}, operatorId={}", batchId, operatorId);
+        // 同步到审批中心：创建审批实例
+        approvalService.startApproval(BusinessTypeEnum.SALARY_BATCH.getValue(),
+                batch.getId(), emp.getId(), emp.getEmployeeName());
+
+        log.info("提交审批: batchId={}, applicantId={}, applicantName={}",
+                batchId, emp.getId(), emp.getEmployeeName());
     }
 
     // ==================== 审批操作 ====================
 
     @Override
-    public void approveBatch(Long batchId, Long operatorId) {
+    public void approveBatch(Long batchId, Long userId) {
         SalaryBatch batch = salaryBatchMapper.selectById(batchId);
         ThrowUtils.throwIf(batch == null, ErrorCode.NOT_FOUND_ERROR, "批次不存在");
         ThrowUtils.throwIf(!"APPROVING".equals(batch.getStatus()),
                 ErrorCode.OPERATION_ERROR, "当前状态不允许审批");
 
+        // 查找审批人
+        Employee emp = employeeMapper.selectOne(
+                new LambdaQueryWrapper<Employee>().eq(Employee::getUserId, userId));
+        ThrowUtils.throwIf(emp == null, ErrorCode.NOT_FOUND_ERROR, "当前用户未关联员工档案");
+
         batch.setStatus("APPROVED");
-        batch.setApprovedBy(operatorId);
+        batch.setApprovedBy(userId);
         batch.setUpdatedAt(new Date());
         salaryBatchMapper.updateById(batch);
 
-        log.info("审批通过: batchId={}, operatorId={}", batchId, operatorId);
+        // 同步审批中心：查找审批记录中的待处理节点并审批通过
+        syncApproveInApprovalCenter(batch.getId(), emp.getId(), "审批通过");
+
+        log.info("审批通过: batchId={}, approverId={}", batchId, emp.getId());
     }
 
     @Override
-    public void rejectBatch(Long batchId, String reason, Long operatorId) {
+    public void rejectBatch(Long batchId, String reason, Long userId) {
         SalaryBatch batch = salaryBatchMapper.selectById(batchId);
         ThrowUtils.throwIf(batch == null, ErrorCode.NOT_FOUND_ERROR, "批次不存在");
         ThrowUtils.throwIf(!"APPROVING".equals(batch.getStatus()),
                 ErrorCode.OPERATION_ERROR, "当前状态不允许驳回");
 
+        // 查找审批人
+        Employee emp = employeeMapper.selectOne(
+                new LambdaQueryWrapper<Employee>().eq(Employee::getUserId, userId));
+        ThrowUtils.throwIf(emp == null, ErrorCode.NOT_FOUND_ERROR, "当前用户未关联员工档案");
+
         batch.setStatus("REJECTED");
         batch.setUpdatedAt(new Date());
         salaryBatchMapper.updateById(batch);
 
-        log.info("审批驳回: batchId={}, reason={}, operatorId={}", batchId, reason, operatorId);
+        // 同步审批中心：查找审批记录并驳回
+        syncRejectInApprovalCenter(batch.getId(), emp.getId(), reason);
+
+        log.info("审批驳回: batchId={}, approverId={}, reason={}", batchId, emp.getId(), reason);
+    }
+
+    /**
+     * 同步审批中心：查找对应审批记录中的待处理节点并审批通过
+     */
+    private void syncApproveInApprovalCenter(Long batchId, Long employeeId, String comment) {
+        ApprovalRecord record = approvalRecordMapper.selectOne(
+                new LambdaQueryWrapper<ApprovalRecord>()
+                        .eq(ApprovalRecord::getBusinessType, BusinessTypeEnum.SALARY_BATCH.getValue())
+                        .eq(ApprovalRecord::getBusinessId, batchId)
+                        .eq(ApprovalRecord::getStatus, "APPROVING")
+        );
+        if (record == null) return;
+
+        ApprovalDetail detail = approvalDetailMapper.selectOne(
+                new LambdaQueryWrapper<ApprovalDetail>()
+                        .eq(ApprovalDetail::getRecordId, record.getId())
+                        .eq(ApprovalDetail::getAction, "PENDING")
+                        .orderByAsc(ApprovalDetail::getStepOrder)
+                        .last("LIMIT 1")
+        );
+        if (detail != null) {
+            approvalService.approve(detail.getId(), employeeId, comment);
+        }
+    }
+
+    /**
+     * 同步审批中心：查找对应审批记录并驳回
+     */
+    private void syncRejectInApprovalCenter(Long batchId, Long employeeId, String reason) {
+        ApprovalRecord record = approvalRecordMapper.selectOne(
+                new LambdaQueryWrapper<ApprovalRecord>()
+                        .eq(ApprovalRecord::getBusinessType, BusinessTypeEnum.SALARY_BATCH.getValue())
+                        .eq(ApprovalRecord::getBusinessId, batchId)
+                        .eq(ApprovalRecord::getStatus, "APPROVING")
+        );
+        if (record == null) return;
+
+        ApprovalDetail detail = approvalDetailMapper.selectOne(
+                new LambdaQueryWrapper<ApprovalDetail>()
+                        .eq(ApprovalDetail::getRecordId, record.getId())
+                        .eq(ApprovalDetail::getAction, "PENDING")
+                        .orderByAsc(ApprovalDetail::getStepOrder)
+                        .last("LIMIT 1")
+        );
+        if (detail != null) {
+            approvalService.reject(detail.getId(), employeeId, reason);
+        }
     }
 
     @Override
