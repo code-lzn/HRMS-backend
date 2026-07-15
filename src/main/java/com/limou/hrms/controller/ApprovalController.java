@@ -7,6 +7,7 @@ import com.limou.hrms.common.ResultUtils;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.exception.ThrowUtils;
 import com.limou.hrms.model.dto.approval.ApprovalActionDTO;
+import com.limou.hrms.model.dto.approval.DelegateSettingDTO;
 import com.limou.hrms.model.entity.ApprovalInstance;
 import com.limou.hrms.model.entity.ApprovalDelegate;
 import com.limou.hrms.model.entity.User;
@@ -152,12 +153,9 @@ public class ApprovalController {
      * 设置委托审批
      */
     @PostMapping("/delegates")
-    public BaseResponse<ApprovalDelegate> createDelegate(@RequestBody Map<String, Object> body, HttpServletRequest request) {
-        Long delegateId = Long.valueOf(body.get("delegateId").toString());
-        LocalDateTime startTime = LocalDateTime.parse(body.get("startTime").toString());
-        LocalDateTime endTime = LocalDateTime.parse(body.get("endTime").toString());
+    public BaseResponse<ApprovalDelegate> createDelegate(@RequestBody DelegateSettingDTO dto, HttpServletRequest request) {
         Long employeeId = getCurrentEmployeeId(request);
-        ApprovalDelegate result = approvalDelegateService.createDelegate(employeeId, delegateId, startTime, endTime);
+        ApprovalDelegate result = approvalDelegateService.createDelegate(employeeId, dto.getDelegateId(), dto.getStartTime(), dto.getEndTime());
         return ResultUtils.success(result);
     }
 

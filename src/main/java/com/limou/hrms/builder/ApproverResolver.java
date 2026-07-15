@@ -12,7 +12,7 @@ import javax.annotation.Resource;
 import java.util.List;
 
 /**
- * 审批人解析器 — 统一查询各类审批人
+ * 审批人解析器 — 统一查询各类审批人  按角色找人
  */
 @Component
 @Slf4j
