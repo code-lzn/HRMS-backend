@@ -316,7 +316,7 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
         // 3. 合并、排序、取当前页
         List<ApprovalNode> merged = new ArrayList<>(ownNodes);
         for (ApprovalNode n : delegateNodes) {
-            if (!ownNodes.stream().anyMatch(o -> o.getId().equals(n.getId()))) {
+            if (ownNodes.stream().noneMatch(o -> o.getId().equals(n.getId()))) {
                 merged.add(n);
             }
         }
