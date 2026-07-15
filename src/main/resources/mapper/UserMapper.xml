@@ -11,7 +11,6 @@
             <result property="userName" column="userName" />
             <result property="userAvatar" column="userAvatar" />
             <result property="userProfile" column="userProfile" />
-            <result property="userRole" column="userRole" />
             <result property="roleId" column="roleId" />
             <result property="employeeId" column="employeeId" />
             <result property="createTime" column="createTime" />
@@ -21,7 +20,7 @@
 
     <sql id="Base_Column_List">
         id,userAccount,userPassword,userName,userAvatar,userProfile,
-        userRole,roleId,employeeId,createTime,updateTime,
+        roleId,employeeId,createTime,updateTime,
         isDelete
     </sql>
 </mapper>
