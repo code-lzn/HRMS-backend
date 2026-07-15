@@ -9,7 +9,10 @@ import com.limou.hrms.exception.ThrowUtils;
 import com.limou.hrms.model.dto.approval.ApprovalActionDTO;
 import com.limou.hrms.model.dto.approval.DelegateSettingDTO;
 import com.limou.hrms.model.entity.ApprovalDelegate;
+import com.limou.hrms.model.entity.Employee;
 import com.limou.hrms.model.entity.User;
+import com.limou.hrms.mapper.EmployeeMapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.limou.hrms.model.query.ApprovalQuery;
 import com.limou.hrms.model.vo.ApprovalInstanceVO;
 import com.limou.hrms.model.vo.PendingItemVO;
@@ -53,6 +56,8 @@ public class ApprovalController {
     private ApprovalDelegateService approvalDelegateService;
     @Resource
     private UserService userService;
+    @Resource
+    private EmployeeMapper employeeMapper;
 
     // ================================================================
     //  审批人工作台 — 查询接口
@@ -268,12 +273,17 @@ public class ApprovalController {
      * 从当前登录态获取操作人 employee.id。
      *
      * <p>通过 {@link RequestContextHolder} 获取当前请求的 HttpSession，
-     * 从中解析登录用户。当前简化实现直接返回 {@code user.id}。
+     * 解析登录用户，再通过 {@code employee.user_id} 映射到 {@code employee.id}。
      */
     private Long getCurrentEmployeeId() {
         ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.currentRequestAttributes();
         HttpServletRequest request = attrs.getRequest();
         User loginUser = userService.getLoginUser(request);
-        return loginUser.getId();
+        Employee employee = employeeMapper.selectOne(
+                new QueryWrapper<Employee>().eq("user_id", loginUser.getId()));
+        if (employee == null) {
+            throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR, "当前用户未关联员工档案");
+        }
+        return employee.getId();
     }
 }

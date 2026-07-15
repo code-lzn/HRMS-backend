@@ -36,7 +36,7 @@ public class ApprovalDelegateServiceImpl extends ServiceImpl<ApprovalDelegateMap
     private UserMapper userMapper;
 
     @Override
-    @CacheEvict(value = {"pendingCount", "delegateRouting"}, allEntries = true)
+    @CacheEvict(value = {"pendingCount", "delegateRouting"}, allEntries = true)// 创建委托后，需要刷新待办红点和委托路由缓存
     public ApprovalDelegate createDelegate(Long delegatorId, Long delegateId, LocalDateTime startTime, LocalDateTime endTime) {
         // 校验：不能委托给自己
         if (delegatorId.equals(delegateId)) {
@@ -70,7 +70,7 @@ public class ApprovalDelegateServiceImpl extends ServiceImpl<ApprovalDelegateMap
     }
 
     @Override
-    @CacheEvict(value = {"pendingCount", "delegateRouting"}, allEntries = true)
+    @CacheEvict(value = {"pendingCount", "delegateRouting"}, allEntries = true)// 取消委托后，需要刷新待办红点和委托路由缓存
     public void cancelDelegate(Long delegateId, Long delegatorId) {
         ApprovalDelegate delegate = approvalDelegateMapper.selectById(delegateId);
         if (delegate == null) {
