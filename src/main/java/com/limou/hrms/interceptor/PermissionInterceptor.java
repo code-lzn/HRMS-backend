@@ -39,6 +39,12 @@ public class PermissionInterceptor implements HandlerInterceptor {
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response,
                              Object handler) throws IOException {
         String uri = request.getRequestURI();
+        String method = request.getMethod();
+
+        // GET 请求默认放行（只读操作不强制权限校验）
+        if ("GET".equalsIgnoreCase(method)) {
+            return true;
+        }
 
         // 遍历枚举，查找该 URI 对应的权限码
         String requiredPermission = matchPermission(uri);

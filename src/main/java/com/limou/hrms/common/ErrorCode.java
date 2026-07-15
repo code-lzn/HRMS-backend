@@ -29,7 +29,11 @@ public enum ErrorCode {
     APPROVAL_NOT_FOUND(50022, "审批记录不存在"),
     APPROVAL_NOT_PENDING(50023, "该节点已处理，无法重复操作"),
     APPROVAL_NO_PERMISSION(50024, "无审批权限"),
-    DELEGATION_NOT_FOUND(50025, "委托记录不存在");
+    DELEGATION_NOT_FOUND(50025, "委托记录不存在"),
+    EMPLOYEE_RESIGNED(50026, "已离职员工不可修改档案，仅可查看"),
+    PROFILE_PERMISSION_DENIED(50027, "无权查看他人档案，仅可查看本人"),
+    PROFILE_UPDATE_DENIED(50028, "无权修改他人档案，仅可修改本人"),
+    PHONE_FORMAT_ERROR(50029, "紧急联系人电话格式不正确，需为11位手机号");
 
     /**
      * 状态码

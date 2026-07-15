@@ -1,5 +1,7 @@
 package com.limou.hrms.model.vo;
 
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 import java.io.Serializable;
 import java.util.Date;
 import lombok.Data;
@@ -32,8 +34,9 @@ public class LoginUserVO implements Serializable {
     private String userProfile;
 
     /**
-     * 角色ID
+     * 角色ID（HR角色=2）
      */
+    @JsonSerialize(using = ToStringSerializer.class)
     private Long roleId;
 
     /**

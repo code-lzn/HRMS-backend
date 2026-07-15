@@ -750,6 +750,169 @@ INSERT INTO approval_detail (recordId, nodeId, nodeName, stepOrder, approverId, 
 INSERT INTO approval_delegation (delegatorId, delegatorName, delegateId, delegateName, businessTypes, startDate, endDate, status) VALUES
 (2, '李四', 15, '张三', 'LEAVE,PATCH_CLOCK', '2026-07-01', '2026-07-31', 1);
 
+--   *****************8                     入转调离模块         ********************               --
+
+--1. empOnboarding 入职申请表
+CREATE TABLE `emp_onboarding` (
+                                  `id` BIGINT(20) NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+                                  `businessNo` VARCHAR(32) NOT NULL COMMENT '入职单号，ON+年月日+流水号',
+                                  `flowId` BIGINT(20) NOT NULL COMMENT '关联审批流ID(approval_flow.id)',
+                                  `recordId` BIGINT(20) DEFAULT NULL COMMENT '审批实例ID(approval_record.id)',
+                                  `deptId` BIGINT(20) NOT NULL COMMENT '入职部门ID(department.id)',
+                                  `positionId` BIGINT(20) NOT NULL COMMENT '入职职位ID(position.id)',
+                                  `hireDate` DATE NOT NULL COMMENT '预定入职日期',
+                                  `probationMonth` INT(11) NOT NULL DEFAULT 3 COMMENT '试用期月数',
+                                  `employmentType` VARCHAR(16) NOT NULL COMMENT '录用类型:FULL_TIME全职/PART_TIME兼职',
+                                  `contractType` TINYINT(4) DEFAULT 1 COMMENT '合同类型:1固定期限/2无固定期限/3实习',
+                                  `contractExpireDate` DATE DEFAULT NULL COMMENT '合同到期日',
+                                  `baseSalary` DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT '约定基本工资',
+                                  `socialInsuranceBase` DECIMAL(12,2) DEFAULT 0.00 COMMENT '社保缴纳基数',
+                                  `housingFundBase` DECIMAL(12,2) DEFAULT 0.00 COMMENT '公积金缴纳基数',
+                                  `bankAccount` VARCHAR(256) DEFAULT NULL COMMENT '工资卡账号(加密存储)',
+                                  `bankName` VARCHAR(128) DEFAULT NULL COMMENT '开户行名称',
+                                  `candidateName` VARCHAR(128) NOT NULL COMMENT '候选人姓名',
+                                  `phone` VARCHAR(32) NOT NULL COMMENT '联系手机号',
+                                  `idCard` VARCHAR(256) DEFAULT NULL COMMENT '身份证号(加密存储)',
+                                  `email` VARCHAR(256) DEFAULT NULL COMMENT '候选人邮箱',
+                                  `emergencyContactName` VARCHAR(128) DEFAULT NULL COMMENT '紧急联系人姓名',
+                                  `emergencyContactPhone` VARCHAR(32) DEFAULT NULL COMMENT '紧急联系电话',
+                                  `employeeId` BIGINT(20) DEFAULT NULL COMMENT '审批通过后生成员工ID(employee.id)',
+                                  `operatorId` BIGINT(20) NOT NULL COMMENT '操作HR员工ID',
+                                  `remark` VARCHAR(512) DEFAULT NULL COMMENT '单据备注',
+                                  `createTime` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+                                  `updateTime` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+                                  `isDeleted` TINYINT(4) NOT NULL DEFAULT 0 COMMENT '逻辑删除:0=否,1=是',
+                                  PRIMARY KEY (`id`),
+                                  UNIQUE KEY uk_businessNo (`businessNo`),
+                                  KEY idx_dept (`deptId`),
+                                  KEY idx_record (`recordId`),
+                                  KEY idx_employee (`employeeId`)
+) ENGINE=INNODB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='入职申请表';
+
+
+
+--empProbation 转正申请表
+CREATE TABLE `emp_probation` (
+                                 `id` BIGINT(20) NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+                                 `businessNo` VARCHAR(32) NOT NULL COMMENT '转正单号，ZB+年月日+流水号',
+                                 `flowId` BIGINT(20) NOT NULL COMMENT '审批流ID(approval_flow.id)',
+                                 `recordId` BIGINT(20) DEFAULT NULL COMMENT '审批实例ID(approval_record.id)',
+                                 `employeeId` BIGINT(20) NOT NULL COMMENT '待转正员工ID(employee.id)',
+                                 `originHireDate` DATE NOT NULL COMMENT '原始入职日期',
+                                 `probationEndDate` DATE NOT NULL COMMENT '试用期到期日期',
+                                 `confirmDate` DATE NOT NULL COMMENT '转正生效日期',
+                                 `probationScore` DECIMAL(4,1) DEFAULT NULL COMMENT '试用期考核分数',
+                                 `probationComment` TEXT DEFAULT NULL COMMENT '试用期工作评价',
+                                 `confirmBaseSalary` DECIMAL(12,2) NOT NULL COMMENT '转正后基本工资',
+                                 `probationSalaryRatio` DECIMAL(5,4) DEFAULT 1.0000 COMMENT '试用期薪资比例',
+                                 `operatorId` BIGINT(20) NOT NULL COMMENT '操作HR员工ID',
+                                 `remark` VARCHAR(512) DEFAULT NULL COMMENT '备注',
+                                 `createTime` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+                                 `updateTime` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+                                 `isDeleted` TINYINT(4) NOT NULL DEFAULT 0 COMMENT '逻辑删除:0=否,1=是',
+                                 PRIMARY KEY (`id`),
+                                 UNIQUE KEY uk_businessNo (`businessNo`),
+                                 KEY idx_emp (`employeeId`),
+                                 KEY idx_record (`recordId`)
+) ENGINE=INNODB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='员工转正申请表';
+
+
+--empTransfer 调岗申请表
+CREATE TABLE `emp_transfer` (
+                                `id` BIGINT(20) NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+                                `businessNo` VARCHAR(32) NOT NULL COMMENT '调岗单号，DG+年月日+流水号',
+                                `flowId` BIGINT(20) NOT NULL COMMENT '审批流ID(approval_flow.id)',
+                                `recordId` BIGINT(20) DEFAULT NULL COMMENT '审批实例ID(approval_record.id)',
+                                `employeeId` BIGINT(20) NOT NULL COMMENT '调岗员工ID(employee.id)',
+                                `sourceDeptId` BIGINT(20) NOT NULL COMMENT '原部门ID',
+                                `sourcePositionId` BIGINT(20) NOT NULL COMMENT '原职位ID',
+                                `targetDeptId` BIGINT(20) NOT NULL COMMENT '目标部门ID',
+                                `targetPositionId` BIGINT(20) NOT NULL COMMENT '目标职位ID',
+                                `transferDate` DATE NOT NULL COMMENT '调岗生效日期',
+                                `transferReason` VARCHAR(512) NOT NULL COMMENT '调岗详细原因',
+                                `newBaseSalary` DECIMAL(12,2) DEFAULT NULL COMMENT '调岗后新基本工资（薪资变动时填写）',
+                                `operatorId` BIGINT(20) NOT NULL COMMENT '操作HR员工ID',
+                                `remark` VARCHAR(512) DEFAULT NULL COMMENT '备注',
+                                `createTime` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+                                `updateTime` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+                                `isDeleted` TINYINT(4) NOT NULL DEFAULT 0 COMMENT '逻辑删除:0=否,1=是',
+                                PRIMARY KEY (`id`),
+                                UNIQUE KEY uk_businessNo (`businessNo`),
+                                KEY idx_emp (`employeeId`),
+                                KEY idx_source_dept (`sourceDeptId`),
+                                KEY idx_target_dept (`targetDeptId`),
+                                KEY idx_record (`recordId`)
+) ENGINE=INNODB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='员工调岗申请表';
+--empResign 离职申请表
+CREATE TABLE `emp_resign` (
+                              `id` BIGINT(20) NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+                              `businessNo` VARCHAR(32) NOT NULL COMMENT '离职单号，LZ+年月日+流水号',
+                              `flowId` BIGINT(20) NOT NULL COMMENT '审批流ID(approval_flow.id)',
+                              `recordId` BIGINT(20) DEFAULT NULL COMMENT '审批实例ID(approval_record.id)',
+                              `employeeId` BIGINT(20) NOT NULL COMMENT '离职员工ID(employee.id)',
+                              `applyDate` DATE NOT NULL COMMENT '离职申请提交日期',
+                              `lastWorkDate` DATE NOT NULL COMMENT '最后工作日',
+                              `resignType` TINYINT(4) NOT NULL COMMENT '离职类型:1主动离职/2公司辞退/3合同到期/4自离',
+                              `resignReason` VARCHAR(512) NOT NULL COMMENT '离职详细原因',
+                              `handoverPersonId` BIGINT(20) DEFAULT NULL COMMENT '工作交接人员工ID',
+                              `handoverStatus` TINYINT(4) DEFAULT 0 COMMENT '交接状态:0未交接/1已完成交接',
+                              `settleSalary` DECIMAL(14,2) DEFAULT 0.00 COMMENT '离职结算应发薪资',
+                              `settleDate` DATE DEFAULT NULL COMMENT '薪资结算日期',
+                              `operatorId` BIGINT(20) NOT NULL COMMENT '操作HR员工ID',
+                              `remark` VARCHAR(512) DEFAULT NULL COMMENT '备注',
+                              `createTime` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+                              `updateTime` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+                              `isDeleted` TINYINT(4) NOT NULL DEFAULT 0 COMMENT '逻辑删除:0=否,1=是',
+                              PRIMARY KEY (`id`),
+                              UNIQUE KEY uk_businessNo (`businessNo`),
+                              KEY idx_emp (`employeeId`),
+                              KEY idx_handover (`handoverPersonId`),
+                              KEY idx_record (`recordId`)
+) ENGINE=INNODB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='员工离职申请表';
+
+--empMutationLog 人事异动汇总日志
+CREATE TABLE `emp_mutation_log` (
+                                    `id` BIGINT(20) NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+                                    `businessType` VARCHAR(32) NOT NULL COMMENT '异动类型枚举:ONBOARDING入职/PROBATION转正/TRANSFER调岗/RESIGN离职',
+                                    `businessId` BIGINT(20) NOT NULL COMMENT '对应异动单据主键ID（4张异动表id）',
+                                    `businessNo` VARCHAR(32) NOT NULL COMMENT '异动单据编号',
+                                    `employeeId` BIGINT(20) DEFAULT NULL COMMENT '关联员工ID（入职单据审批通过后回填）',
+                                    `employeeName` VARCHAR(128) DEFAULT NULL COMMENT '员工姓名快照',
+                                    `deptId` BIGINT(20) NOT NULL COMMENT '所属部门ID',
+                                    `deptName` VARCHAR(64) NOT NULL COMMENT '部门名称快照',
+                                    `effectDate` DATE NOT NULL COMMENT '异动生效日期',
+                                    `approvalStatus` VARCHAR(16) NOT NULL COMMENT '审批状态，复用approval_record.status',
+                                    `operatorId` BIGINT(20) NOT NULL COMMENT '操作HR员工ID',
+                                    `operatorName` VARCHAR(64) NOT NULL COMMENT '操作人姓名快照',
+                                    `createTime` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '单据创建时间',
+                                    PRIMARY KEY (`id`),
+                                    KEY idx_employee (`employeeId`),
+                                    KEY idx_dept (`deptId`),
+                                    KEY idx_business_type (`businessType`),
+                                    KEY idx_effect_date (`effectDate`)
+) ENGINE=INNODB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='人事异动统一汇总日志（员工我的人事异动页面专用）';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 -- ============== 工作台/数据看板模块 ==============
 

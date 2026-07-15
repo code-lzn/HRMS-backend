@@ -239,6 +239,14 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
     @Transactional(rollbackFor = Exception.class)
     public ApprovalRecord startApproval(String businessType, Long businessId,
                                          Long applicantEmployeeId, String applicantName) {
+        return startApproval(businessType, businessId, applicantEmployeeId, applicantName, null);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ApprovalRecord startApproval(String businessType, Long businessId,
+                                         Long applicantEmployeeId, String applicantName,
+                                         Long targetDepartmentId) {
         // 查找审批流定义
         ApprovalFlow flow = approvalFlowService.lambdaQuery()
                 .eq(ApprovalFlow::getBusinessType, businessType)
@@ -269,7 +277,7 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
         Employee applicant = employeeService.getById(applicantEmployeeId);
         for (int i = 0; i < nodes.size(); i++) {
             ApprovalFlowNode node = nodes.get(i);
-            Long approverId = resolveApprover(node, applicant);
+            Long approverId = resolveApprover(node, applicant, targetDepartmentId);
             String approverName = null;
             if (approverId != null) {
                 Employee approver = employeeService.getById(approverId);
@@ -283,9 +291,7 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
             detail.setStepOrder(node.getNodeOrder());
             detail.setApproverId(approverId);
             detail.setApproverName(approverName);
-            detail.setAction(ApprovalActionEnum.PENDING.getValue()); // 只有第一个节点是 PENDING，后续节点等前面的通过后才变为 PENDING
-            // 实际上所有节点都先创建为 PENDING，前端按 stepOrder 过滤即可
-            // 但为了精确，可以让第一个节点 PENDING，其余保持为 PENDING 也行
+            detail.setAction(ApprovalActionEnum.PENDING.getValue());
             detail.setIsDelegated(0);
             approvalDetailService.save(detail);
         }
@@ -393,20 +399,26 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
      */
 
     private Long resolveApprover(ApprovalFlowNode node, Employee applicant) {
+        return resolveApprover(node, applicant, null);
+    }
+
+    private Long resolveApprover(ApprovalFlowNode node, Employee applicant, Long targetDepartmentId) {
         if (applicant == null) return null;
 
         ApproverTypeEnum approverType = ApproverTypeEnum.getEnumByValue(node.getApproverType());
         if (approverType == null) return node.getApproverId();
 
         switch (approverType) {
-            case DEPT_MANAGER:
-                if (applicant.getDepartmentId() != null) {
-                    Department dept = departmentService.getById(applicant.getDepartmentId());
+            case DEPT_MANAGER: {
+                Long deptId = targetDepartmentId != null ? targetDepartmentId : applicant.getDepartmentId();
+                if (deptId != null) {
+                    Department dept = departmentService.getById(deptId);
                     if (dept != null && dept.getManagerId() != null) {
                         return dept.getManagerId();
                     }
                 }
                 return null;
+            }
             case DIRECT_SUPERIOR: {
                 EmployeeDetail detail = employeeDetailMapper.selectOne(
                         new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<EmployeeDetail>()

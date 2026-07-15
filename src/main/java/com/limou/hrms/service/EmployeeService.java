@@ -44,4 +44,41 @@ public interface EmployeeService extends IService<Employee> {
 
     /** 通过用户ID获取员工 */
     Employee getByUserId(Long userId);
+
+    // ==================== 我的档案（新版） ====================
+
+    /**
+     * 获取我的档案详情（联表 employee + employee_detail）
+     * <p>
+     * 普通员工仅查本人，HR可查任意员工；
+     * 根据角色自动脱敏/隐藏敏感字段
+     *
+     * @param loginUserId       当前登录用户ID
+     * @param targetEmployeeId  目标员工ID（不传/null则默认当前登录员工）
+     * @param isAdminOrHR       是否为HR/管理员角色
+     * @return 完整档案信息
+     */
+    MyProfileVO getMyFullProfile(Long loginUserId, Long targetEmployeeId, boolean isAdminOrHR);
+
+    /**
+     * 修改个人可编辑档案信息（仅 currentAddress / emergencyContactName / emergencyContactPhone）
+     * <p>
+     * 自动对比新旧值，循环写入 change_log
+     *
+     * @param loginUserId 当前登录用户ID
+     * @param request     更新请求
+     * @return 更新时间
+     */
+    java.util.Date updateMyDetail(Long loginUserId, MyDetailUpdateRequest request);
+
+    /**
+     * 分页查询个人档案修改日志
+     *
+     * @param loginUserId       当前登录用户ID
+     * @param targetEmployeeId  目标员工ID（不传/null则默认当前登录员工）
+     * @param page              页码
+     * @param size              每页条数
+     * @return 分页日志
+     */
+    Page<EmployeeChangeLogVO> getMyChangeLogs(Long loginUserId, Long targetEmployeeId, int page, int size);
 }

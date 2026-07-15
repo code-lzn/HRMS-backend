@@ -289,6 +289,79 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
         return voPage;
     }
 
+    @Override
+    public Page<EmployeeChangeLogVO> getMyChangeLogs(Long loginUserId, Long targetEmployeeId, int page, int size) {
+        Long employeeId = targetEmployeeId;
+        if (employeeId == null) {
+            Employee emp = getByUserId(loginUserId);
+            employeeId = emp != null ? emp.getId() : null;
+        }
+        return getChangeLogs(employeeId, page, size);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public java.util.Date updateMyDetail(Long loginUserId, MyDetailUpdateRequest request) {
+        Employee loginEmp = getByUserId(loginUserId);
+        ThrowUtils.throwIf(!loginEmp.getId().equals(request.getEmployeeId()),
+                ErrorCode.NO_AUTH_ERROR, "只能修改本人的档案信息");
+
+        EmployeeDetail detail = getOrCreateDetail(loginEmp.getId());
+
+        EmployeeChangeLog log = new EmployeeChangeLog();
+        log.setEmployeeId(loginEmp.getId());
+        log.setOperatorId(loginEmp.getId());
+        log.setChangeType("SELF_EDIT");
+
+        checkAndLog(detail.getCurrentAddress(), request.getCurrentAddress(), "currentAddress", log);
+        checkAndLog(detail.getEmergencyContactName(), request.getEmergencyContactName(), "emergencyContactName", log);
+        checkAndLog(detail.getEmergencyContactPhone(), request.getEmergencyContactPhone(), "emergencyContactPhone", log);
+
+        if (request.getCurrentAddress() != null) detail.setCurrentAddress(request.getCurrentAddress());
+        if (request.getEmergencyContactName() != null) detail.setEmergencyContactName(request.getEmergencyContactName());
+        if (request.getEmergencyContactPhone() != null) detail.setEmergencyContactPhone(request.getEmergencyContactPhone());
+        employeeDetailMapper.updateById(detail);
+
+        return new java.util.Date();
+    }
+
+    @Override
+    public MyProfileVO getMyFullProfile(Long loginUserId, Long targetEmployeeId, boolean isAdminOrHR) {
+        Employee loginEmp = getByUserId(loginUserId);
+
+        // 确定查询目标员工
+        Employee targetEmp;
+        if (targetEmployeeId == null || targetEmployeeId.equals(loginEmp.getId())) {
+            targetEmp = loginEmp;
+        } else {
+            ThrowUtils.throwIf(!isAdminOrHR, ErrorCode.NO_AUTH_ERROR, "无权限查看他人档案");
+            targetEmp = this.getById(targetEmployeeId);
+            ThrowUtils.throwIf(targetEmp == null, ErrorCode.NOT_FOUND_ERROR, "目标员工不存在");
+        }
+
+        EmployeeDetail detail = getDetailByEmployeeId(targetEmp.getId());
+        Department department = departmentService.getById(targetEmp.getDepartmentId());
+        Position position = positionService.getById(targetEmp.getPositionId());
+        EmpSalaryProfile salary = salaryProfileService.lambdaQuery()
+                .eq(EmpSalaryProfile::getEmployeeId, targetEmp.getId()).one();
+
+        MyProfileVO vo = new MyProfileVO();
+        BeanUtils.copyProperties(targetEmp, vo);
+        if (detail != null) {
+            BeanUtils.copyProperties(detail, vo);
+            vo.setIdCard(maskIdCard(detail.getIdCard()));
+            vo.setEmergencyContactPhone(maskPhone(detail.getEmergencyContactPhone()));
+        }
+        if (department != null) vo.setDepartmentName(department.getDeptName());
+        if (position != null) vo.setPositionName(position.getName());
+        if (salary != null) vo.setBaseSalary(salary.getBaseSalary());
+        vo.setPhone(maskPhone(targetEmp.getPhone()));
+        vo.setIsSensitiveRole(isAdminOrHR);
+        vo.setEditableFields(EDITABLE_FIELDS);
+
+        return vo;
+    }
+
     // ==================== 个人中心 ====================
 
     @Override
