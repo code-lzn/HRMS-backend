@@ -17,5 +17,7 @@ public class PendingItemVO {
     private String applicantName;
     private String nodeName;
     private Integer nodeOrder;
+    private String delegatorName;
     private LocalDateTime createTime;
+    private LocalDateTime deadLine;
 }

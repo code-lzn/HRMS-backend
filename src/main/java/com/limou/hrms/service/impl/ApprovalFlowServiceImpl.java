@@ -264,8 +264,13 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
                           "AND d.enabled = 1 AND NOW() BETWEEN d.start_time AND d.end_time")
                   .orderByDesc("create_time");
 
-        // 复用同类分页；这里直接查所有，后面合并
         java.util.List<ApprovalNode> delegateNodes = approvalNodeMapper.selectList(delegateQw);
+
+        // 记录委托节点ID，用于组装VO时标记 delegatorName
+        Set<Long> delegateNodeIds = new HashSet<>();
+        for (ApprovalNode n : delegateNodes) {
+            delegateNodeIds.add(n.getId());
+        }
 
         // 3. 合并两个来源（去重），按 create_time 排序
         Set<Long> seenIds = new HashSet<>();
@@ -291,7 +296,7 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
             allNodes = allNodes.subList(fromIndex, toIndex);
         }
 
-        // 关联 instance 信息组装 VO
+        // 5. 关联 instance 信息组装 VO
         List<PendingItemVO> records = allNodes.stream().map(node -> {
             ApprovalInstance instance = approvalInstanceMapper.selectById(node.getInstanceId());
             PendingItemVO vo = new PendingItemVO();
@@ -308,6 +313,14 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
             }
             vo.setNodeName(node.getNodeName());
             vo.setNodeOrder(node.getNodeOrder());
+            // 截止时间：节点创建后 48h
+            if (node.getCreateTime() != null) {
+                vo.setDeadLine(node.getCreateTime().plusHours(48));
+            }
+            // 委托待办：标记委托人姓名
+            if (delegateNodeIds.contains(node.getId())) {
+                vo.setDelegatorName(approverResolver.getEmployeeName(node.getApproverId()));
+            }
             return vo;
         }).collect(Collectors.toList());
 
