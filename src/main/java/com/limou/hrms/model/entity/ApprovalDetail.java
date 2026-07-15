@@ -16,6 +16,7 @@ import java.util.Date;
 @Data
 public class ApprovalDetail implements Serializable {
 
+    /** 主键ID */
     @TableId(type = IdType.AUTO)
     private Long id;
 
@@ -52,6 +53,7 @@ public class ApprovalDetail implements Serializable {
     /** 操作时间 */
     private Date operateTime;
 
+    /** 创建时间 */
     private Date createTime;
 
     private static final long serialVersionUID = 1L;

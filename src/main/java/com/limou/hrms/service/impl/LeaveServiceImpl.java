@@ -11,6 +11,7 @@ import com.limou.hrms.mapper.LeaveMapper;
 import com.limou.hrms.model.entity.*;
 import com.limou.hrms.model.enums.ApprovalRecordStatusEnum;
 import com.limou.hrms.model.enums.ApprovalStatusEnum;
+import com.limou.hrms.model.enums.AttendanceStatusEnum;
 import com.limou.hrms.model.enums.BusinessTypeEnum;
 import com.limou.hrms.model.enums.LeaveTypeEnum;
 import com.limou.hrms.model.enums.ProgressNodeStatusEnum;
@@ -70,8 +71,8 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
         // 检查是否有重叠的请假记录
         long overlapCount = this.lambdaQuery()
                 .eq(Leave::getEmployeeId, emp.getId())
-                .ne(Leave::getStatus, AttendanceConstant.APPROVAL_STATUS_REJECTED)
-                .ne(Leave::getStatus, AttendanceConstant.APPROVAL_STATUS_CANCELLED)
+                .ne(Leave::getStatus, ApprovalStatusEnum.REJECTED.getValue())
+                .ne(Leave::getStatus, ApprovalStatusEnum.CANCELLED.getValue())
                 .le(Leave::getStartDate, end)
                 .ge(Leave::getEndDate, start)
                 .count();
@@ -88,7 +89,7 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
         request.setTotalDays(BigDecimal.valueOf(days));
         request.setReason(reason);
         request.setApproverId(employeeDetail.getDirectReportId());
-        request.setStatus(AttendanceConstant.APPROVAL_STATUS_PENDING);
+        request.setStatus(ApprovalStatusEnum.PENDING.getValue());
 
         boolean saved = this.save(request);
         ThrowUtils.throwIf(!saved, ErrorCode.OPERATION_ERROR, "请假申请失败");
@@ -107,7 +108,7 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
     public LeaveVO approve(Long requestId, Integer result, String comment, Long approverId) {
         Leave request = this.getById(requestId);
         ThrowUtils.throwIf(request == null, ErrorCode.NOT_FOUND_ERROR, "请假申请不存在");
-        ThrowUtils.throwIf(request.getStatus() != AttendanceConstant.APPROVAL_STATUS_PENDING,
+        ThrowUtils.throwIf(request.getStatus() != ApprovalStatusEnum.PENDING.getValue(),
                 ErrorCode.APPROVAL_NOT_PENDING_ERROR);
 
         Date now = new Date();
@@ -120,7 +121,7 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
         ThrowUtils.throwIf(!updated, ErrorCode.OPERATION_ERROR, "审批失败");
 
         // 如果拒绝，还原考勤状态
-        if (Objects.equals(result, AttendanceConstant.APPROVAL_STATUS_REJECTED)) {
+        if (Objects.equals(result, ApprovalStatusEnum.REJECTED.getValue())) {
             revertAttendanceForLeave(request.getEmployeeId(), request.getStartDate(), request.getEndDate());
         }
 
@@ -163,12 +164,12 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
         // 节点2: 审批结果
         LeaveProgressVO.ProgressNode approveNode = new LeaveProgressVO.ProgressNode();
         approveNode.setNodeName("审批");
-        if (request.getStatus() == AttendanceConstant.APPROVAL_STATUS_PENDING) {
+        if (request.getStatus() == ApprovalStatusEnum.PENDING.getValue()) {
             approveNode.setStatus(ProgressNodeStatusEnum.IN_PROGRESS.getValue());
             approveNode.setOperatorName(null);
             approveNode.setOperateTime(null);
             approveNode.setComment(null);
-        } else if (request.getStatus() == AttendanceConstant.APPROVAL_STATUS_CANCELLED) {
+        } else if (request.getStatus() == ApprovalStatusEnum.CANCELLED.getValue()) {
             approveNode.setStatus(ProgressNodeStatusEnum.NOT_STARTED.getValue());
             approveNode.setNodeName("审批（已撤销）");
             approveNode.setOperatorName(null);
@@ -196,10 +197,10 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
         Leave request = this.getById(requestId);
         ThrowUtils.throwIf(request == null, ErrorCode.NOT_FOUND_ERROR, "请假申请不存在");
         ThrowUtils.throwIf(!Objects.equals(request.getUserId(), userId), ErrorCode.NO_AUTH_ERROR);
-        ThrowUtils.throwIf(request.getStatus() != AttendanceConstant.APPROVAL_STATUS_PENDING,
+        ThrowUtils.throwIf(request.getStatus() != ApprovalStatusEnum.PENDING.getValue(),
                 ErrorCode.APPROVAL_NOT_PENDING_ERROR);
 
-        request.setStatus(AttendanceConstant.APPROVAL_STATUS_CANCELLED);
+        request.setStatus(ApprovalStatusEnum.CANCELLED.getValue());
         boolean updated = this.updateById(request);
         ThrowUtils.throwIf(!updated, ErrorCode.OPERATION_ERROR, "撤销失败");
 
@@ -252,10 +253,10 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
                 record = new Attendance();
                 record.setEmployeeId(employeeId);
                 record.setAttendanceDate(DateUtil.parseDate(dateStr));
-                record.setStatus(AttendanceConstant.ATTENDANCE_STATUS_LEAVE);
+                record.setStatus(AttendanceStatusEnum.LEAVE.getValue());
                 attendanceService.save(record);
             } else {
-                record.setStatus(AttendanceConstant.ATTENDANCE_STATUS_LEAVE);
+                record.setStatus(AttendanceStatusEnum.LEAVE.getValue());
                 attendanceService.updateById(record);
             }
             cursor = DateUtil.offsetDay(cursor, 1);
@@ -273,14 +274,15 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
                     .eq(Attendance::getEmployeeId, employeeId)
                     .eq(Attendance::getAttendanceDate, DateUtil.parseDate(dateStr))
                     .one();
-            if (record != null && record.getStatus() == AttendanceConstant.ATTENDANCE_STATUS_LEAVE) {
-                // 还原：如果有打卡记录就保留原始状态，否则标记缺卡
+            if (record != null && Objects.equals(record.getStatus(), AttendanceStatusEnum.LEAVE.getValue())) {
                 if (record.getPunchInTime() != null || record.getPunchOutTime() != null) {
-                    record.setStatus(AttendanceConstant.ATTENDANCE_STATUS_NORMAL);
+                    // 有打卡记录：还原为正常
+                    record.setStatus(AttendanceStatusEnum.NORMAL.getValue());
+                    attendanceService.updateById(record);
                 } else {
-                    record.setStatus(AttendanceConstant.ATTENDANCE_STATUS_MISSING);
+                    // 无打卡记录：该记录是请假时创建的，直接删除
+                    attendanceService.removeById(record.getId());
                 }
-                attendanceService.updateById(record);
             }
             cursor = DateUtil.offsetDay(cursor, 1);
         }

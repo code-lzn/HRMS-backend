@@ -7,6 +7,7 @@
 | **日期** | **版本** | **修订说明** | **作者** |
 | --- | --- | --- | --- |
 | 2026-07-13 | 1.0 | 初稿 | 陆博 |
+| 2026-07-15 | 2.0 | 移除 userRole 测试；角色测试数据更新；AuthInterceptor 改为 RBAC 校验 | 陆博 |
 
 ## 项目背景
 
@@ -41,7 +42,7 @@
 | 角色管理 | 权限码分配（JSON 数组） | ✅ | ✅ | ✅ |
 | 角色管理 | 字段权限配置（JSON 对象） | ✅ | ✅ | ✅ |
 | 用户角色分配 | 为用户分配角色 | ✅ | ✅ | ✅ |
-| 用户角色分配 | 新旧角色体系同步（userRole 字段） | ✅ | - | ✅ |
+| 用户角色分配 | 角色分配即时生效（无需重新登录） | ✅ | ✅ | ✅ |
 | 功能权限校验 | PermissionInterceptor（URL 匹配） | ✅ | - | ✅ |
 | 功能权限校验 | AuthInterceptor（@AuthCheck） | ✅ | - | ✅ |
 | 功能权限校验 | PermissionAspect（@RequirePermission） | ✅ | - | ✅ |
@@ -195,7 +196,7 @@
 | 接口 | `POST /api/role/assign` |
 | 前置条件 | 管理员登录，用户 A 当前角色为"普通员工"（id=5） |
 | 测试步骤 | `{"userId": A, "roleId": 2}` 分配 HR 角色 |
-| 预期结果 | code=0。用户 A 的 roleId=2，userRole 更新为"user"（HR角色code非admin） |
+| 预期结果 | code=0。用户 A 的 roleId=2，调用 /api/permission/current 返回 HR 权限码 |
 | 优先级 | P0 |
 
 ### TC-B102：分配角色-升级为管理员
@@ -205,7 +206,7 @@
 | 接口 | `POST /api/role/assign` |
 | 前置条件 | 管理员登录，用户 B 当前为普通员工 |
 | 测试步骤 | `{"userId": B, "roleId": 1}` 分配系统管理员角色 |
-| 预期结果 | code=0。用户 B 的 roleId=1，userRole 更新为"admin" |
+| 预期结果 | code=0。用户 B 的 roleId=1，权限码含 `*:*:*`，isAdmin() 返回 true |
 | 优先级 | P0 |
 
 ### TC-B103：分配角色-用户不存在
@@ -371,19 +372,29 @@
 | **项目** | **内容** |
 | --- | --- |
 | 接口 | `GET /api/role/list/all` |
-| 前置条件 | 管理员登录（userRole="admin"） |
+| 前置条件 | 管理员登录（roleId=1，role.status=1，permissions 含 `*:*:*`） |
 | 测试步骤 | 调用接口 |
-| 预期结果 | code=0，正常返回（通过第2层 AuthInterceptor） |
+| 预期结果 | code=0，正常返回（通过第2层：roleId != null → role.status=1 → hasPermission(*:*:*)） |
 | 优先级 | P0 |
 
-### TC-B305：AuthInterceptor — @AuthCheck 拒绝
+### TC-B305：AuthInterceptor — @AuthCheck 拒绝（无管理员等效权限）
 
 | **项目** | **内容** |
 | --- | --- |
 | 接口 | `GET /api/role/list/all` |
-| 前置条件 | HR 专员登录（userRole="user"，非 admin） |
+| 前置条件 | HR 专员登录（roleId=2，有 employee:list 等但无 `*:*:*` 和 `role:manage`） |
 | 测试步骤 | 调用接口 |
-| 预期结果 | code=40101（NO_AUTH_ERROR） |
+| 预期结果 | code=40101（NO_AUTH_ERROR），message 含"未分配角色"或权限不足 |
+| 优先级 | P0 |
+
+### TC-B305a：AuthInterceptor — 角色已禁用
+
+| **项目** | **内容** |
+| --- | --- |
+| 接口 | `GET /api/role/list/all` |
+| 前置条件 | 用户 role.status=0（角色已禁用） |
+| 测试步骤 | 调用接口 |
+| 预期结果 | code=40101，message="角色已被禁用" |
 | 优先级 | P0 |
 
 ### TC-B306：PermissionAspect — @RequirePermission 通过
@@ -733,12 +744,14 @@
 | 禁用角色→即时失效 | 1. 管理员禁用"测试角色"（status=0）<br>2. 用户 A 刷新页面 | 用户 A 所有权限失效，菜单只剩公开项 |
 | 启用角色→恢复权限 | 1. 管理员启用"测试角色"（status=1）<br>2. 用户 A 刷新页面 | 用户 A 权限恢复 |
 
-## 3.3 新旧权限体系兼容测试
+## 3.3 角色即时生效测试
 
 | 场景 | 操作步骤 | 预期结果 |
 | --- | --- | --- |
-| 分配 admin 角色后 isAdmin 通过 | 1. 用户 A 无角色<br>2. 管理员分配系统管理员角色（roleCode=ADMIN） | user.userRole="admin"，isAdmin()=true |
-| 分配非 admin 角色后 isAdmin 不通过 | 1. 用户 A 无角色<br>2. 管理员分配 HR 角色（roleCode=HR） | user.userRole="user"，isAdmin()=false |
+| 分配角色后即时生效 | 1. 用户 A 无角色<br>2. 管理员分配 HR 角色<br>3. 用户 A 调用 /api/permission/current | 返回 HR 角色权限码，无需重新登录 |
+| 禁用角色后即时失效 | 1. 管理员禁用用户 A 的角色<br>2. 用户 A 调用 /api/permission/current | dataScope=5，permissionCodes=[] |
+| 分配管理员角色后 isAdmin 通过 | 管理员分配含 `*:*:*` 权限的角色给用户 B | isAdmin()=true |
+| 分配普通角色后 isAdmin 不通过 | 管理员分配不含 `*:*:*` 和 `role:manage` 的角色 | isAdmin()=false |
 
 ---
 
@@ -750,21 +763,21 @@
 
 | id | roleName | roleCode | dataScope | permissions |
 | --- | --- | --- | --- | --- |
-| 1 | 系统管理员 | ADMIN | 1 | ["*:*:*"] |
-| 2 | HR专员 | HR | 2 | ["employee:list","employee:add","employee:edit","employee:delete","salary:list","salary:view"] |
-| 3 | 部门主管 | MANAGER | 3 | ["employee:list","employee:edit","approval:process"] |
-| 4 | 财务专员 | FINANCE | 4 | ["salary:list","salary:view","salary:audit"] |
-| 5 | 普通员工 | EMPLOYEE | 5 | ["employee:detail","attendance:clock"] |
+| 1 | 系统管理员 | admin | 1 | ["employee:list","employee:add","employee:edit","employee:delete","employee:detail","attendance:list","attendance:manage","approval:process","org:manage","role:manage","system:config","system:backup"] |
+| 2 | HR专员 | hr | 2 | ["employee:list","employee:add","employee:edit","employee:delete","employee:detail","salary:list","salary:view","salary:audit","attendance:list","attendance:manage","approval:process","org:manage"] |
+| 3 | 部门主管 | dept_head | 3 | ["employee:list","employee:detail","attendance:list","attendance:manage","approval:process"] |
+| 4 | 财务专员 | finance | 4 | ["salary:list","salary:view","salary:audit"] |
+| 5 | 普通员工 | employee | 5 | [] |
 
 ## 4.2 用户测试数据
 
-| 账号 | 密码 | 分配角色 | userRole | 用途 |
-| --- | --- | --- | --- | --- |
-| admin | 12345678 | 系统管理员(id=1) | admin | 管理员测试 |
-| hrtest | 12345678 | HR专员(id=2) | user | HR 测试 |
-| mgrtest | 12345678 | 部门主管(id=3) | user | 部门主管测试 |
-| fintest | 12345678 | 财务专员(id=4) | user | 财务测试 |
-| emptest | 12345678 | 普通员工(id=5) | user | 普通员工测试 |
+| 账号 | 密码 | 分配角色(roleId) | 用途 |
+| --- | --- | --- | --- |
+| admin | 12345678 | 系统管理员(id=1) | 管理员测试 |
+| hrtest | 12345678 | HR专员(id=2) | HR 测试 |
+| mgrtest | 12345678 | 部门主管(id=3) | 部门主管测试 |
+| fintest | 12345678 | 财务专员(id=4) | 财务测试 |
+| emptest | 12345678 | 普通员工(id=5) | 普通员工测试 |
 
 ---
 
@@ -799,3 +812,4 @@
 | **日期** | **版本** | **修订说明** | **作者** |
 | --- | --- | --- | --- |
 | 2026-07-13 | 1.0 | 初稿 | 陆博 |
+| 2026-07-15 | 2.0 | 移除 userRole 测试；角色测试数据更新；AuthInterceptor 改为 RBAC 校验 | 陆博 |

@@ -16,6 +16,7 @@ import java.util.Date;
 @Data
 public class EmployeeChangeLog implements Serializable {
 
+    /** 主键ID */
     @TableId(type = IdType.AUTO)
     private Long id;
 

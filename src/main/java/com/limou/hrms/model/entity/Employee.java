@@ -13,13 +13,14 @@ import java.util.Date;
 @Data
 public class Employee implements Serializable {
 
+    /** 主键ID */
     @TableId(type = IdType.AUTO)
     private Long id;
 
     /** 员工姓名 */
     private String employeeName;
 
-    /** 工号 */
+    /** 工号，格式: 年份(4)+部门编码(2)+序号(3) */
     private String employeeNo;
 
     /** 系统账号（=手机号） */
@@ -46,14 +47,13 @@ public class Employee implements Serializable {
     /** 职位ID */
     private Long positionId;
 
-    /** 职级 */
+    /** 职级（DB暂无，后续扩展） */
+    @TableField(exist = false)
     private String jobLevel;
 
     /** 入职日期 */
     private Date hireDate;
 
-    /** 入职类型 */
-    private Integer hireType;
 
     /** 录用类型 */
     private String employmentType;
@@ -68,9 +68,6 @@ public class Employee implements Serializable {
     @TableLogic
     private Integer isDeleted;
 
-    /** 薪资ID（DB暂无，后续扩展） */
-    @TableField(exist = false)
-    private Long salaryId;
 
     @TableField(exist = false)
     private static final long serialVersionUID = 1L;

@@ -48,11 +48,6 @@ public class User implements Serializable {
     private String userProfile;
 
     /**
-     * 用户角色：user/admin/ban
-     */
-    private String userRole;
-
-    /**
      * 角色ID
      */
     private Long roleId;
@@ -77,5 +72,5 @@ public class User implements Serializable {
      */
     private Integer isDelete;
 
-    private static final long serialVersionUID = 1L;
+    private static final long serialVersionUID = 5722402489699486655L;
 }

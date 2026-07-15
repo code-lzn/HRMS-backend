@@ -208,14 +208,27 @@ interface UserPermission {
   userId: number
   userAccount: string
   userName: string
-  roleId: number | null
-  roleName: string | null
-  roleCode: string | null
-  dataScope: number           // 1~5
-  dataScopeDesc: string       // "全量" / "全部员工" / ...
-  permissions: string         // 原始 JSON 字符串
-  permissionCodes: string[]   // 解析后的权限码数组
+  roleId: number | null        // 关联 role 表，null 表示未分配角色
+  roleName: string | null      // 角色名称，如"系统管理员"
+  roleCode: string | null      // 角色编码，如"admin"
+  dataScope: number            // 1=全量 2=全部员工 3=本部门 4=薪资 5=仅本人
+  dataScopeDesc: string        // "全量" / "全部员工" / ...
+  permissions: string          // 原始 JSON 字符串
+  permissionCodes: string[]    // 解析后的权限码数组，*:*:* 为超级通配符
   fieldPermissions: string | null  // 字段权限 JSON 字符串
+}
+
+// LoginUserVO（登录返回）
+interface LoginUserVO {
+  id: number
+  userName: string
+  userAvatar: string
+  userProfile: string
+  roleId: number | null        // 权限判断的核心字段
+  roleName: string | null      // 角色显示名称
+  employeeId: number | null    // 关联的员工档案ID
+  createTime: string
+  updateTime: string
 }
 ```
 
@@ -225,17 +238,22 @@ interface UserPermission {
 | --- | --- | --- |
 | 员工管理 > 员工列表 | `employee:list` | 管理员、HR、部门主管 |
 | 员工管理 > 新增员工 | `employee:add` | 管理员、HR |
-| 员工管理 > 员工详情 | `employee:detail` | 所有登录用户 |
-| 薪资管理 > 薪资列表 | `salary:list` | 管理员、HR、财务 |
-| 薪资管理 > 薪资审核 | `salary:audit` | 管理员、财务 |
-| 薪资管理 > 工资条 | `salary:view` | 管理员、HR、财务、普通员工（仅自己） |
+| 员工管理 > 员工详情 | `employee:detail` | 管理员、HR、部门主管 |
+| 员工管理 > 编辑员工 | `employee:edit` | 管理员、HR |
+| 员工管理 > 删除员工 | `employee:delete` | 管理员、HR |
+| 薪资管理 > 薪资管理 | `salary:list` | HR、财务 |
+| 薪资管理 > 薪资审核 | `salary:audit` | HR、财务 |
+| 薪资管理 > 我的工资条 | —（自服务） | 所有登录用户 |
 | 审批管理 | `approval:process` | 管理员、HR、部门主管 |
-| 考勤管理 > 打卡 | `attendance:clock` | 所有登录用户 |
-| 考勤管理 > 考勤列表 | `attendance:list` | 管理员、HR、部门主管、普通员工（仅自己） |
-| 考勤管理 > 考勤管理 | `attendance:manage` | 管理员、HR |
-| 组织架构 > 部门管理 | `org:manage` | 管理员、HR |
-| 组织架构 > 职位管理 | `org:manage` | 管理员、HR |
+| 考勤管理 > 打卡 | —（自服务） | 所有登录用户 |
+| 考勤管理 > 考勤记录 | —（自服务） | 所有登录用户 |
+| 考勤管理 > 考勤管理 | `attendance:list` | 管理员、HR、部门主管 |
+| 组织架构 > 部门树 | `employee:list` | 管理员、HR、部门主管 |
+| 组织架构 > 部门管理(增删改) | `org:manage` | 管理员、HR |
+| 组织架构 > 职位列表 | `employee:list` | 管理员、HR、部门主管 |
+| 组织架构 > 职位管理(增删改) | `org:manage` | 管理员、HR |
 | 系统管理 > 角色管理 | `role:manage` | 管理员 |
+| 系统管理 > 用户管理 | `role:manage` | 管理员 |
 | 系统管理 > 系统配置 | `system:config` | 管理员 |
 | 系统管理 > 数据备份 | `system:backup` | 管理员 |
 
@@ -631,3 +649,4 @@ const fieldPermissions = permStore.fieldPermissions
 | **日期** | **版本** | **修订说明** | **作者** |
 | --- | --- | --- | --- |
 | 2026-07-13 | 1.0 | 初稿 | 陆博 |
+| 2026-07-15 | 2.0 | 移除 userRole，统一为 roleId；自服务接口不再需要权限码；组织架构读写分离 | 陆博 |

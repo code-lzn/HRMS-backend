@@ -59,8 +59,8 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
     @Resource
     private UserMapper userMapper;
 
-    private static final Set<String> EDITABLE_FIELDS = Set.of("email", "currentAddress", "emergencyContactName");
-    private static final Set<String> LOCKED_FIELDS = Set.of("phone", "idCard", "departmentId", "positionId", "jobLevel", "directReportId", "workLocation", "hireType", "employmentType", "contractType", "contractExpireDate", "probationRatio", "baseSalary", "bankAccount", "bankName");
+    private static final Set<String> EDITABLE_FIELDS = Set.of("email", "currentAddress", "emergencyContactName","emergencyContactPhone");
+    private static final Set<String> LOCKED_FIELDS = Set.of("phone", "idCard", "departmentId", "positionId", "jobLevel", "directReportId", "workLocation", "employmentType", "contractType", "contractExpireDate", "probationRatio", "baseSalary", "bankAccount", "bankName");
     private static final String SALT = "hrms";
 
     // ==================== 员工档案管理 ====================
@@ -162,9 +162,7 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
         emp.setEmail(request.getEmail());
         emp.setDepartmentId(request.getDepartmentId());
         emp.setPositionId(request.getPositionId());
-        emp.setJobLevel(request.getJobLevel());
         emp.setHireDate(request.getHireDate());
-        emp.setHireType(request.getHireType());
         emp.setEmploymentType(request.getEmploymentType());
         this.save(emp);
 
@@ -182,6 +180,7 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
         detail.setBaseSalary(request.getBaseSalary());
         detail.setBankAccount(request.getBankAccount());
         detail.setBankName(request.getBankName());
+        detail.setJobLevel(request.getJobLevel());
         detail.setEmergencyContactName(request.getEmergencyContactName());
         detail.setEmergencyContactPhone(request.getEmergencyContactPhone());
         employeeDetailMapper.insert(detail);
@@ -192,7 +191,7 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
         String initPwd = generateRandomPwd();
         user.setUserPassword(DigestUtils.md5DigestAsHex((SALT + initPwd).getBytes()));
         user.setUserName(name);
-        user.setUserRole("user");
+        // roleId 不在此处设置，由管理员后续通过角色分配接口指定
         userMapper.insert(user);
         emp.setUserId(user.getId());
         emp.setAccount(phone);
@@ -299,7 +298,8 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
 
         Department department = departmentService.getById(emp.getDepartmentId());
         Position position = positionService.getById(emp.getPositionId());
-        EmpSalaryProfile salary = emp.getSalaryId() != null ? salaryProfileService.getById(emp.getSalaryId()) : null;
+        EmpSalaryProfile salary = salaryProfileService.lambdaQuery()
+                .eq(EmpSalaryProfile::getEmployeeId, emp.getId()).one();
         EmpProfileVO vo = new EmpProfileVO();
         BeanUtils.copyProperties(emp, vo);
         if (detail != null) BeanUtils.copyProperties(detail, vo);

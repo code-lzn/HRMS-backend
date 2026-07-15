@@ -20,6 +20,12 @@ import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import java.lang.reflect.Method;
 
+/**
+ * 权限码校验 AOP（第3层防线）
+ * <p>
+ * 触发条件：方法上标注了 @RequirePermission("xxx:xxx")
+ * 校验逻辑：通过 PermissionService 查询用户角色的权限码列表，判断是否包含所需权限码
+ */
 @Slf4j
 @Aspect
 @Component

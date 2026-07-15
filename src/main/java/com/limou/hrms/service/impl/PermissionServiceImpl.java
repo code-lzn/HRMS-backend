@@ -6,7 +6,6 @@ import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONUtil;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.constant.PermissionConstant;
-import com.limou.hrms.constant.UserConstant;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.model.entity.Role;
 import com.limou.hrms.model.entity.User;
@@ -45,14 +44,6 @@ public class PermissionServiceImpl implements PermissionService {
             vo.setUserAccount(user.getUserAccount());
             vo.setUserName(user.getUserName());
 
-            // 兼容旧管理员账号
-            if (user.getRoleId() == null && UserConstant.ADMIN_ROLE.equals(user.getUserRole())) {
-                vo.setDataScope(DataScopeEnum.ALL.getCode());
-                vo.setDataScopeDesc(DataScopeEnum.ALL.getDesc());
-                vo.setPermissionCodes(Collections.singletonList("*:*:*"));
-                return vo;
-            }
-
             if (user.getRoleId() != null) {
                 Role role = roleService.getRoleById(user.getRoleId());
                 if (role != null) {
@@ -70,7 +61,15 @@ public class PermissionServiceImpl implements PermissionService {
                         vo.setDataScopeDesc(DataScopeEnum.SELF.getDesc());
                         vo.setPermissionCodes(Collections.emptyList());
                     }
+                } else {
+                    vo.setDataScope(DataScopeEnum.SELF.getCode());
+                    vo.setDataScopeDesc(DataScopeEnum.SELF.getDesc());
+                    vo.setPermissionCodes(Collections.emptyList());
                 }
+            } else {
+                vo.setDataScope(DataScopeEnum.SELF.getCode());
+                vo.setDataScopeDesc(DataScopeEnum.SELF.getDesc());
+                vo.setPermissionCodes(Collections.emptyList());
             }
         } catch (Exception e) {
             log.error("获取用户权限失败, userId: {}", userId, e);
@@ -103,14 +102,7 @@ public class PermissionServiceImpl implements PermissionService {
     @Override
     public Integer getUserDataScope(Long userId) {
         User user = userService.getById(userId);
-        if (user == null) {
-            return DataScopeEnum.SELF.getCode();
-        }
-        // 兼容旧管理员账号：有 admin 角色字符串但未关联新角色表
-        if (user.getRoleId() == null && UserConstant.ADMIN_ROLE.equals(user.getUserRole())) {
-            return DataScopeEnum.ALL.getCode();
-        }
-        if (user.getRoleId() == null) {
+        if (user == null || user.getRoleId() == null) {
             return DataScopeEnum.SELF.getCode();
         }
         Role role = roleService.getRoleById(user.getRoleId());
@@ -123,14 +115,7 @@ public class PermissionServiceImpl implements PermissionService {
     @Override
     public List<String> getUserPermissionCodes(Long userId) {
         User user = userService.getById(userId);
-        if (user == null) {
-            return Collections.emptyList();
-        }
-        // 兼容旧管理员账号：有 admin 角色字符串但未关联新角色表
-        if (user.getRoleId() == null && UserConstant.ADMIN_ROLE.equals(user.getUserRole())) {
-            return Collections.singletonList("*:*:*");
-        }
-        if (user.getRoleId() == null) {
+        if (user == null || user.getRoleId() == null) {
             return Collections.emptyList();
         }
         Role role = roleService.getRoleById(user.getRoleId());
@@ -149,14 +134,7 @@ public class PermissionServiceImpl implements PermissionService {
     @Override
     public String getFieldPermissions(Long userId) {
         User user = userService.getById(userId);
-        if (user == null) {
-            return null;
-        }
-        // 兼容旧管理员账号
-        if (user.getRoleId() == null && UserConstant.ADMIN_ROLE.equals(user.getUserRole())) {
-            return null;
-        }
-        if (user.getRoleId() == null) {
+        if (user == null || user.getRoleId() == null) {
             return null;
         }
         Role role = roleService.getRoleById(user.getRoleId());

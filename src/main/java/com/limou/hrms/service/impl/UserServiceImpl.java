@@ -3,32 +3,39 @@ package com.limou.hrms.service.impl;
 import static com.limou.hrms.constant.UserConstant.USER_LOGIN_STATE;
 
 import cn.hutool.core.collection.CollUtil;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.constant.CommonConstant;
 import com.limou.hrms.exception.BusinessException;
+import com.limou.hrms.mapper.RoleMapper;
 import com.limou.hrms.mapper.UserMapper;
 import com.limou.hrms.model.dto.user.UserQueryRequest;
 import com.limou.hrms.model.entity.Employee;
+import com.limou.hrms.model.entity.Role;
 import com.limou.hrms.model.entity.User;
-import com.limou.hrms.model.enums.UserRoleEnum;
 import com.limou.hrms.model.vo.LoginUserVO;
 import com.limou.hrms.model.vo.UserVO;
 import com.limou.hrms.service.EmployeeService;
 import com.limou.hrms.service.LoginLogService;
 import com.limou.hrms.service.PasswordHistoryService;
+import com.limou.hrms.service.PermissionService;
 import com.limou.hrms.service.UserService;
 import com.limou.hrms.utils.SqlUtils;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.util.DigestUtils;
 
@@ -53,6 +60,13 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
     @Resource
     private EmployeeService employeeService;
+
+    @Resource
+    private RoleMapper roleMapper;
+
+    @Lazy
+    @Resource
+    private PermissionService permissionService;
 
     @Override
     public long userRegister(String userAccount, String userPassword, String checkPassword) {
@@ -132,38 +146,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         return this.getLoginUserVO(user);
     }
 
-//    @Override
-//    public LoginUserVO userLoginByMpOpen(WxOAuth2UserInfo wxOAuth2UserInfo, HttpServletRequest request) {
-//        String unionId = wxOAuth2UserInfo.getUnionId();
-//        String mpOpenId = wxOAuth2UserInfo.getOpenid();
-//        // 单机锁
-//        synchronized (unionId.intern()) {
-//            // 查询用户是否已存在
-//            QueryWrapper<User> queryWrapper = new QueryWrapper<>();
-//            queryWrapper.eq("unionId", unionId);
-//            User user = this.getOne(queryWrapper);
-//            // 被封号，禁止登录
-//            if (user != null && UserRoleEnum.BAN.getValue().equals(user.getUserRole())) {
-//                throw new BusinessException(ErrorCode.FORBIDDEN_ERROR, "该用户已被封，禁止登录");
-//            }
-//            // 用户不存在则创建
-//            if (user == null) {
-//                user = new User();
-//                user.setUnionId(unionId);
-//                user.setMpOpenId(mpOpenId);
-//                user.setUserAvatar(wxOAuth2UserInfo.getHeadImgUrl());
-//                user.setUserName(wxOAuth2UserInfo.getNickname());
-//                boolean result = this.save(user);
-//                if (!result) {
-//                    throw new BusinessException(ErrorCode.SYSTEM_ERROR, "登录失败");
-//                }
-//            }
-//            // 记录用户的登录态
-//            request.getSession().setAttribute(USER_LOGIN_STATE, user);
-//            return getLoginUserVO(user);
-//        }
-//    }
-
     /**
      * 获取当前登录用户
      *
@@ -207,14 +189,13 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     }
 
     /**
-     * 是否为管理员
+     * 是否为管理员（基于新版 RBAC）
      *
      * @param request
      * @return
      */
     @Override
     public boolean isAdmin(HttpServletRequest request) {
-        // 仅管理员可查询
         Object userObj = request.getSession().getAttribute(USER_LOGIN_STATE);
         User user = (User) userObj;
         return isAdmin(user);
@@ -222,7 +203,15 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
     @Override
     public boolean isAdmin(User user) {
-        return user != null && UserRoleEnum.ADMIN.getValue().equals(user.getUserRole());
+        if (user == null || user.getId() == null) {
+            return false;
+        }
+        // 新版 RBAC：通过 roleId 关联的角色拥有管理员等效权限
+        if (user.getRoleId() != null) {
+            return permissionService.hasPermission(user.getId(), "*:*:*") ||
+                   permissionService.hasPermission(user.getId(), "role:manage");
+        }
+        return false;
     }
 
     /**
@@ -247,6 +236,13 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         }
         LoginUserVO loginUserVO = new LoginUserVO();
         BeanUtils.copyProperties(user, loginUserVO);
+        // 附带角色名称
+        if (user.getRoleId() != null) {
+            Role role = roleMapper.selectById(user.getRoleId());
+            if (role != null) {
+                loginUserVO.setRoleName(role.getRoleName());
+            }
+        }
         return loginUserVO;
     }
 
@@ -257,6 +253,13 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         }
         UserVO userVO = new UserVO();
         BeanUtils.copyProperties(user, userVO);
+        // 附带角色名称
+        if (user.getRoleId() != null) {
+            Role role = roleMapper.selectById(user.getRoleId());
+            if (role != null) {
+                userVO.setUserRoleName(role.getRoleName());
+            }
+        }
         return userVO;
     }
 
@@ -265,7 +268,27 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         if (CollUtil.isEmpty(userList)) {
             return new ArrayList<>();
         }
-        return userList.stream().map(this::getUserVO).collect(Collectors.toList());
+        // 批量查询角色名称
+        Set<Long> roleIds = userList.stream()
+                .map(User::getRoleId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, String> roleNameMap = Map.of();
+        if (!roleIds.isEmpty()) {
+            List<Role> roles = roleMapper.selectBatchIds(roleIds);
+            roleNameMap = roles.stream()
+                    .collect(Collectors.toMap(Role::getId, Role::getRoleName, (a, b) -> a));
+        }
+
+        Map<Long, String> finalRoleNameMap = roleNameMap;
+        return userList.stream().map(user -> {
+            UserVO userVO = new UserVO();
+            BeanUtils.copyProperties(user, userVO);
+            if (user.getRoleId() != null) {
+                userVO.setUserRoleName(finalRoleNameMap.getOrDefault(user.getRoleId(), ""));
+            }
+            return userVO;
+        }).collect(Collectors.toList());
     }
 
     @Override
@@ -278,14 +301,14 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         String mpOpenId = userQueryRequest.getMpOpenId();
         String userName = userQueryRequest.getUserName();
         String userProfile = userQueryRequest.getUserProfile();
-        String userRole = userQueryRequest.getUserRole();
+        Long roleId = userQueryRequest.getRoleId();
         String sortField = userQueryRequest.getSortField();
         String sortOrder = userQueryRequest.getSortOrder();
         QueryWrapper<User> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq(id != null, "id", id);
         queryWrapper.eq(StringUtils.isNotBlank(unionId), "unionId", unionId);
         queryWrapper.eq(StringUtils.isNotBlank(mpOpenId), "mpOpenId", mpOpenId);
-        queryWrapper.eq(StringUtils.isNotBlank(userRole), "userRole", userRole);
+        queryWrapper.eq(roleId != null, "roleId", roleId);
         queryWrapper.like(StringUtils.isNotBlank(userProfile), "userProfile", userProfile);
         queryWrapper.like(StringUtils.isNotBlank(userName), "userName", userName);
         queryWrapper.orderBy(SqlUtils.validSortField(sortField), sortOrder.equals(CommonConstant.SORT_ORDER_ASC),

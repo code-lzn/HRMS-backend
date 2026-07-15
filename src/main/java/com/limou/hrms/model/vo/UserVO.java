@@ -32,9 +32,9 @@ public class UserVO implements Serializable {
     private String userProfile;
 
     /**
-     * 用户角色：user/admin/ban
+     * 用户角色：5个角色
      */
-    private String userRole;
+    private String userRoleName;
 
     /**
      * 创建时间

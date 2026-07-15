@@ -27,7 +27,7 @@ UED：选填
 
 ## 2.1 前端迭代目标
 
-1. 员工列表页：默认列表 + 高级搜索 + 分页 + 批量导出
+1. 员工列表页：默认列表 + 高级搜索 + 分页
 2. 员工档案详情页：四分区卡片展示（基础/个人/工作/薪资合同），敏感字段脱敏
 3. 员工新增页：完整表单，工号自动生成
 4. 员工编辑页：按字段权限动态控制可编辑项，锁定字段置灰
@@ -53,7 +53,6 @@ UED：选填
 | 部门 | 多选 | TreeSelect multiple | N | - | number[] | `/api/departments/tree` |
 | 职位 | 多选 | Select multiple + 搜索 | N | - | number[] | `/api/positions/list` |
 | 在职状态 | 多选 | Select multiple | N | - | number[] | 枚举：试用期(1)/正式(2)/待离职(3)/已离职(4) |
-| 职级 | 多选 | Select multiple | N | - | string[] | `/api/positions/sequences` |
 | 入职日期 | 日期范围 | DateRangePicker | N | - | {start,end} | - |
 
 ##### 列表默认展示字段
@@ -64,7 +63,6 @@ UED：选填
 | 工号 | `employeeNo` | 120 | - |
 | 部门 | `departmentName` | 120 | 关联查询 |
 | 职位 | `positionName` | 140 | 关联查询 |
-| 职级 | `jobLevel` | 80 | - |
 | 在职状态 | `status` | 100 | Tag：试用期(蓝)/正式(绿)/待离职(橙)/已离职(灰) |
 | 入职日期 | `hireDate` | 120 | YYYY-MM-DD |
 | 操作 | - | 180 | 查看 / 编辑 / 更多 |
@@ -77,17 +75,15 @@ UED：选填
 | 编辑 | 跳转编辑页 | N | HR/部门主管，普通员工仅自己 |
 | 调岗 | 打开调岗申请 | N | 状态为试用期/正式，角色 hr |
 | 离职 | 打开离职申请 | N | 状态为试用期/正式，角色 hr |
-| 批量导出 | 导出 Excel | N | hr / admin |
 
 ##### 所需 API
 
 | 接口 | 说明 |
 | --- | --- |
-| `GET /api/employees/list` | 员工列表（分页+高级搜索） |
+| `GET /api/employee/list` | 员工列表（分页+高级搜索） |
 | `GET /api/departments/tree` | 部门下拉数据源 |
 | `GET /api/positions/list` | 职位下拉数据源 |
 | `GET /api/positions/sequences` | 职级下拉数据源 |
-| `GET /api/employees/export` | 批量导出 |
 
 ---
 
@@ -127,10 +123,8 @@ UED：选填
 | --- | --- | --- |
 | 所属部门 | `departmentName` | 所有人 |
 | 职位 | `positionName` | 所有人 |
-| 职级 | `jobLevel` | 所有人 |
 | 直接汇报人 | `directReportName` | HR + 主管 + 本人 |
 | 工作地点 | `workLocation` | 所有人 |
-| 入职类型 | `hireType` | HR + 本人 |
 | 录用类型 | `employmentType` | HR + 本人 |
 
 ##### 薪资与合同信息卡片
@@ -140,7 +134,6 @@ UED：选填
 | 合同类型 | `contractType` | HR |
 | 合同到期日 | `contractExpireDate` | HR |
 | 试用期待遇比例 | `probationRatio` | HR |
-| 薪资账套 | `salaryProfileId` | HR |
 | 基本工资 | `baseSalary` | HR + 财务 |
 | 银行账号 | `bankAccount` | HR（脱敏） |
 | 开户行 | `bankName` | HR |
@@ -164,8 +157,7 @@ UED：选填
 
 | 接口 | 说明 |
 | --- | --- |
-| `GET /api/employees/detail?id={id}` | 员工详情 |
-| `GET /api/employees/field-permissions` | 字段权限 |
+| `GET /api/employee/detail?id={id}` | 员工详情 |
 
 ---
 
@@ -192,11 +184,9 @@ UED：选填
 | --- | --- | --- | --- |
 | 所属部门 | TreeSelect | Y | `/api/departments/tree` |
 | 职位 | Select | Y | `/api/positions/list` |
-| 职级 | Select | N | `/api/positions/sequences`（按序列联动） |
 | 直接汇报人 | Select + 搜索 | N | 员工列表搜索 |
 | 工作地点 | Input | N | |
 | 入职日期 | DatePicker | Y | |
-| 入职类型 | Select | Y | 枚举 |
 | 录用类型 | Select | Y | FULL_TIME/PART_TIME/INTERN |
 
 **薪资与合同区：**
@@ -206,7 +196,6 @@ UED：选填
 | 合同类型 | Select | Y | 固定/无固定/劳务 |
 | 合同到期日 | DatePicker | 条件必填 | 固定期限时必填 |
 | 试用期待遇比例 | InputNumber | Y | 0.8~1.0，默认 0.8 |
-| 薪资账套 | Select | Y | |
 | 基本工资 | InputNumber | Y | |
 | 银行账号 | Input | N | |
 | 开户行 | Input | N | |
@@ -229,12 +218,11 @@ UED：选填
 
 | 接口 | 说明 |
 | --- | --- |
-| `POST /api/employees/add` | 新增员工 |
-| `POST /api/employees/generate-employee-no` | 预生成工号（可选） |
+| `POST /api/employee/add` | 新增员工 |
 | `GET /api/departments/tree` | 部门下拉 |
 | `GET /api/positions/list` | 职位下拉 |
 | `GET /api/positions/sequences` | 职级数据 |
-| `GET /api/employees/list` | 汇报人搜索 |
+| `GET /api/employee/list` | 汇报人搜索 |
 
 ---
 
@@ -252,9 +240,9 @@ UED：选填
 | --- | --- |
 | 手机号 | "如需修改手机号请联系HR" |
 | 身份证号 | "如需修改身份证号请联系HR" |
-| 部门/职位/职级 | "如需调整请走调岗流程" |
-| 直接汇报人 | "如需调整请走调岗流程" |
-| 入职类型 | "入职类型不可修改" |
+| 部门/职位 | "如需调整请走调岗流程" |
+| 直接汇报人/工作地点/职级 | "如需调整请走调岗流程" |
+| 录用类型 | "录用类型不可修改" |
 | 薪资合同字段 | "仅HR可编辑" |
 
 ##### 操作按钮
@@ -268,8 +256,7 @@ UED：选填
 
 | 接口 | 说明 |
 | --- | --- |
-| `PUT /api/employees/update` | 更新员工 |
-| `GET /api/employees/field-permissions` | 获取字段权限 |
+| `PUT /api/employee/update` | 更新员工 |
 
 ---
 
@@ -290,7 +277,7 @@ UED：选填
 
 | 接口 | 说明 |
 | --- | --- |
-| `GET /api/employees/change-logs?employeeId={id}` | 变更历史 |
+| `GET /api/employee/change-logs?employeeId={id}` | 变更历史 |
 
 ---
 
@@ -307,9 +294,9 @@ UED：选填
 
 | 模块 | 细节 | 开发 | 联调 | 自测 |
 | --- | --- | --- | --- | --- |
-| 员工列表页 | 高级搜索 + 表格 + 分页 + 导出 | 2 | 1 | 0.5 |
+| 员工列表页 | 高级搜索 + 表格 + 分页 | 2 | 1 | 0.5 |
 | 员工详情页 | 四分区卡片 + 字段权限 + 敏感脱敏 | 2 | 1 | 0.5 |
-| 员工新增页 | 四分区表单 + 部门/职位/职级下拉 | 2 | 1 | 0.5 |
+| 员工新增页 | 四分区表单 + 部门/职位下拉 | 2 | 1 | 0.5 |
 | 员工编辑页 | 动态表单 + 锁定字段 + 权限控制 | 1.5 | 0.5 | 0.5 |
 | 变更历史 | Timeline 抽屉 | 0.5 | 0.5 | 0 |
 
@@ -324,7 +311,6 @@ UED：选填
 - 员工搜索埋点（关键词 + 筛选条件组合）
 - 员工详情查看埋点
 - 员工新增/编辑/删除操作埋点
-- 批量导出埋点
 
 # 4. 发布计划
 
@@ -347,3 +333,4 @@ UED：选填
 | --- | --- | --- | --- |
 | 2026-07-10 | 1.0 | 初稿 | - |
 | 2026-07-13 | 1.2 | 补全四类字段定义、高级搜索、字段权限、变更历史 | - |
+| 2026-07-14 | 1.3 | 同步后端：移除 jobLevel 列表字段、移除 salaryProfileId/hireType 表单字段 | - |

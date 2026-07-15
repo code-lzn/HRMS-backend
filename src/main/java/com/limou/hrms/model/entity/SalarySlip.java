@@ -17,6 +17,7 @@ import java.util.Date;
 @Data
 public class SalarySlip implements Serializable {
 
+    /** 主键ID */
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
@@ -80,8 +81,10 @@ public class SalarySlip implements Serializable {
     /** 手动调整原因 */
     private String adjustReason;
 
+    /** 创建时间 */
     private Date createdAt;
 
+    /** 更新时间 */
     private Date updatedAt;
 
     private static final long serialVersionUID = 1L;

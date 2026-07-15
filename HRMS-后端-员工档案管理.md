@@ -7,6 +7,7 @@
 | 2026-07-08 | 1.0 | 初稿 | - |
 | 2026-07-12 | 1.2 | 补全字段定义（四分类）、可编辑性/可见性、高级搜索、字段权限 | - |
 | 2026-07-13 | 1.3 | 两表拆分、新增必填校验、锁定字段拦截、系统账号自动创建、变更日志 | - |
+| 2026-07-14 | 1.4 | 同步实际代码：修复 DDL（移除 jobLevel/salaryId/hireType 列）、list 接口改用 DTO、add 接口响应简化、枚举统一至 model/enums | - |
 
 ## 项目背景
 
@@ -105,7 +106,6 @@
 | 合同类型 | 是 | 1=固定期限 / 2=无固定期限 / 3=劳务合同 | HR |
 | 合同到期日 | 否 | 固定期限合同必填 | HR |
 | 试用期待遇比例 | 是 | 80%–100%，影响薪资计算 | HR |
-| 薪资账套 | 是 | 关联薪资账套ID | HR |
 | 基本工资 | 是 | - | HR、财务 |
 | 银行账号 | 否 | 加密存储 | HR |
 | 开户行 | 否 | - | HR |
@@ -131,10 +131,7 @@ CREATE TABLE IF NOT EXISTS `employee` (
     `email`             VARCHAR(256)      NULL COMMENT '邮箱',
     `departmentId`      BIGINT            NULL COMMENT '部门ID',
     `positionId`        BIGINT            NULL COMMENT '职位ID',
-    `jobLevel`          VARCHAR(8)        NULL COMMENT '职级，如P5、M2',
     `hireDate`          DATETIME          NULL COMMENT '入职日期',
-    `hireType`          TINYINT           NULL COMMENT '入职类型',
-    `salaryId`          BIGINT            NULL COMMENT '薪资ID',
     `employmentType`    VARCHAR(16)       NOT NULL COMMENT '录用类型: FULL_TIME/PART_TIME/INTERN',
     `createTime`        DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `updateTime`        DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -145,7 +142,6 @@ CREATE TABLE IF NOT EXISTS `employee` (
     KEY `idx_position_id` (`positionId`),
     KEY `idx_status` (`status`),
     KEY `idx_phone` (`phone`),
-    KEY `idx_job_level` (`jobLevel`),
     KEY `idx_hire_date` (`hireDate`)
 ) DEFAULT CHARACTER SET = utf8mb4 COMMENT = '员工主表';
 ```
@@ -159,7 +155,6 @@ CREATE TABLE IF NOT EXISTS `employee` (
 CREATE TABLE IF NOT EXISTS `employee_detail` (
     `id`                    BIGINT UNSIGNED   NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     `employeeId`            BIGINT UNSIGNED   NOT NULL COMMENT '员工ID，关联employee.id',
-    `account`               VARCHAR(32)       NULL COMMENT '系统账号（=手机号）',
     `idCard`                VARCHAR(256)      NULL COMMENT '身份证号（加密存储）',
     `birthday`              DATE              NULL COMMENT '生日',
     `registeredAddress`     VARCHAR(512)      NULL COMMENT '户籍地址',
@@ -188,17 +183,17 @@ CREATE TABLE IF NOT EXISTS `employee_detail` (
 ```sql
 CREATE TABLE IF NOT EXISTS `employee_change_log` (
     `id`                BIGINT UNSIGNED   NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    `employee_id`       BIGINT UNSIGNED   NOT NULL COMMENT '员工ID',
-    `field_name`        VARCHAR(64)       NOT NULL COMMENT '变更字段名',
-    `old_value`         VARCHAR(512)               COMMENT '变更前值',
-    `new_value`         VARCHAR(512)               COMMENT '变更后值',
-    `change_type`       VARCHAR(32)       NOT NULL COMMENT '变更类型：DIRECT_EDIT/FLOW_CHANGE/SYSTEM',
-    `operator_id`       BIGINT UNSIGNED            COMMENT '操作人ID',
+    `employeeId`        BIGINT UNSIGNED   NOT NULL COMMENT '员工ID',
+    `fieldName`         VARCHAR(64)       NOT NULL COMMENT '变更字段名',
+    `oldValue`          VARCHAR(512)               COMMENT '变更前值',
+    `newValue`          VARCHAR(512)               COMMENT '变更后值',
+    `changeType`        VARCHAR(32)       NOT NULL COMMENT '变更类型：DIRECT_EDIT/FLOW_CHANGE/SYSTEM',
+    `operatorId`        BIGINT UNSIGNED            COMMENT '操作人ID',
     `remark`            VARCHAR(256)               COMMENT '备注',
-    `create_time`       DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `createTime`        DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     PRIMARY KEY (`id`),
-    KEY `idx_employee_id` (`employee_id`),
-    KEY `idx_create_time` (`create_time`)
+    KEY `idx_employee_id` (`employeeId`),
+    KEY `idx_create_time` (`createTime`)
 ) DEFAULT CHARACTER SET = utf8mb4 COMMENT = '员工档案变更日志表';
 ```
 
@@ -213,10 +208,10 @@ CREATE TABLE IF NOT EXISTS `employee_change_log` (
 ### 1. 查询员工列表
 
 ```
-GET /api/employees/list?keyword=张三&departmentIds=7,8&positionIds=3&statuses=1,2&jobLevels=P5,P6&hireDateStart=2025-01-01&hireDateEnd=2025-12-31&page=1&size=20
+GET /api/employee/list?keyword=张三&departmentIds=1,2&positionIds=3&statuses=1,2&hireDateStart=2025-01-01&hireDateEnd=2025-12-31&page=1&size=20
 ```
 
-**请求参数**（Query String）：
+**请求参数**（Query String，绑定到 `EmployeeQueryRequest` DTO）：
 
 | **参数** | **类型** | **必填** | **描述** |
 | --- | --- | --- | --- |
@@ -224,9 +219,9 @@ GET /api/employees/list?keyword=张三&departmentIds=7,8&positionIds=3&statuses=
 | departmentIds | Long[] | 否 | 部门ID列表（多选，逗号分隔） |
 | positionIds | Long[] | 否 | 职位ID列表（多选，逗号分隔） |
 | statuses | Integer[] | 否 | 在职状态：1=试用期 2=正式 3=待离职 4=已离职（多选） |
-| jobLevels | String[] | 否 | 职级列表（多选），如 P5、M2 |
-| hireDateStart | Date | 否 | 入职日期起始 |
-| hireDateEnd | Date | 否 | 入职日期截止 |
+| jobLevels | String[] | 否 | 职级列表（多选） |
+| hireDateStart | Date | 否 | 入职日期起始（格式 yyyy-MM-dd） |
+| hireDateEnd | Date | 否 | 入职日期截止（格式 yyyy-MM-dd） |
 | page | Integer | 否 | 页码，默认 1 |
 | size | Integer | 否 | 每页条数，默认 20 |
 
@@ -247,7 +242,6 @@ GET /api/employees/list?keyword=张三&departmentIds=7,8&positionIds=3&statuses=
         "employeeName": "张三",
         "departmentName": "技术部",
         "positionName": "Java开发工程师",
-        "jobLevel": "P5",
         "status": 2,
         "statusDesc": "正式",
         "hireDate": "2024-01-15"
@@ -262,10 +256,10 @@ GET /api/employees/list?keyword=张三&departmentIds=7,8&positionIds=3&statuses=
 ### 2. 查询员工详情
 
 ```
-GET /api/employees/detail?id=101
+GET /api/employee/detail?id=101
 ```
 
-**响应格式**（四分区结构）：
+**响应格式**（扁平 VO 结构，按四个分区注释）：
 
 ```json
 {
@@ -279,55 +273,43 @@ GET /api/employees/detail?id=101
     "statusDesc": "正式",
     "hireDate": "2024-01-15",
     "createTime": "2024-01-15T09:00:00",
-    "personalInfo": {
-      "employeeName": "张三",
-      "gender": 1,
-      "genderDesc": "男",
-      "phone": "138****1234",
-      "email": "zhangsan@example.com",
-      "idCard": "3301**********1234",
-      "birthday": "1995-06-15",
-      "registeredAddress": "浙江省杭州市...",
-      "currentAddress": "浙江省杭州市..."
-    },
-    "workInfo": {
-      "departmentId": 10,
-      "departmentName": "技术部",
-      "positionId": 20,
-      "positionName": "Java开发工程师",
-      "jobLevel": "P5",
-      "directReportId": 100,
-      "directReportName": "李四",
-      "workLocation": "杭州",
-      "hireType": 1,
-      "employmentType": "FULL_TIME"
-    },
-    "salaryInfo": {
-      "contractType": 1,
-      "contractTypeDesc": "固定期限",
-      "contractExpireDate": "2027-01-14",
-      "probationRatio": 0.8000,
-      "salaryProfileId": 5,
-      "baseSalary": 15000.00,
-      "bankAccount": "****5678",
-      "bankName": "招商银行"
-    },
-    "emergencyContact": {
-      "emergencyContactName": "张父",
-      "emergencyContactPhone": "139****5678"
-    }
+    "employeeName": "张三",
+    "gender": 1,
+    "genderDesc": "男",
+    "phone": "138****1234",
+    "email": "zhangsan@example.com",
+    "idCard": "3301**********1234",
+    "birthday": "1995-06-15",
+    "registeredAddress": "浙江省杭州市...",
+    "currentAddress": "浙江省杭州市...",
+    "departmentId": 10,
+    "departmentName": "技术部",
+    "positionId": 20,
+    "positionName": "Java开发工程师",
+    "directReportId": 100,
+    "directReportName": "李四",
+    "workLocation": "杭州",
+    "employmentType": "FULL_TIME",
+    "employmentTypeDesc": "全职",
+    "contractType": 1,
+    "contractTypeDesc": "固定期限",
+    "contractExpireDate": "2027-01-14",
+    "probationRatio": 0.8000,
+    "baseSalary": 15000.00,
+    "bankAccount": "****5678",
+    "bankName": "招商银行",
+    "emergencyContactName": "张父",
+    "emergencyContactPhone": "139****5678"
   }
 }
 ```
-
-> 按角色过滤：`salaryInfo` 仅 HR/财务/本人可见；敏感字段脱敏。
 
 ---
 
 ### 3. 新增员工
 
 ```
-POST /api/employees/add
+POST /api/employee/add
 Content-Type: application/json
 ```
 
@@ -349,12 +331,10 @@ Content-Type: application/json
   "directReportId": 100,
   "workLocation": "杭州",
   "hireDate": "2024-01-15",
-  "hireType": 1,
   "employmentType": "FULL_TIME",
   "contractType": 1,
   "contractExpireDate": "2027-01-14",
   "probationRatio": 0.8000,
-  "salaryProfileId": 5,
   "baseSalary": 15000.00,
   "bankAccount": "6222****5678",
   "bankName": "招商银行",
@@ -375,16 +355,13 @@ Content-Type: application/json
 | currentAddress | String | 否 | 现居住地址 |
 | departmentId | Long | 是 | 所属部门ID，必须逻辑存在 |
 | positionId | Long | 是 | 职位ID，必须逻辑存在 |
-| jobLevel | String | 否 | 职级 |
 | directReportId | Long | 否 | 直接汇报人ID |
 | workLocation | String | 否 | 工作地点 |
 | hireDate | Date | 是 | 入职日期 |
-| hireType | Integer | 是 | 入职类型 |
 | employmentType | String | 是 | 录用类型：FULL_TIME/PART_TIME/INTERN |
 | contractType | Integer | 是 | 合同类型：1=固定期限 2=无固定期限 3=劳务合同 |
 | contractExpireDate | Date | 否 | 合同到期日（固定期限必填） |
 | probationRatio | BigDecimal | 是 | 试用期待遇比例 0.8~1.0 |
-| salaryProfileId | Long | 是 | 薪资账套ID |
 | baseSalary | BigDecimal | 是 | 基本工资 |
 | bankAccount | String | 否 | 银行账号 |
 | bankName | String | 否 | 开户行 |
@@ -392,10 +369,14 @@ Content-Type: application/json
 | emergencyContactPhone | String | 否 | 紧急联系人电话 |
 
 **校验规则**：
-- 姓名、手机号、邮箱、身份证号、入职日期、部门、职位、录用类型、合同类型、试用期比例、基本工资 必填
+- 姓名、性别、手机号、录用类型、部门、职位 必填
+- 手机号格式校验（1[3-9] 开头 11 位）
+- 邮箱格式非必填，填则校验
 - `departmentId` 对应的部门必须逻辑存在
 - `positionId` 对应的职位必须逻辑存在
 - 工号系统自动生成；系统账号=手机号，自动创建
+- 试用期待遇比例需在 0.8~1.0 之间
+- 固定期限合同 `contractExpireDate` 必填
 
 **成功响应**：
 
@@ -404,10 +385,7 @@ Content-Type: application/json
   "code": 0,
   "message": "ok",
   "data": {
-    "id": 101,
-    "employeeNo": "202401005",
-    "account": "13800001234",
-    "initialPassword": "Abc12345"
+    "id": 101
   }
 }
 ```
@@ -417,7 +395,7 @@ Content-Type: application/json
 ### 4. 更新员工
 
 ```
-PUT /api/employees/update
+PUT /api/employee/update
 Content-Type: application/json
 ```
 
@@ -439,16 +417,16 @@ Content-Type: application/json
 | --- | --- | --- |
 | 姓名、性别、邮箱、生日、户籍地址、现居住地址 | ✓ 可编辑 | 直接保存 |
 | 手机号、身份证号 | ✗ 锁定 | 需申请流程 |
-| 部门、职位、职级、直接汇报人、工作地点 | ✗ 锁定 | 需调岗流程 |
-| 入职类型 | ✗ 锁定 | 不可变更 |
-| 合同类型、合同到期日、试用期比例、薪资账套、基本工资、银行账号、开户行 | ✗ 锁定 | 仅 HR 可编辑 |
+| 部门、职位、直接汇报人、工作地点、职级 | ✗ 锁定 | 需调岗流程 |
+| 合同类型、合同到期日、试用期比例、基本工资、银行账号、开户行 | ✗ 锁定 | 仅 HR 可编辑 |
+| 录用类型 | ✗ 锁定 | 入职后不可变更 |
 
 ---
 
 ### 5. 删除员工
 
 ```
-POST /api/employees/delete
+POST /api/employee/delete
 Content-Type: application/json
 ```
 
@@ -458,46 +436,10 @@ Content-Type: application/json
 
 ---
 
-### 6. 生成工号
+### 6. 员工变更历史
 
 ```
-POST /api/employees/generate-employee-no
-Content-Type: application/json
-```
-
-**请求体**：`{ "departmentId": 10 }`
-
-**响应**：`{ "code": 0, "data": { "employeeNo": "202401005" } }`
-
----
-
-### 7. 获取字段权限
-
-```
-GET /api/employees/field-permissions
-```
-
-> 根据当前登录用户角色返回可见字段、可编辑字段、锁定字段列表，前端据此控制页面渲染。
-
-**响应格式**：
-
-```json
-{
-  "code": 0,
-  "data": {
-    "viewableFields": ["employeeName","gender","phone","email",...],
-    "editableFields": ["email","currentAddress","birthday"],
-    "lockedFields": ["phone","idCard","departmentId","positionId",...]
-  }
-}
-```
-
----
-
-### 8. 获取员工变更历史
-
-```
-GET /api/employees/change-logs?employeeId=101&page=1&size=20
+GET /api/employee/change-logs?employeeId=101&page=1&size=20
 ```
 
 **响应格式**：
@@ -525,26 +467,16 @@ GET /api/employees/change-logs?employeeId=101&page=1&size=20
 
 ---
 
-### 9. 批量导出员工
-
-```
-GET /api/employees/export?departmentIds=7&statuses=1,2
-```
-
-> 按筛选条件导出 Excel，返回文件流。
-
----
-
 ## API 汇总
 
 | # | 方法 | 路径 | 说明 |
 |---|---|---|---|
-| 1 | GET | `/api/employees/list` | 员工列表（分页 + 高级搜索） |
-| 2 | GET | `/api/employees/detail` | 员工详情（四分区，敏感字段脱敏） |
-| 3 | POST | `/api/employees/add` | 新增员工 + 自动创建系统账号 |
-| 4 | PUT | `/api/employees/update` | 更新员工（锁定字段拦截 + 变更日志） |
-| 5 | POST | `/api/employees/delete` | 删除员工（软删除） |
-| 6 | GET | `/api/employees/change-logs` | 员工变更历史 |
+| 1 | GET | `/api/employee/list` | 员工列表（分页 + 高级搜索） |
+| 2 | GET | `/api/employee/detail` | 员工详情（四分区，敏感字段脱敏） |
+| 3 | POST | `/api/employee/add` | 新增员工 + 自动创建系统账号 |
+| 4 | PUT | `/api/employee/update` | 更新员工（锁定字段拦截 + 变更日志） |
+| 5 | POST | `/api/employee/delete` | 删除员工（软删除） |
+| 6 | GET | `/api/employee/change-logs` | 员工变更历史 |
 
 > `generate-employee-no` 和 `field-permissions` 已改为 Service 内部方法，不对外暴露。
 
@@ -559,11 +491,11 @@ GET /api/employees/export?departmentIds=7&statuses=1,2
 新增员工时自动创建：
 1. 登录账号 = 手机号
 2. 初始密码随机生成（大小写字母+数字，8位）
-3. 写入 `user` 表，`userId` 回填到 `employee.user_id`
+3. 写入 `user` 表，`userId` 回填到 `employee.userId`
 
 ### 字段权限控制
 
-通过 `GET /api/employees/field-permissions` 返回当前角色权限：
+字段权限在 Service 层通过 `getFieldPermissions()` 方法返回，前端可选调用：
 
 | 字段 | HR | 部门主管 | 普通员工 | 财务 |
 | --- | --- | --- | --- | --- |

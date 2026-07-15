@@ -5,9 +5,12 @@ import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.exception.ThrowUtils;
 import com.limou.hrms.mapper.ApprovalRecordMapper;
 import com.limou.hrms.mapper.EmployeeDetailMapper;
+import com.limou.hrms.mapper.LeaveMapper;
+import com.limou.hrms.mapper.MakeupPunchMapper;
 import com.limou.hrms.model.entity.*;
 import com.limou.hrms.model.enums.ApprovalActionEnum;
 import com.limou.hrms.model.enums.ApprovalRecordStatusEnum;
+import com.limou.hrms.model.enums.ApprovalStatusEnum;
 import com.limou.hrms.model.enums.ApproverTypeEnum;
 import com.limou.hrms.model.enums.BusinessTypeEnum;
 import com.limou.hrms.model.vo.ApprovalDetailVO;
@@ -46,6 +49,12 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
 
     @Resource
     private EmployeeDetailMapper employeeDetailMapper;
+
+    @Resource
+    private LeaveMapper leaveMapper;
+
+    @Resource
+    private MakeupPunchMapper makeupPunchMapper;
 
     @Override
     public List<ApprovalPendingVO> getPendingList(Long employeeId) {
@@ -195,6 +204,8 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
         record.setStatus(ApprovalRecordStatusEnum.REJECTED.getValue());
         record.setFinishedAt(new Date());
         this.updateById(record);
+        // 同步到业务表
+        syncBusinessResult(record, false);
     }
 
     @Override
@@ -319,11 +330,60 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
             // 所有节点已通过
             record.setStatus(ApprovalRecordStatusEnum.APPROVED.getValue());
             record.setFinishedAt(new Date());
+            this.updateById(record);
+            // 同步到业务表
+            syncBusinessResult(record, true);
         } else {
             record.setCurrentStep(nextStep);
+            this.updateById(record);
         }
-        this.updateById(record);
     }
+
+    /**
+     * 审批结果同步到业务表
+     *
+     * @param record  审批记录
+     * @param isApproved  true=通过, false=拒绝
+     */
+    private void syncBusinessResult(ApprovalRecord record, boolean isApproved) {
+        BusinessTypeEnum bizType = BusinessTypeEnum.getEnumByValue(record.getBusinessType());
+        if (bizType == null) return;
+
+        Integer targetStatus = isApproved ? ApprovalStatusEnum.APPROVED.getValue()
+                                          : ApprovalStatusEnum.REJECTED.getValue();
+        Date now = new Date();
+
+        switch (bizType) {
+            case LEAVE: {
+                Leave leave = leaveMapper.selectById(record.getBusinessId());
+                if (leave != null) {
+                    leave.setStatus(targetStatus);
+                    leave.setApproveTime(now);
+                    leaveMapper.updateById(leave);
+                }
+                break;
+            }
+            case PATCH_CLOCK: {
+                MakeupPunch punch = makeupPunchMapper.selectById(record.getBusinessId());
+                if (punch != null) {
+                    punch.setStatus(targetStatus);
+                    punch.setApproveTime(now);
+                    makeupPunchMapper.updateById(punch);
+                }
+                break;
+            }
+            case ONBOARDING:
+            case REGULARIZATION:
+            case TRANSFER:
+            case RESIGNATION:
+            case SALARY_BATCH:
+                // 业务表暂未实现，后续扩展
+                log.info("业务类型 [{}] 审批完成，businessId={}, status={}",
+                        bizType.getText(), record.getBusinessId(), targetStatus);
+                break;
+        }
+    }
+
     /**
      * 解析审批人
      *

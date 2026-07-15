@@ -9,6 +9,7 @@ import com.limou.hrms.mapper.AttendanceMapper;
 import com.limou.hrms.model.entity.Attendance;
 import com.limou.hrms.model.entity.Employee;
 import com.limou.hrms.model.enums.AttendanceStatusEnum;
+import com.limou.hrms.model.enums.PunchTypeEnum;
 import com.limou.hrms.model.vo.AttendanceCalendarVO;
 import com.limou.hrms.model.vo.AttendanceVO;
 import com.limou.hrms.service.AttendanceService;
@@ -49,7 +50,7 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
                 .eq(Attendance::getAttendanceDate, DateUtil.parseDate(today))
                 .one();
 
-        boolean isPunchIn = (punchType == null || punchType == AttendanceConstant.PUNCH_TYPE_WEB);
+        boolean isPunchIn = (punchType == null || punchType == PunchTypeEnum.WEB.getValue());
 
         if (record == null) {
             // 首次打卡，新建记录
@@ -57,9 +58,9 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
             record.setEmployeeId(emp.getId());
             record.setUserId(userId);
             record.setAttendanceDate(DateUtil.parseDate(today));
-            record.setStatus(AttendanceConstant.ATTENDANCE_STATUS_MISSING); // 默认缺卡
-            record.setPunchInType(AttendanceConstant.PUNCH_TYPE_WEB);
-            record.setPunchOutType(AttendanceConstant.PUNCH_TYPE_WEB);
+            record.setStatus(AttendanceStatusEnum.MISSING.getValue()); // 默认缺卡
+            record.setPunchInType(PunchTypeEnum.WEB.getValue());
+            record.setPunchOutType(PunchTypeEnum.WEB.getValue());
         }
 
         if (isPunchIn) {
@@ -73,7 +74,7 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
             int minute = DateUtil.minute(now);
             int thresholdMinutes = AttendanceConstant.DEFAULT_WORK_START_HOUR * 60 + AttendanceConstant.LATE_GRACE_MINUTES;
             if (hour * 60 + minute > thresholdMinutes) {
-                record.setStatus(AttendanceConstant.ATTENDANCE_STATUS_LATE);
+                record.setStatus(AttendanceStatusEnum.LATE.getValue());
             }
         } else {
             ThrowUtils.throwIf(record.getPunchOutTime() != null,
@@ -82,8 +83,8 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
             record.setPunchOutLocation(location);
 
             // 如果上班打卡正常、下班也正常打卡，则状态改为正常
-            if (record.getStatus() != AttendanceConstant.ATTENDANCE_STATUS_LATE) {
-                record.setStatus(AttendanceConstant.ATTENDANCE_STATUS_NORMAL);
+            if (!Objects.equals(record.getStatus(), AttendanceStatusEnum.LATE.getValue())) {
+                record.setStatus(AttendanceStatusEnum.NORMAL.getValue());
             }
         }
 
@@ -168,7 +169,7 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
         if (record == null) {
             AttendanceVO vo = new AttendanceVO();
             vo.setAttendanceDate(DateUtil.parseDate(today));
-            vo.setStatus(AttendanceConstant.ATTENDANCE_STATUS_MISSING);
+            vo.setStatus(AttendanceStatusEnum.MISSING.getValue());
             vo.setStatusText("未打卡");
             return vo;
         }

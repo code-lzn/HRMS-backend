@@ -64,13 +64,13 @@ PRD 文档：[HRMS.md](./HRMS.md) 第7章
 
 | 接口 | 说明 |
 | --- | --- |
-| GET /api/v1/salary-accounts | 账套列表 |
-| POST /api/v1/salary-accounts | 新建账套 |
-| PUT /api/v1/salary-accounts/{id} | 编辑账套 |
-| DELETE /api/v1/salary-accounts/{id} | 删除账套 |
-| POST /api/v1/salary-accounts/{id}/items | 添加工资项目 |
-| PUT /api/v1/salary-items/{id} | 编辑工资项目 |
-| DELETE /api/v1/salary-items/{id} | 删除工资项目 |
+| GET /api/salary-manage/accounts | 账套列表 |
+| POST /api/salary-manage/accounts | 新建账套 |
+| PUT /api/salary-manage/accounts/{id} | 编辑账套 |
+| DELETE /api/salary-manage/accounts/{id} | 删除账套 |
+| POST /api/salary-manage/accounts/{id}/items | 添加工资项目 |
+| PUT /api/salary-manage/items/{id} | 编辑工资项目 |
+| DELETE /api/salary-manage/items/{id} | 删除工资项目 |
 
 ---
 
@@ -86,7 +86,7 @@ PRD 文档：[HRMS.md](./HRMS.md) 第7章
 
 | 字段名称 | 说明 | 输入方式 | 是否必填 | 字段类型 | 数据源 |
 | --- | --- | --- | --- | --- | --- |
-| 适用账套 | 选择账套 | Select | Y | number | GET /api/v1/salary-accounts |
+| 适用账套 | 选择账套 | Select | Y | number | GET /api/salary-manage/accounts |
 | 基本工资 | 月基本工资 | InputNumber | Y | number(元) | - |
 | 津贴基数 | 岗位津贴等 | InputNumber | Y | number(元) | - |
 | 社保基数 | 社保缴纳基数 | InputNumber | Y | number(元) | - |
@@ -100,9 +100,9 @@ PRD 文档：[HRMS.md](./HRMS.md) 第7章
 
 | 接口 | 说明 |
 | --- | --- |
-| GET /api/v1/employee-salaries/{employeeId} | 查询员工薪资档案 |
-| PUT /api/v1/employee-salaries/{employeeId} | 更新薪资档案 |
-| GET /api/v1/employee-salaries/{employeeId}/history | 调薪历史 |
+| GET /api/salary-manage/employee-salaries/{employeeId} | 查询员工薪资档案 |
+| PUT /api/salary-manage/employee-salaries/{employeeId} | 更新薪资档案 |
+| GET /api/salary-manage/employee-salaries/{employeeId}/history | 调薪历史 |
 
 ---
 
@@ -164,12 +164,12 @@ PRD 文档：[HRMS.md](./HRMS.md) 第7章
 
 | 接口 | 说明 |
 | --- | --- |
-| POST /api/v1/salary-batches | 新建核算批次 |
-| POST /api/v1/salary-batches/{id}/calculate | 执行计算 |
-| GET /api/v1/salary-batches/{id}/preview | 预览结果（分页） |
-| GET /api/v1/salary-batches/{id}/anomalies | 查看异常项 |
-| PUT /api/v1/salary-batches/{id}/adjust | 手动调整 |
-| POST /api/v1/salary-batches/{id}/submit | 提交审批 |
+| POST /api/salary-manage/batches | 新建核算批次 |
+| POST /api/salary-manage/batches/{id}/calculate | 执行计算 |
+| GET /api/salary-manage/batches/{id}/preview | 预览结果（分页） |
+| GET /api/salary-manage/batches/{id}/anomalies | 查看异常项 |
+| PUT /api/salary-manage/batches/{id}/adjust | 手动调整 |
+| POST /api/salary-manage/batches/{id}/submit | 提交审批 |
 
 ---
 
@@ -185,8 +185,8 @@ PRD 文档：[HRMS.md](./HRMS.md) 第7章
 
 | 接口 | 说明 |
 | --- | --- |
-| POST /api/v1/salary-batches/{id}/approve | 通过 |
-| POST /api/v1/salary-batches/{id}/reject | 驳回 |
+| POST /api/salary-manage/batches/{id}/approve | 通过 |
+| POST /api/salary-manage/batches/{id}/reject | 驳回 |
 
 ---
 
@@ -220,11 +220,11 @@ PRD 文档：[HRMS.md](./HRMS.md) 第7章
 
 | 图表 | 图表类型 | 数据API | 适用角色 |
 | --- | --- | --- | --- |
-| 薪资成本月度趋势 | @antv/g2 折线图 | GET /api/v1/salary-statistics/cost-trend | HR/财务 |
-| 部门薪资分布 | @antv/g2 分组柱状图 | GET /api/v1/salary-statistics/dept-distribution | HR/财务 |
-| 薪资构成占比 | @antv/g2 饼图 | GET /api/v1/salary-statistics/composition | HR |
-| 社保公积金对比 | @antv/g2 分组柱状图 | GET /api/v1/salary-statistics/social-comparison | HR/财务 |
-| 薪资变动分布 | @antv/g2 直方图 | GET /api/v1/salary-statistics/variation-distribution | HR/财务 |
+| 薪资成本月度趋势 | @antv/g2 折线图 | GET /api/salary-manage/statistics/cost-trend | HR/财务 |
+| 部门薪资分布 | @antv/g2 分组柱状图 | GET /api/salary-manage/statistics/dept-distribution | HR/财务 |
+| 薪资构成占比 | @antv/g2 饼图 | GET /api/salary-manage/statistics/composition | HR |
+| 社保公积金对比 | @antv/g2 分组柱状图 | GET /api/salary-manage/statistics/social-comparison | HR/财务 |
+| 薪资变动分布 | @antv/g2 直方图 | GET /api/salary-manage/statistics/variation-distribution | HR/财务 |
 
 ##### 图表交互
 
@@ -239,12 +239,12 @@ PRD 文档：[HRMS.md](./HRMS.md) 第7章
 
 | 菜单路径 | 权限 | 备注 |
 | --- | --- | --- |
-| 薪资管理 > 账套配置 | hr / system_admin | |
-| 薪资管理 > 员工薪资档案 | hr / system_admin | |
-| 薪资管理 > 月度核算 | hr / system_admin | |
-| 薪资管理 > 薪资审批 | finance / system_admin | 财务审核 |
-| 薪资管理 > 我的工资条 | 所有员工 | |
-| 薪资管理 > 薪资统计 | hr / finance | |
+| 薪资管理 > 账套配置 | `salary:list` — HR/财务 | |
+| 薪资管理 > 员工薪资档案 | `salary:list` — HR/财务 | |
+| 薪资管理 > 月度核算 | `salary:list` — HR/财务 | |
+| 薪资管理 > 薪资审批 | `salary:audit` — HR/财务 | 审核+驳回+发放 |
+| 薪资管理 > 我的工资条 | 自服务 — 所有登录用户 | 仅看自己 |
+| 薪资管理 > 薪资统计 | `salary:list` — HR/财务 | |
 
 ---
 
@@ -293,3 +293,4 @@ PRD 文档：[HRMS.md](./HRMS.md) 第7章
 | **日期** | **版本** | **修订说明** | **作者** |
 | --- | --- | --- | --- |
 | 2026-07-10 | 1.0 | 初稿 | - |
+| 2026-07-15 | 2.0 | API 路径统一为 /api/salary-manage/*；增补权限控制说明 | 陆博 |
