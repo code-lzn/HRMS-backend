@@ -16,6 +16,7 @@ import java.util.Date;
 @Data
 public class ApprovalFlow implements Serializable {
 
+    /** 主键ID */
     @TableId(type = IdType.AUTO)
     private Long id;
 
@@ -31,8 +32,10 @@ public class ApprovalFlow implements Serializable {
     /** 状态: 1=启用, 0=禁用 */
     private Integer status;
 
+    /** 创建时间 */
     private Date createTime;
 
+    /** 更新时间 */
     private Date updateTime;
 
     private static final long serialVersionUID = 1L;

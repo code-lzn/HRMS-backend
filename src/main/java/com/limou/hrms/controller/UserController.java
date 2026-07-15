@@ -286,6 +286,26 @@ public class UserController {
     // endregion
 
     /**
+     * 修改用户状态（启用/禁用）
+     *
+     * @param id     用户ID
+     * @param status 状态：1=启用, 0=禁用
+     */
+    @PostMapping("/update/status")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
+    public BaseResponse<Boolean> updateUserStatus(long id, int status) {
+        if (id <= 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        User user = userService.getById(id);
+        ThrowUtils.throwIf(user == null, ErrorCode.NOT_FOUND_ERROR);
+        user.setUserRole(status == 1 ? UserConstant.DEFAULT_ROLE : UserConstant.BAN_ROLE);
+        boolean result = userService.updateById(user);
+        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
+        return ResultUtils.success(true);
+    }
+
+    /**
      * 更新个人信息
      *
      * @param userUpdateMyRequest

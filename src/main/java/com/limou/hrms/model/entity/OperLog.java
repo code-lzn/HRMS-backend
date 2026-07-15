@@ -9,25 +9,30 @@ import java.io.Serializable;
 import java.util.Date;
 
 /**
- * 密码历史
- * @TableName password_history
+ * 操作日志
+ * @TableName oper_log
  */
-@TableName(value = "password_history")
+@TableName(value = "oper_log")
 @Data
-public class PasswordHistory implements Serializable {
+public class OperLog implements Serializable {
 
-    /** 主键ID */
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    /** 用户ID */
-    private Long userId;
+    /** 操作人姓名 */
+    private String operatorName;
 
-    /** 历史密码哈希 */
-    private String passwordHash;
+    /** 操作模块 */
+    private String module;
 
-    /** 创建时间 */
-    private Date createTime;
+    /** 操作类型 */
+    private String action;
+
+    /** 操作描述 */
+    private String description;
+
+    /** 操作时间 */
+    private Date operateTime;
 
     private static final long serialVersionUID = 1L;
 }

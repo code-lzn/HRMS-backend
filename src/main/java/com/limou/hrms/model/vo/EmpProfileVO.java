@@ -14,16 +14,27 @@ import lombok.Data;
 @Data
 public class EmpProfileVO implements Serializable {
 
+    /** 主键ID */
     private Long id;
+    /** 员工姓名 */
     private String employeeName;
+    /** 工号 */
     private String employeeNo;
+    /** 在职状态 */
     private Integer status;
+    /** 性别 */
     private Integer gender;
+    /** 手机号 */
     private String phone;
+    /** 邮箱 */
     private String email;
+    /** 身份证号 */
     private String idCard;
+    /** 入职日期 */
     private Date hireDate;
+    /** 录用类型 */
     private Integer hireType;
+    /** 录用类型代码 */
     private String employmentType;
     /**
      * 部门名称
@@ -41,9 +52,13 @@ public class EmpProfileVO implements Serializable {
      * 当前地址
      */
     private String currentAddress;
+    /** 紧急联系人姓名 */
     private String emergencyContactName;
+    /** 紧急联系人电话 */
     private String emergencyContactPhone;
+    /** 创建时间 */
     private Date createTime;
+    /** 更新时间 */
     private Date updateTime;
 
     /**

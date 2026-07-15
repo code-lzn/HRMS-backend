@@ -9,25 +9,21 @@ import java.io.Serializable;
 import java.util.Date;
 
 /**
- * 密码历史
- * @TableName password_history
+ * 页面访问日志
+ * @TableName page_view_log
  */
-@TableName(value = "password_history")
+@TableName(value = "page_view_log")
 @Data
-public class PasswordHistory implements Serializable {
+public class PageViewLog implements Serializable {
 
-    /** 主键ID */
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    /** 用户ID */
-    private Long userId;
+    /** 访问日期 */
+    private Date viewDate;
 
-    /** 历史密码哈希 */
-    private String passwordHash;
-
-    /** 创建时间 */
-    private Date createTime;
+    /** 页面访问量 */
+    private Long viewCount;
 
     private static final long serialVersionUID = 1L;
 }
