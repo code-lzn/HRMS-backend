@@ -20,6 +20,8 @@ import com.limou.hrms.service.ApprovalDelegateService;
 import com.limou.hrms.service.ApprovalFlowService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -84,6 +86,7 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
     }
 
     @Override
+    @Cacheable(value = "pendingCount", key = "#employeeId")
     public long getPendingCount(Long employeeId) {
         // 1. 自己的待办
         long myCount = approvalNodeMapper.selectCount(
@@ -111,6 +114,7 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @CacheEvict(value = "pendingCount", key = "#employeeId")
     public void approve(Long nodeId, Long employeeId, String comment) {
         ApprovalNode node = getNodeOrThrow(nodeId);
         validateNodeOwner(node, employeeId);
@@ -153,6 +157,7 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @CacheEvict(value = "pendingCount", key = "#employeeId")
     public void reject(Long nodeId, Long employeeId, String comment) {
         if (StringUtils.isBlank(comment)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "拒绝时必须填写审批意见");
@@ -185,6 +190,7 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @CacheEvict(value = "pendingCount", allEntries = true)
     public void transfer(Long nodeId, Long fromEmployeeId, Long toEmployeeId) {
         ApprovalNode node = getNodeOrThrow(nodeId);
         validateNodeOwner(node, fromEmployeeId);
@@ -221,6 +227,7 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @CacheEvict(value = "pendingCount", key = "#operatorId")
     public void cancel(Long instanceId, Long operatorId) {
         ApprovalInstance instance = getInstanceOrThrow(instanceId);
 

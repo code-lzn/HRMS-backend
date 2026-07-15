@@ -10,6 +10,7 @@ import com.limou.hrms.mapper.UserMapper;
 import com.limou.hrms.model.entity.ApprovalDelegate;
 import com.limou.hrms.service.ApprovalDelegateService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
@@ -34,6 +35,7 @@ public class ApprovalDelegateServiceImpl extends ServiceImpl<ApprovalDelegateMap
     private UserMapper userMapper;
 
     @Override
+    @CacheEvict(value = "pendingCount", allEntries = true)
     public ApprovalDelegate createDelegate(Long delegatorId, Long delegateId, LocalDateTime startTime, LocalDateTime endTime) {
         // 校验：不能委托给自己
         if (delegatorId.equals(delegateId)) {
@@ -67,6 +69,7 @@ public class ApprovalDelegateServiceImpl extends ServiceImpl<ApprovalDelegateMap
     }
 
     @Override
+    @CacheEvict(value = "pendingCount", allEntries = true)
     public void cancelDelegate(Long delegateId, Long delegatorId) {
         ApprovalDelegate delegate = approvalDelegateMapper.selectById(delegateId);
         if (delegate == null) {
