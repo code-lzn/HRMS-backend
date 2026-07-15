@@ -31,15 +31,28 @@ public class SalaryBatchNodeBuilder implements ApprovalNodeBuilder {
 
         List<ApprovalNode> nodes = new ArrayList<>();
 
+        int order = 1;
+
         // Node 1: 财务专员
         Long financeApproverId = approverResolver.resolveFinanceApprover();
         if (financeApproverId != null) {
             ApprovalNode node1 = new ApprovalNode();
             node1.setNodeName("财务专员审批");
-            node1.setNodeOrder(1);
+            node1.setNodeOrder(order++);
             node1.setApproverId(financeApproverId);
             node1.setStatus(NodeStatus.PENDING.getCode());
             nodes.add(node1);
+        }
+
+        // Node 2: 老板（可选，PRD 标记为 [老板]）
+        Long bossApproverId = approverResolver.resolveBossApprover();
+        if (bossApproverId != null) {
+            ApprovalNode bossNode = new ApprovalNode();
+            bossNode.setNodeName("老板审批");
+            bossNode.setNodeOrder(order);
+            bossNode.setApproverId(bossApproverId);
+            bossNode.setStatus(NodeStatus.PENDING.getCode());
+            nodes.add(bossNode);
         }
 
         return nodes;

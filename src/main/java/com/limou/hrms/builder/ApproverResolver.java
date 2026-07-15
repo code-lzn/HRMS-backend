@@ -1,8 +1,10 @@
 package com.limou.hrms.builder;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.limou.hrms.mapper.DepartmentMapper;
 import com.limou.hrms.mapper.EmployeeMapper;
 import com.limou.hrms.mapper.UserMapper;
+import com.limou.hrms.model.entity.Department;
 import com.limou.hrms.model.entity.Employee;
 import com.limou.hrms.model.entity.User;
 import lombok.extern.slf4j.Slf4j;
@@ -18,6 +20,8 @@ import java.util.List;
 @Slf4j
 public class ApproverResolver {
 
+    @Resource
+    private DepartmentMapper departmentMapper;
     @Resource
     private EmployeeMapper employeeMapper;
     @Resource
@@ -55,6 +59,24 @@ public class ApproverResolver {
         }
         log.warn("未找到财务专员（user_role='finance' 且有关联 employee 记录）");
         return null;
+    }
+
+    /**
+     * 查找老板（公司负责人）。查 department 表 parent_id IS NULL 的根部门，
+     * 取其 manager_id 作为老板的 employee.id。
+     * @return 老板的 employee.id，若无根部门或未设负责人则返回 null
+     */
+    public Long resolveBossApprover() {
+        List<Department> roots = departmentMapper.selectList(
+                new QueryWrapper<Department>()
+                        .isNull("parent_id")
+                        .eq("is_deleted", 0)
+                        .last("LIMIT 1"));
+        if (roots.isEmpty() || roots.get(0).getManagerId() == null) {
+            log.warn("未找到老板（根部门不存在或未设置负责人）");
+            return null;
+        }
+        return roots.get(0).getManagerId();
     }
 
     /**
