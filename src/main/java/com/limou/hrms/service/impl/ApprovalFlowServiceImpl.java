@@ -267,26 +267,41 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
 
     @Override
     public Page<PendingItemVO> getPendingList(Long employeeId, ApprovalQuery query) {
-        // 1. 查当前用户待审批的节点（自己的）
-        QueryWrapper<ApprovalNode> nodeQw = new QueryWrapper<>();
-        nodeQw.eq("approver_id", employeeId)
-               .eq("status", NodeStatus.PENDING.getCode())
-               .orderByDesc("create_time");
+        int pageSize = query.getPageSize();
+        int offset = Math.max(0, (query.getCurrent() - 1) * pageSize);
 
-        Page<ApprovalNode> nodePage = approvalNodeMapper.selectPage(
-                new Page<>(query.getCurrent(), query.getPageSize()), nodeQw
-        );
+        // 1. 统计两个来源的总数（准确的 total）
+        long ownCount = approvalNodeMapper.selectCount(
+                new QueryWrapper<ApprovalNode>()
+                        .eq("approver_id", employeeId)
+                        .eq("status", NodeStatus.PENDING.getCode()));
 
-        // 2. 查委托给我的节点（别人委托给我，在有效期内）
+        long delegateCount = approvalNodeMapper.selectCount(
+                new QueryWrapper<ApprovalNode>()
+                        .eq("status", NodeStatus.PENDING.getCode())
+                        .inSql("approver_id",
+                                "SELECT d.delegator_id FROM approval_delegate d " +
+                                "WHERE d.delegate_id = " + employeeId + " " +
+                                "AND d.enabled = 1 AND NOW() BETWEEN d.start_time AND d.end_time"));
+
+        // 2. 从两个来源各取足够的记录（pageSize 条），覆盖当前页窗口
+        QueryWrapper<ApprovalNode> ownQw = new QueryWrapper<>();
+        ownQw.eq("approver_id", employeeId)
+             .eq("status", NodeStatus.PENDING.getCode())
+             .orderByDesc("create_time")
+             .last("LIMIT " + pageSize + " OFFSET " + offset);
+
         QueryWrapper<ApprovalNode> delegateQw = new QueryWrapper<>();
         delegateQw.eq("status", NodeStatus.PENDING.getCode())
                   .inSql("approver_id",
                           "SELECT d.delegator_id FROM approval_delegate d " +
                           "WHERE d.delegate_id = " + employeeId + " " +
                           "AND d.enabled = 1 AND NOW() BETWEEN d.start_time AND d.end_time")
-                  .orderByDesc("create_time");
+                  .orderByDesc("create_time")
+                  .last("LIMIT " + pageSize + " OFFSET " + offset);
 
-        java.util.List<ApprovalNode> delegateNodes = approvalNodeMapper.selectList(delegateQw);
+        List<ApprovalNode> ownNodes = approvalNodeMapper.selectList(ownQw);
+        List<ApprovalNode> delegateNodes = approvalNodeMapper.selectList(delegateQw);
 
         // 记录委托节点ID，用于组装VO时标记 delegatorName
         Set<Long> delegateNodeIds = new HashSet<>();
@@ -294,32 +309,22 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
             delegateNodeIds.add(n.getId());
         }
 
-        // 3. 合并两个来源（去重），按 create_time 排序
-        Set<Long> seenIds = new HashSet<>();
-        List<ApprovalNode> allNodes = new ArrayList<>();
-        for (ApprovalNode node : nodePage.getRecords()) {
-            seenIds.add(node.getId());
-            allNodes.add(node);
-        }
-        for (ApprovalNode node : delegateNodes) {
-            if (!seenIds.contains(node.getId())) {
-                allNodes.add(node);
+        // 3. 合并、排序、取当前页
+        List<ApprovalNode> merged = new ArrayList<>(ownNodes);
+        for (ApprovalNode n : delegateNodes) {
+            if (!ownNodes.stream().anyMatch(o -> o.getId().equals(n.getId()))) {
+                merged.add(n);
             }
         }
-        allNodes.sort((a, b) -> b.getCreateTime().compareTo(a.getCreateTime()));
-
-        // 4. 分页处理（内存分页）
-        int total = allNodes.size();
-        int fromIndex = (int) ((query.getCurrent() - 1) * query.getPageSize());
-        int toIndex = Math.min(fromIndex + (int) query.getPageSize(), total);
-        if (fromIndex >= total) {
-            allNodes = new ArrayList<>();
-        } else {
-            allNodes = allNodes.subList(fromIndex, toIndex);
+        merged.sort((a, b) -> b.getCreateTime().compareTo(a.getCreateTime()));
+        if (merged.size() > pageSize) {
+            merged = merged.subList(0, pageSize);
         }
 
-        // 5. 关联 instance 信息组装 VO
-        List<PendingItemVO> records = allNodes.stream().map(node -> {
+        long total = ownCount + delegateCount;
+
+        // 4. 关联 instance 信息组装 VO
+        List<PendingItemVO> records = merged.stream().map(node -> {
             ApprovalInstance instance = approvalInstanceMapper.selectById(node.getInstanceId());
             PendingItemVO vo = new PendingItemVO();
             vo.setInstanceId(node.getInstanceId());
