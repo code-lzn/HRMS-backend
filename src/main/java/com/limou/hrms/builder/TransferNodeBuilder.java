@@ -1,9 +1,7 @@
 package com.limou.hrms.builder;
 
-import com.limou.hrms.mapper.DepartmentMapper;
 import com.limou.hrms.mapper.TransferApplicationMapper;
 import com.limou.hrms.model.entity.ApprovalNode;
-import com.limou.hrms.model.entity.Department;
 import com.limou.hrms.model.entity.TransferApplication;
 import com.limou.hrms.model.enums.ApprovalBizType;
 import com.limou.hrms.model.enums.NodeStatus;
@@ -22,8 +20,6 @@ public class TransferNodeBuilder implements ApprovalNodeBuilder {
     @Resource
     private TransferApplicationMapper transferApplicationMapper;
     @Resource
-    private DepartmentMapper departmentMapper;
-    @Resource
     private ApproverResolver approverResolver;
 
     @Override
@@ -33,16 +29,6 @@ public class TransferNodeBuilder implements ApprovalNodeBuilder {
             throw new IllegalArgumentException("调岗申请不存在: " + bizId);
         }
 
-        Department fromDept = departmentMapper.selectById(app.getFromDepartmentId());
-        if (fromDept == null || fromDept.getManagerId() == null) {
-            throw new IllegalArgumentException("原部门或部门负责人不存在");
-        }
-
-        Department toDept = departmentMapper.selectById(app.getToDepartmentId());
-        if (toDept == null || toDept.getManagerId() == null) {
-            throw new IllegalArgumentException("新部门或部门负责人不存在");
-        }
-
         List<ApprovalNode> nodes = new ArrayList<>();
         int order = 1;
 
@@ -50,7 +36,7 @@ public class TransferNodeBuilder implements ApprovalNodeBuilder {
         ApprovalNode node1 = new ApprovalNode();
         node1.setNodeName("原部门负责人审批");
         node1.setNodeOrder(order++);
-        node1.setApproverId(fromDept.getManagerId());
+        node1.setApproverId(approverResolver.resolveDeptManager(app.getFromDepartmentId()));
         node1.setStatus(NodeStatus.PENDING.getCode());
         nodes.add(node1);
 
@@ -58,7 +44,7 @@ public class TransferNodeBuilder implements ApprovalNodeBuilder {
         ApprovalNode node2 = new ApprovalNode();
         node2.setNodeName("新部门负责人审批");
         node2.setNodeOrder(order++);
-        node2.setApproverId(toDept.getManagerId());
+        node2.setApproverId(approverResolver.resolveDeptManager(app.getToDepartmentId()));
         node2.setStatus(NodeStatus.PENDING.getCode());
         nodes.add(node2);
 
