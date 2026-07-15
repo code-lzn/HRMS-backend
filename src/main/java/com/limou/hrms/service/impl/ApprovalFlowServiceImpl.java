@@ -20,6 +20,7 @@ import com.limou.hrms.service.ApprovalDelegateService;
 import com.limou.hrms.service.ApprovalFlowService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
@@ -47,6 +48,8 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
     private ApprovalDelegateService approvalDelegateService;
     @Resource
     private ApproverResolver approverResolver;
+    @Resource
+    private CacheManager cacheManager;
 
     /** Spring 自动注入所有 ApprovalCallback 实现（各业务模块），可能为空 */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
@@ -82,6 +85,18 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
         }
 
         log.info("审批实例创建成功: instanceId={}, bizType={}, bizId={}", instance.getId(), bizType.getCode(), bizId);
+
+        // 驱逐第一个审批人的待办缓存（其待办数量 +1）
+        if (!nodes.isEmpty()) {
+            Long firstApproverId = nodes.get(0).getApproverId();
+            if (firstApproverId != null) {
+                org.springframework.cache.Cache cache = cacheManager.getCache("pendingCount");
+                if (cache != null) {
+                    cache.evict(firstApproverId);
+                }
+            }
+        }
+
         return instance;
     }
 
