@@ -4,7 +4,6 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.constant.CommonConstant;
-import com.limou.hrms.constant.UserConstant;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.mapper.RoleMapper;
 import com.limou.hrms.model.dto.role.RoleQueryRequest;
@@ -83,12 +82,6 @@ public class RoleServiceImpl extends ServiceImpl<RoleMapper, Role> implements Ro
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "角色不存在");
         }
         user.setRoleId(roleId);
-        // 同步更新 userRole 字段，保持与 AuthInterceptor / isAdmin() 的向后兼容
-        if (UserConstant.ADMIN_ROLE.equals(role.getRoleCode())) {
-            user.setUserRole(UserConstant.ADMIN_ROLE);
-        } else {
-            user.setUserRole(UserConstant.DEFAULT_ROLE);
-        }
         return userService.updateById(user);
     }
 

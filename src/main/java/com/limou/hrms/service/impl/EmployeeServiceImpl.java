@@ -191,7 +191,7 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
         String initPwd = generateRandomPwd();
         user.setUserPassword(DigestUtils.md5DigestAsHex((SALT + initPwd).getBytes()));
         user.setUserName(name);
-        user.setUserRole("user");
+        // roleId 不在此处设置，由管理员后续通过角色分配接口指定
         userMapper.insert(user);
         emp.setUserId(user.getId());
         emp.setAccount(phone);

@@ -32,14 +32,14 @@ public class LoginUserVO implements Serializable {
     private String userProfile;
 
     /**
-     * 用户角色：user/admin/ban
-     */
-    private String userRole;
-
-    /**
-     * 角色ID（新版 RBAC）
+     * 角色ID
      */
     private Long roleId;
+
+    /**
+     * 角色名称
+     */
+    private String roleName;
 
     /**
      * 员工ID

@@ -31,9 +31,9 @@ public class UserUpdateRequest implements Serializable {
     private String userProfile;
 
     /**
-     * 用户角色：user/admin/ban
+     * 角色ID
      */
-    private String userRole;
+    private Long roleId;
 
     private static final long serialVersionUID = 1L;
 }

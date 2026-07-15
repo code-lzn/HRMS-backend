@@ -36,6 +36,7 @@ public enum PermissionUrlEnum {
     // ==================== 用户管理 ====================
     USER_ADD("/api/user/add",               PermissionConstant.ROLE_MANAGE, "新增用户"),
     USER_DELETE("/api/user/delete",         PermissionConstant.ROLE_MANAGE, "删除用户"),
+    USER_UPDATE_STATUS("/api/user/update/status", PermissionConstant.ROLE_MANAGE, "更新用户状态"),
     USER_UPDATE("/api/user/update",         PermissionConstant.ROLE_MANAGE, "更新用户"),
     USER_GET("/api/user/get",               PermissionConstant.ROLE_MANAGE, "查询用户"),
     USER_GET_VO("/api/user/get/vo",         PermissionConstant.ROLE_MANAGE, "查询用户VO"),
