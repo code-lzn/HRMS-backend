@@ -3,9 +3,11 @@ package com.limou.hrms.builder;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.limou.hrms.mapper.DepartmentMapper;
 import com.limou.hrms.mapper.EmployeeMapper;
+import com.limou.hrms.mapper.EmployeeWorkInfoMapper;
 import com.limou.hrms.mapper.UserMapper;
 import com.limou.hrms.model.entity.Department;
 import com.limou.hrms.model.entity.Employee;
+import com.limou.hrms.model.entity.EmployeeWorkInfo;
 import com.limou.hrms.model.entity.User;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -24,6 +26,8 @@ public class ApproverResolver {
     private DepartmentMapper departmentMapper;
     @Resource
     private EmployeeMapper employeeMapper;
+    @Resource
+    private EmployeeWorkInfoMapper employeeWorkInfoMapper;
     @Resource
     private UserMapper userMapper;
 
@@ -77,6 +81,54 @@ public class ApproverResolver {
             return null;
         }
         return roots.get(0).getManagerId();
+    }
+
+    /**
+     * 查找部门负责人。查 department 表取 manager_id。
+     * @param departmentId 部门 ID
+     * @return 部门负责人的 employee.id
+     * @throws IllegalArgumentException 部门或部门负责人不存在
+     */
+    public Long resolveDeptManager(Long departmentId) {
+        Department dept = departmentMapper.selectById(departmentId);
+        if (dept == null || dept.getManagerId() == null) {
+            throw new IllegalArgumentException("部门或部门负责人不存在: " + departmentId);
+        }
+        return dept.getManagerId();
+    }
+
+    /**
+     * 查找员工直接上级。优先取 direct_report_id，若为空回退到部门负责人。
+     * @param employeeId 员工 ID
+     * @return 直接上级的 employee.id
+     * @throws IllegalArgumentException 员工工作信息或部门负责人不存在
+     */
+    public Long resolveDirectLeader(Long employeeId) {
+        EmployeeWorkInfo workInfo = employeeWorkInfoMapper.selectOne(
+                new QueryWrapper<EmployeeWorkInfo>().eq("employee_id", employeeId));
+        if (workInfo == null) {
+            throw new IllegalArgumentException("员工工作信息不存在: " + employeeId);
+        }
+        if (workInfo.getDirectReportId() != null) {
+            return workInfo.getDirectReportId();
+        }
+        // 回退到部门负责人
+        return resolveDeptManager(workInfo.getDepartmentId());
+    }
+
+    /**
+     * 取员工所属部门 ID。查 employee_work_info 表。
+     * @param employeeId 员工 ID
+     * @return 部门 ID
+     * @throws IllegalArgumentException 员工工作信息不存在
+     */
+    public Long resolveDepartmentId(Long employeeId) {
+        EmployeeWorkInfo workInfo = employeeWorkInfoMapper.selectOne(
+                new QueryWrapper<EmployeeWorkInfo>().eq("employee_id", employeeId));
+        if (workInfo == null) {
+            throw new IllegalArgumentException("员工工作信息不存在: " + employeeId);
+        }
+        return workInfo.getDepartmentId();
     }
 
     /**

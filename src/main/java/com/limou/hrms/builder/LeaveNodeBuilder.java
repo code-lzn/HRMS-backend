@@ -1,11 +1,7 @@
 package com.limou.hrms.builder;
 
-import com.limou.hrms.mapper.DepartmentMapper;
-import com.limou.hrms.mapper.EmployeeWorkInfoMapper;
 import com.limou.hrms.mapper.LeaveRequestMapper;
 import com.limou.hrms.model.entity.ApprovalNode;
-import com.limou.hrms.model.entity.Department;
-import com.limou.hrms.model.entity.EmployeeWorkInfo;
 import com.limou.hrms.model.entity.LeaveRequest;
 import com.limou.hrms.model.enums.ApprovalBizType;
 import com.limou.hrms.model.enums.NodeStatus;
@@ -39,10 +35,6 @@ public class LeaveNodeBuilder implements ApprovalNodeBuilder {
     @Resource
     private LeaveRequestMapper leaveRequestMapper;
     @Resource
-    private EmployeeWorkInfoMapper employeeWorkInfoMapper;
-    @Resource
-    private DepartmentMapper departmentMapper;
-    @Resource
     private ApproverResolver approverResolver;
 
     @Override
@@ -52,22 +44,14 @@ public class LeaveNodeBuilder implements ApprovalNodeBuilder {
             throw new IllegalArgumentException("请假申请不存在: " + bizId);
         }
 
-        EmployeeWorkInfo workInfo = employeeWorkInfoMapper.selectOne(
-                new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<EmployeeWorkInfo>()
-                        .eq("employee_id", request.getEmployeeId()));
-        if (workInfo == null) {
-            throw new IllegalArgumentException("员工工作信息不存在");
-        }
-
         List<ApprovalNode> nodes = new ArrayList<>();
         int order = 1;
 
         // Node 1: 直接上级（所有类型都需要）
-        Long approverId = resolveDirectLeader(workInfo);
         ApprovalNode node1 = new ApprovalNode();
         node1.setNodeName("直接上级审批");
         node1.setNodeOrder(order++);
-        node1.setApproverId(approverId);
+        node1.setApproverId(approverResolver.resolveDirectLeader(request.getEmployeeId()));
         node1.setStatus(NodeStatus.PENDING.getCode());
         nodes.add(node1);
 
@@ -90,11 +74,11 @@ public class LeaveNodeBuilder implements ApprovalNodeBuilder {
         }
 
         if (needDeptHead) {
-            Department dept = getDeptOrThrow(workInfo.getDepartmentId());
+            Long deptId = approverResolver.resolveDepartmentId(request.getEmployeeId());
             ApprovalNode node2 = new ApprovalNode();
             node2.setNodeName("部门负责人审批");
             node2.setNodeOrder(order++);
-            node2.setApproverId(dept.getManagerId());
+            node2.setApproverId(approverResolver.resolveDeptManager(deptId));
             node2.setStatus(NodeStatus.PENDING.getCode());
             nodes.add(node2);
         }
@@ -112,26 +96,6 @@ public class LeaveNodeBuilder implements ApprovalNodeBuilder {
         }
 
         return nodes;
-    }
-
-    private Long resolveDirectLeader(EmployeeWorkInfo workInfo) {
-        if (workInfo.getDirectReportId() != null) {
-            return workInfo.getDirectReportId();
-        }
-        // 回退到部门负责人
-        Department dept = departmentMapper.selectById(workInfo.getDepartmentId());
-        if (dept == null || dept.getManagerId() == null) {
-            throw new IllegalArgumentException("部门或部门负责人不存在");
-        }
-        return dept.getManagerId();
-    }
-
-    private Department getDeptOrThrow(Long departmentId) {
-        Department dept = departmentMapper.selectById(departmentId);
-        if (dept == null || dept.getManagerId() == null) {
-            throw new IllegalArgumentException("部门或部门负责人不存在");
-        }
-        return dept;
     }
 
     @Override

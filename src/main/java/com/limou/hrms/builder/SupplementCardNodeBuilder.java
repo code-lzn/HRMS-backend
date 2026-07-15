@@ -1,9 +1,7 @@
 package com.limou.hrms.builder;
 
-import com.limou.hrms.mapper.EmployeeWorkInfoMapper;
 import com.limou.hrms.mapper.SupplementCardRequestMapper;
 import com.limou.hrms.model.entity.ApprovalNode;
-import com.limou.hrms.model.entity.EmployeeWorkInfo;
 import com.limou.hrms.model.entity.SupplementCardRequest;
 import com.limou.hrms.model.enums.ApprovalBizType;
 import com.limou.hrms.model.enums.NodeStatus;
@@ -22,7 +20,7 @@ public class SupplementCardNodeBuilder implements ApprovalNodeBuilder {
     @Resource
     private SupplementCardRequestMapper supplementCardRequestMapper;
     @Resource
-    private EmployeeWorkInfoMapper employeeWorkInfoMapper;
+    private ApproverResolver approverResolver;
 
     @Override
     public List<ApprovalNode> build(Long bizId, Long applicantId) {
@@ -31,23 +29,15 @@ public class SupplementCardNodeBuilder implements ApprovalNodeBuilder {
             throw new IllegalArgumentException("补卡申请不存在: " + bizId);
         }
 
-        // 查员工工作信息获取直接上级
-        EmployeeWorkInfo workInfo = employeeWorkInfoMapper.selectOne(
-                new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<EmployeeWorkInfo>()
-                        .eq("employee_id", request.getEmployeeId())
-        );
-        if (workInfo == null) {
-            throw new IllegalArgumentException("员工工作信息不存在");
-        }
-
         List<ApprovalNode> nodes = new ArrayList<>();
         int order = 1;
 
+        // 查员工工作信息获取直接上级
         // Node 1: 直接上级
         ApprovalNode node1 = new ApprovalNode();
         node1.setNodeName("直接上级审批");
         node1.setNodeOrder(order);
-        node1.setApproverId(workInfo.getDirectReportId());
+        node1.setApproverId(approverResolver.resolveDirectLeader(request.getEmployeeId()));
         node1.setStatus(NodeStatus.PENDING.getCode());
         nodes.add(node1);
 
