@@ -11,6 +11,7 @@ import com.limou.hrms.model.entity.*;
 import com.limou.hrms.model.enums.EmployeeStatus;
 import com.limou.hrms.model.vo.OnboardingVO;
 import com.limou.hrms.service.ApprovalService;
+import com.limou.hrms.service.EmployeeService;
 import com.limou.hrms.service.OnboardingService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -41,6 +42,10 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
     private DepartmentMapper departmentMapper;
     @Resource
     private PositionMapper positionMapper;
+    @Resource
+    private EmpMutationLogMapper empMutationLogMapper;
+    @Resource
+    private EmployeeService employeeService;
 
     private static final String SALT = "hrms";
 
@@ -109,6 +114,10 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
 
         ThrowUtils.throwIf(actualEntryDate == null, ErrorCode.PARAMS_ERROR, "入职日期不能为空");
 
+        internalConfirmOnboarding(entity, actualEntryDate);
+    }
+
+    private void internalConfirmOnboarding(HrOnboarding entity, Date hireDate) {
         String employeeNo = generateEmployeeNo(entity.getDeptId());
 
         Employee emp = new Employee();
@@ -121,7 +130,7 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
         emp.setPositionId(entity.getPositionId());
         emp.setEmploymentType(entity.getEmploymentType());
         emp.setStatus(EmployeeStatus.PROBATION.getCode());
-        emp.setHireDate(actualEntryDate);
+        emp.setHireDate(hireDate);
         emp.setAccount(entity.getPhone());
         employeeMapper.insert(emp);
 
@@ -134,18 +143,58 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
         detail.setBankName(entity.getBankName());
         employeeDetailMapper.insert(detail);
 
+        Long roleId = determineRoleId(entity.getPositionId());
+
         User user = new User();
         user.setUserAccount(entity.getPhone());
-        user.setUserPassword(DigestUtils.md5DigestAsHex((SALT + generateRandomPwd()).getBytes()));
+        user.setUserPassword(DigestUtils.md5DigestAsHex((SALT + "12345678").getBytes()));
         user.setUserName(entity.getCandidateName());
+        user.setRoleId(roleId);
         userMapper.insert(user);
+
         emp.setUserId(user.getId());
         employeeMapper.updateById(emp);
 
         entity.setEmployeeId(emp.getId());
         updateById(entity);
 
-        log.info("入职确认完成: name={}, employeeNo={}", entity.getCandidateName(), employeeNo);
+        insertMutationLog(entity, emp.getId(), "APPROVED", hireDate);
+
+        log.info("入职确认完成: name={}, employeeNo={}, roleId={}", entity.getCandidateName(), employeeNo, roleId);
+    }
+
+    private void insertMutationLog(HrOnboarding entity, Long employeeId, String approvalStatus, Date effectDate) {
+        EmpMutationLog log = new EmpMutationLog();
+        log.setBusinessType("ONBOARDING");
+        log.setBusinessId(entity.getId());
+        log.setBusinessNo(entity.getBusinessNo());
+        log.setEmployeeId(employeeId);
+        log.setEmployeeName(entity.getCandidateName());
+        log.setDeptId(entity.getDeptId());
+        Department dept = departmentMapper.selectById(entity.getDeptId());
+        log.setDeptName(dept != null ? dept.getDeptName() : "");
+        log.setEffectDate(effectDate);
+        log.setApprovalStatus(approvalStatus);
+        log.setOperatorId(entity.getOperatorId());
+        if (entity.getOperatorId() != null) {
+            Employee operator = employeeMapper.selectById(entity.getOperatorId());
+            log.setOperatorName(operator != null ? operator.getEmployeeName() : "");
+        } else {
+            log.setOperatorName("");
+        }
+        log.setCreateTime(new Date());
+        empMutationLogMapper.insert(log);
+    }
+
+    private Long determineRoleId(Long positionId) {
+        if (positionId == null) {
+            return 5L;
+        }
+        Position position = positionMapper.selectById(positionId);
+        if (position != null && position.getSequence() != null && position.getSequence() == 1) {
+            return 3L;
+        }
+        return 5L;
     }
 
     @Override
@@ -229,7 +278,41 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
         HrOnboarding entity = getById(businessId);
         if (entity != null) {
             log.info("入职审批拒绝: id={}, name={}", entity.getId(), entity.getCandidateName());
+            if (entity.getEmployeeId() != null) {
+                insertMutationLog(entity, entity.getEmployeeId(), "REJECTED", entity.getHireDate());
+            }
         }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void employeeConfirm(Long id, Long employeeId) {
+        HrOnboarding entity = getById(id);
+        ThrowUtils.throwIf(entity == null, ErrorCode.NOT_FOUND_ERROR);
+
+        ApprovalRecord record = approvalService.getById(entity.getRecordId());
+        ThrowUtils.throwIf(record == null || !"APPROVED".equals(record.getStatus()),
+                ErrorCode.OPERATION_ERROR, "只有审批通过的申请可确认");
+
+        ThrowUtils.throwIf(entity.getEmployeeId() != null, ErrorCode.OPERATION_ERROR, "该申请已确认入职");
+
+        Date hireDate = entity.getHireDate() != null ? entity.getHireDate() : new Date();
+        internalConfirmOnboarding(entity, hireDate);
+
+        log.info("员工确认入职: onboardingId={}, candidateName={}", id, entity.getCandidateName());
+    }
+
+    @Override
+    public java.util.List<EmpMutationLog> getEmployeeMutationLogs(Long userId) {
+        Employee emp = employeeService.getByUserId(userId);
+        if (emp == null) {
+            return new java.util.ArrayList<>();
+        }
+        return empMutationLogMapper.selectList(
+                new LambdaQueryWrapper<EmpMutationLog>()
+                        .eq(EmpMutationLog::getEmployeeId, emp.getId())
+                        .orderByDesc(EmpMutationLog::getCreateTime)
+        );
     }
 
     private void validateRequest(OnboardingAddRequest req) {

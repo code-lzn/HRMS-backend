@@ -62,4 +62,14 @@ public interface OnboardingService extends IService<HrOnboarding> {
      * 审批拒绝回调（由 ApprovalService 调用）
      */
     void onApprovalRejected(Long businessId);
+
+    /**
+     * 员工确认入职（候选人同意入职）
+     */
+    void employeeConfirm(Long id, Long employeeId);
+
+    /**
+     * 获取员工的人事异动记录（入职申请）
+     */
+    java.util.List<com.limou.hrms.model.entity.EmpMutationLog> getEmployeeMutationLogs(Long employeeId);
 }

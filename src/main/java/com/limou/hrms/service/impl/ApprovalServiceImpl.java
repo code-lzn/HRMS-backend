@@ -17,6 +17,7 @@ import com.limou.hrms.model.vo.ApprovalDetailVO;
 import com.limou.hrms.model.vo.ApprovalPendingVO;
 import com.limou.hrms.service.*;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,6 +56,10 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
 
     @Resource
     private MakeupPunchMapper makeupPunchMapper;
+
+    @Resource
+    @Lazy
+    private OnboardingService onboardingService;
 
     @Override
     public List<ApprovalPendingVO> getPendingList(Long employeeId) {
@@ -378,12 +383,18 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
                 }
                 break;
             }
-            case ONBOARDING:
+            case ONBOARDING: {
+                if (isApproved) {
+                    onboardingService.onApprovalPassed(record.getBusinessId());
+                }
+                log.info("业务类型 [{}] 审批完成，businessId={}, status={}",
+                        bizType.getText(), record.getBusinessId(), targetStatus);
+                break;
+            }
             case REGULARIZATION:
             case TRANSFER:
             case RESIGNATION:
             case SALARY_BATCH:
-                // 业务表暂未实现，后续扩展
                 log.info("业务类型 [{}] 审批完成，businessId={}, status={}",
                         bizType.getText(), record.getBusinessId(), targetStatus);
                 break;

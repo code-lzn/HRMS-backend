@@ -6,6 +6,7 @@ import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.common.ResultUtils;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.model.dto.onboarding.OnboardingAddRequest;
+import com.limou.hrms.model.entity.EmpMutationLog;
 import com.limou.hrms.model.entity.HrOnboarding;
 import com.limou.hrms.model.entity.User;
 import com.limou.hrms.model.vo.OnboardingVO;
@@ -109,5 +110,19 @@ public class OnboardingController {
     public BaseResponse<Boolean> abandon(@RequestParam Long id, HttpServletRequest httpReq) {
         onboardingService.abandonOnboarding(id, getLoginUserId(httpReq));
         return ResultUtils.success(true);
+    }
+
+    @PostMapping("/employee-confirm")
+    public BaseResponse<Boolean> employeeConfirm(@RequestParam Long id, HttpServletRequest httpReq) {
+        Long userId = getLoginUserId(httpReq);
+        onboardingService.employeeConfirm(id, userId);
+        return ResultUtils.success(true);
+    }
+
+    @GetMapping("/mutation-logs")
+    public BaseResponse<List<EmpMutationLog>> getMutationLogs(HttpServletRequest httpReq) {
+        Long userId = getLoginUserId(httpReq);
+        List<EmpMutationLog> logs = onboardingService.getEmployeeMutationLogs(userId);
+        return ResultUtils.success(logs);
     }
 }

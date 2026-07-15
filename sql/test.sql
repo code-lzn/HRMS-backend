@@ -893,18 +893,51 @@ CREATE TABLE `emp_mutation_log` (
 ) ENGINE=INNODB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='人事异动统一汇总日志（员工我的人事异动页面专用）';
 
 
+-- ============== 入职申请表字段变更（2026-07-15）==============
+-- 背景：入职申请表新增审批人字段，用于在表单中展示部门负责人作为审批人
+-- 注意：数据库采用小驼峰命名规范，不使用下划线
+-- 步骤1：删除之前错误添加的下划线字段（如果存在）
+ALTER TABLE emp_onboarding DROP COLUMN IF EXISTS approver_id;
+
+-- 步骤2：添加审批人ID字段（小驼峰命名，与实体类字段名保持一致）
+-- 作用：存储入职部门负责人ID，关联employee.id
+-- 使用场景：HR提交入职申请时，选择部门后自动关联部门负责人，展示审批人姓名
+ALTER TABLE emp_onboarding ADD COLUMN approverId BIGINT(20) DEFAULT NULL COMMENT '审批人ID（部门负责人，关联employee.id）';
 
 
+-- ============== 张伟信息补充（2026-07-15）==============
+-- 背景：张伟(employee.id=1)是公司总负责人，但缺少与用户账号的关联和HR负责人配置
+-- 导致入职审批流程中HR负责人节点审批人缺失
+-- 说明：审批人只需要是employee表中的员工，有对应的user账号即可，不需要是admin
+
+-- 1. 为张伟创建用户账号（账号：zhangwei，密码：123456，角色：部门主管）
+INSERT INTO user (userAccount, userPassword, userName, roleId) VALUES 
+('zhangwei', 'a1cedf10576ecbfef1ff522cdeba7c6e', '张伟', 3);
+
+-- 2. 将张伟关联到新创建的用户账号（获取刚插入的ID）
+SET @zhangweiUserId = LAST_INSERT_ID();
+UPDATE employee SET userId = @zhangweiUserId, phone = '13900139000' WHERE id = 1;
+
+-- 3. 更新用户表，关联张伟的员工ID
+UPDATE user SET employeeId = 1 WHERE id = @zhangweiUserId;
+
+-- 4. 配置HR负责人（将张伟设为入职审批流中HR_MANAGER节点的固定审批人）
+-- 将approverType改为SPECIFIED并设置approverId=1(张伟)
+UPDATE approval_flow_node SET approverId = 1, approverType = 'SPECIFIED' WHERE flowId = 1 AND approverType = 'HR_MANAGER';
+
+-- 5. 更新现有审批记录中HR负责人节点的审批人信息（填充缺失的审批人）
+UPDATE approval_detail SET approverId = 1, approverName = '张伟' WHERE nodeName = 'HR负责人' AND approverId IS NULL;
+
+-- 6. 更新入职申请表中缺失的审批人ID（入职申请1的approverId为NULL）
+UPDATE emp_onboarding SET approverId = 1 WHERE id = 1;
 
 
-
-
-
-
-
-
-
-
+-- ============== HHRR员工档案创建（2026-07-15）==============
+-- 背景：HHRR用户设置了employeeId=19，但employee表中没有id=19的记录
+-- 导致登录后访问审批中心时报错"员工档案不存在"
+-- 解决：为HHRR创建员工记录，关联到用户ID=2076964719435886594
+INSERT INTO employee (id, employeeName, userId, employeeNo, account, status, gender, phone, departmentId, positionId, employmentType) 
+VALUES (19, 'HHRR', 2076964719435886594, '2026000019', 'HHRR', 1, 1, '13800138000', 1, 2, 'FULL_TIME');
 
 
 
