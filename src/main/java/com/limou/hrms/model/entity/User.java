@@ -48,11 +48,6 @@ public class User implements Serializable {
     private String userProfile;
 
     /**
-     * 用户角色：user/admin/ban
-     */
-    private String userRole;
-
-    /**
      * 角色ID
      */
     private Long roleId;

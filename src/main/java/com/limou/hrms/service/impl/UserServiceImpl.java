@@ -3,14 +3,17 @@ package com.limou.hrms.service.impl;
 import static com.limou.hrms.constant.UserConstant.USER_LOGIN_STATE;
 
 import cn.hutool.core.collection.CollUtil;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.constant.CommonConstant;
 import com.limou.hrms.exception.BusinessException;
+import com.limou.hrms.mapper.RoleMapper;
 import com.limou.hrms.mapper.UserMapper;
 import com.limou.hrms.model.dto.user.UserQueryRequest;
 import com.limou.hrms.model.entity.Employee;
+import com.limou.hrms.model.entity.Role;
 import com.limou.hrms.model.entity.User;
 import com.limou.hrms.model.enums.UserRoleEnum;
 import com.limou.hrms.model.vo.LoginUserVO;
@@ -22,7 +25,10 @@ import com.limou.hrms.service.UserService;
 import com.limou.hrms.utils.SqlUtils;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
@@ -53,6 +59,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
     @Resource
     private EmployeeService employeeService;
+
+    @Resource
+    private RoleMapper roleMapper;
 
     @Override
     public long userRegister(String userAccount, String userPassword, String checkPassword) {
@@ -257,6 +266,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         }
         UserVO userVO = new UserVO();
         BeanUtils.copyProperties(user, userVO);
+        if (user.getRoleId() != null) {
+            Role role = roleMapper.selectById(user.getRoleId());
+            if (role != null) {
+                userVO.setUserRoleName(role.getRoleName());
+            }
+        }
         return userVO;
     }
 
@@ -265,7 +280,30 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         if (CollUtil.isEmpty(userList)) {
             return new ArrayList<>();
         }
-        return userList.stream().map(this::getUserVO).collect(Collectors.toList());
+        // 批量查询角色，避免 N+1
+        Set<Long> roleIds = userList.stream()
+                .map(User::getRoleId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, Role> roleMap;
+        if (CollUtil.isNotEmpty(roleIds)) {
+            roleMap = roleMapper.selectBatchIds(roleIds).stream()
+                    .collect(Collectors.toMap(Role::getId, Function.identity()));
+        } else {
+            roleMap = new java.util.HashMap<>();
+        }
+
+        return userList.stream().map(user -> {
+            UserVO userVO = new UserVO();
+            BeanUtils.copyProperties(user, userVO);
+            if (user.getRoleId() != null) {
+                Role role = roleMap.get(user.getRoleId());
+                if (role != null) {
+                    userVO.setUserRoleName(role.getRoleName());
+                }
+            }
+            return userVO;
+        }).collect(Collectors.toList());
     }
 
     @Override
