@@ -7,12 +7,13 @@
 | **日期** | **版本** | **修订说明** | **作者** |
 | --- | --- | --- | --- |
 | 2026-07-13 | 1.0 | 初稿 | 陆博 |
+| 2026-07-15 | 2.0 | 删除 userRole 字段，统一为 roleId 关联 RBAC，三层防线全部启用 | 陆博 |
 
 ## 项目背景
 
 > 对本次项目的背景以及目标进行描述，方便开发者理解需求，对齐上下文。
 
-本模块来源于 HRMS（人资管理系统）产品规格说明书中第 2 部分——权限体系。当前系统仅通过 `userRole` 字段（user/admin/ban）做粗粒度角色控制，无法满足以下需求：
+本模块来源于 HRMS（人资管理系统）产品规格说明书中第 2 部分——权限体系。当前系统已通过 `roleId` 字段关联 `role` 表实现基于 RBAC 的精细权限控制：
 
 - **精细权限控制**：不同角色对"员工档案、薪资管理、考勤管理、审批管理、组织架构、系统管理"等模块有不同的可见/操作权限
 - **数据范围控制**：角色可看的数据范围为"全平台 / 全部员工 / 本部门及下属 / 薪资相关 / 仅本人"
@@ -39,8 +40,8 @@
 本模块核心功能包括：
 
 1. **角色管理**：支持角色 CRUD（增删改查）、角色分页查询、角色启用/禁用、角色权限码配置（JSON 数组）、角色字段权限配置（JSON 对象）、数据范围设置
-2. **用户-角色关联**：为系统用户分配角色，同步更新旧 `userRole` 字段保持向后兼容
-3. **功能权限校验**：三层防线——URL 拦截器（按路径匹配权限码）+ AuthInterceptor（角色字符串校验）+ @RequirePermission 注解 AOP（方法级权限码校验）
+2. **用户-角色关联**：为系统用户分配角色，更新 `user.roleId` 关联 `role` 表
+3. **功能权限校验**：三层防线——PermissionInterceptor（URL 匹配权限码）+ AuthInterceptor（roleId + 角色状态校验）+ PermissionAspect（@RequirePermission 注解 AOP）
 4. **数据范围查询**：根据用户角色返回数据范围等级（1~5），业务层据此过滤 SQL 查询范围
 5. **字段级权限**：根据角色返回 `fieldPermissions` JSON，前端按角色 ID 控制敏感字段可见性
 6. **权限查询接口**：登录后查当前用户完整权限（角色信息 + 权限码列表 + 数据范围 + 字段权限）、检查是否拥有某权限码、获取系统全部可用权限码列表
@@ -58,8 +59,7 @@
 │   ├── 角色权限配置（permissions JSON 数组）
 │   └── 角色字段权限配置（fieldPermissions JSON 对象）
 ├── 用户-角色关联
-│   ├── 为用户分配角色
-│   └── 同步旧 userRole 字段（admin/user）
+│   └── 为用户分配角色（user.roleId）
 ├── 功能权限校验（三层防线）
 │   ├── PermissionInterceptor（URL → 权限码映射）
 │   ├── AuthInterceptor（@AuthCheck 角色字符串校验）
@@ -127,9 +127,14 @@ HTTP 请求到达
      ▼
 ┌── 第2层: AuthInterceptor ────────────────────────┐
 │  方法上有 @AuthCheck(mustRole="admin")？         │
-│  ├── 是 → user.userRole == "admin"？            │
-│  │       ├── 是 → 放行                           │
-│  │       └── 否 → 403                            │
+│  ├── 是 → user.roleId != null？                 │
+│  │       ├── 是 → role.status==1？              │
+│  │       │       ├── 是 → hasPermission(*:*:*)   │
+│  │       │       │       或 hasPermission(role:manage) │
+│  │       │       │       ├── 是 → 放行           │
+│  │       │       │       └── 否 → 403            │
+│  │       │       └── 否 → 403（角色已禁用）       │
+│  │       └── 否 → 403（未分配角色）               │
 │  └── 否 → 放行                                   │
 └──────────────────────────────────────────────────┘
      │
@@ -164,13 +169,10 @@ RoleService.assignRoleToUser(userId, roleId)
      ├── 校验用户是否存在
      ├── 校验角色是否存在
      ├── 更新 user.roleId = roleId
-     ├── 同步更新 user.userRole：
-     │   ├── role.roleCode == "admin" → userRole = "admin"
-     │   └── 其他 → userRole = "user"
      └── userService.updateById(user)
      │
      ▼
-用户重新登录后获得新角色权限
+用户下次请求时通过 roleId → role 表获取新权限
 ```
 
 ## UML 图
@@ -199,10 +201,10 @@ class Role {
 class User {
   - id: Long
   - userAccount: String
-  - userRole: String             "旧角色字段 user/admin/ban"
-  - roleId: Long                 "新角色ID，关联role.id"
+  - roleId: Long                 "角色ID，关联role.id"
+  - employeeId: Long             "员工ID，关联employee.id"
   --
-  + isAdmin(): boolean
+  + isAdmin(): boolean           "判断是否拥有 *:*:* 或 role:manage"
 }
 
 class UserPermissionVO {
@@ -378,32 +380,42 @@ ALTER TABLE `user`
 ### 预置角色数据
 
 ```sql
--- 系统管理员（全平台最高权限）
+-- 系统管理员（全平台最高权限，不含薪资管理权限，保持职责分离）
 INSERT INTO role (roleName, roleCode, description, dataScope, status, permissions, fieldPermissions)
-VALUES ('系统管理员', 'ADMIN', '全平台最高权限', 1, 1, '["*:*:*"]', NULL);
+VALUES ('系统管理员', 'admin', '全平台最高权限，不含薪资查看', 1, 1,
+        '["employee:list","employee:add","employee:edit","employee:delete","employee:detail",
+          "attendance:list","attendance:manage","approval:process",
+          "org:manage","role:manage","system:config","system:backup"]',
+        NULL);
 
--- HR专员（员工管理、薪资核算）
+-- HR专员（员工管理、薪资核算、考勤管理、审批管理）
 INSERT INTO role (roleName, roleCode, description, dataScope, status, permissions, fieldPermissions)
-VALUES ('HR专员', 'HR', '员工管理、薪资核算', 2, 1,
-        '["employee:list","employee:add","employee:edit","employee:delete","salary:list","salary:view"]',
-        '{"idCard":{"viewable":[1,2]},"salaryInfo":{"viewable":[1,2,4]}}');
+VALUES ('HR专员', 'hr', '员工管理、薪资核算、考勤、审批', 2, 1,
+        '["employee:list","employee:add","employee:edit","employee:delete","employee:detail",
+          "salary:list","salary:view","salary:audit",
+          "attendance:list","attendance:manage",
+          "approval:process","org:manage"]',
+        '{"idCard":{"viewable":[1,2]},"salaryInfo":{"viewable":[2,4]},"bankAccount":{"viewable":[1,2]}}');
 
--- 部门主管（本部门管理）
+-- 部门主管（本部门员工查看、考勤管理、下属审批）
 INSERT INTO role (roleName, roleCode, description, dataScope, status, permissions, fieldPermissions)
-VALUES ('部门主管', 'MANAGER', '本部门管理', 3, 1,
-        '["employee:list","employee:edit","approval:process"]', NULL);
+VALUES ('部门主管', 'dept_head', '本部门及下属管理', 3, 1,
+        '["employee:list","employee:detail",
+          "attendance:list","attendance:manage",
+          "approval:process"]',
+        NULL);
 
--- 财务专员（薪资相关）
+-- 财务专员（薪资审核、成本报表）
 INSERT INTO role (roleName, roleCode, description, dataScope, status, permissions, fieldPermissions)
-VALUES ('财务专员', 'FINANCE', '薪资相关', 4, 1,
+VALUES ('财务专员', 'finance', '薪资审核与成本分析', 4, 1,
         '["salary:list","salary:view","salary:audit"]',
-        '{"salaryInfo":{"viewable":[1,2,4]}}');
+        '{"salaryInfo":{"viewable":[4]},"bankAccount":{"viewable":[4]}}');
 
--- 普通员工（仅本人）
+-- 普通员工（仅本人数据，无管理权限）
 INSERT INTO role (roleName, roleCode, description, dataScope, status, permissions, fieldPermissions)
-VALUES ('普通员工', 'EMPLOYEE', '仅本人', 5, 1,
-        '["employee:detail","attendance:clock"]',
-        '{"salaryInfo":{"viewable":[1,2,4,5]}}');
+VALUES ('普通员工', 'employee', '仅查看本人信息', 5, 1,
+        '[]',
+        NULL);
 ```
 
 ## API 设计
@@ -665,7 +677,7 @@ POST /api/role/assign
 | userId | Long | 是 | 用户ID |
 | roleId | Long | 是 | 角色ID |
 
-> **说明**：需 `role:manage` 权限。分配时自动同步 `user.userRole` 字段（roleCode="ADMIN" → userRole="admin"），保持与旧权限系统兼容。
+> **说明**：需 `role:manage` 权限。分配时更新 `user.roleId` 字段，用户下次请求即刻生效（无需重新登录）。
 
 ---
 
@@ -702,9 +714,9 @@ PermissionConstant.SUPER_ADMIN      = "*:*:*"             // 超级通配符
 
 | 层级 | 实现 | 机制 | 适用范围 |
 | --- | --- | --- | --- |
-| 第1层 | `PermissionInterceptor` | URL → 权限码映射表匹配，未命中放行 | 全局（零侵入） |
-| 第2层 | `AuthInterceptor` | 检查 `@AuthCheck(mustRole)` 注解 | 旧角色系统兼容 |
-| 第3层 | `PermissionAspect` | 检查 `@RequirePermission` 注解 | 新权限系统（精细控制） |
+| 第1层 | `PermissionInterceptor` | URL → PermissionUrlEnum 映射匹配，命中则查权限码 | 全局（35+ 条 URL 规则） |
+| 第2层 | `AuthInterceptor` | 检查 `@AuthCheck(mustRole)` → roleId + role.status + hasPermission | 12 个标注方法 |
+| 第3层 | `PermissionAspect` | 检查 `@RequirePermission` 注解 → hasPermission(权限码) | 7 个标注方法 |
 
 ### 权限码格式规范
 
@@ -720,19 +732,18 @@ system    :  config  → 系统配置
 操作：list / add / edit / delete / detail / view / audit / process / clock / manage / config / backup
 ```
 
-### 新旧权限体系兼容方案
+### 权限校验统一方案
 
 ```
-旧体系：user.userRole = "admin" / "user" / "ban"
-  └── AuthInterceptor → 检查 @AuthCheck(mustRole="admin")
+统一体系：user.roleId → role 表 → permissions JSON 数组
+  │
+  ├── PermissionInterceptor  → URL 匹配 PermissionUrlEnum → hasPermission(权限码)
+  ├── AuthInterceptor        → @AuthCheck → roleId != null → role.status==1 → hasPermission
+  └── PermissionAspect       → @RequirePermission → hasPermission(权限码)
 
-新体系：user.roleId → role 表
-  └── PermissionInterceptor → URL 匹配权限码
-  └── PermissionAspect → @RequirePermission 注解
-
-桥梁：assignRoleToUser() 同步更新两个字段
-  ├── role.roleCode = "ADMIN" → user.userRole = "admin"
-  └── 其他 → user.userRole = "user"
+权限来源：role.permissions（JSON 数组）→ PermissionService.getUserPermissionCodes() 解析
+通配符：*:*:* = 超级管理员，通过所有权限检查
+角色禁用：role.status = 0 → isRoleActive() = false → 所有权限失效
 ```
 
 ### 数据权限过滤方案
@@ -780,32 +791,44 @@ switch (scope) {
 
 无需用户重新登录，下次 API 调用即刻生效。
 
-### URL 权限映射表（可扩展）
+### URL 权限映射表（PermissionUrlEnum）
 
 ```java
-// PermissionInterceptor 中维护的映射表，按需增删
-URL_PERMISSION_MAP.put("/api/employee/list",     "employee:list");
-URL_PERMISSION_MAP.put("/api/employee/add",      "employee:add");
-URL_PERMISSION_MAP.put("/api/employee/edit",     "employee:edit");
-URL_PERMISSION_MAP.put("/api/employee/delete",   "employee:delete");
-URL_PERMISSION_MAP.put("/api/employee/detail",   "employee:detail");
-URL_PERMISSION_MAP.put("/api/salary/list",       "salary:list");
-URL_PERMISSION_MAP.put("/api/salary/view",       "salary:view");
-URL_PERMISSION_MAP.put("/api/salary/audit",      "salary:audit");
-URL_PERMISSION_MAP.put("/api/approval/process",  "approval:process");
-URL_PERMISSION_MAP.put("/api/attendance/clock",  "attendance:clock");
-URL_PERMISSION_MAP.put("/api/attendance/list",   "attendance:list");
-URL_PERMISSION_MAP.put("/api/attendance/manage", "attendance:manage");
-URL_PERMISSION_MAP.put("/api/department/add",    "org:manage");
-URL_PERMISSION_MAP.put("/api/department/update", "org:manage");
-URL_PERMISSION_MAP.put("/api/department/delete", "org:manage");
-URL_PERMISSION_MAP.put("/api/role/list/all",     "role:manage");
-URL_PERMISSION_MAP.put("/api/role/add",          "role:manage");
-URL_PERMISSION_MAP.put("/api/role/update",       "role:manage");
-URL_PERMISSION_MAP.put("/api/role/delete",       "role:manage");
-URL_PERMISSION_MAP.put("/api/role/assign",       "role:manage");
-URL_PERMISSION_MAP.put("/api/system/config",     "system:config");
-URL_PERMISSION_MAP.put("/api/system/backup",     "system:backup");
+// 定义在 PermissionUrlEnum 中，AntPathMatcher 匹配，精确路径在前
+// 自服务接口（/api/employee/profile、/api/salary/slips 等）不在此处拦截
+
+// 员工管理（管理类）
+EMPLOYEE_LIST  ("/api/employee/list")        → employee:list
+EMPLOYEE_ADD   ("/api/employee/add")         → employee:add
+EMPLOYEE_EDIT  ("/api/employee/update")      → employee:edit
+EMPLOYEE_DELETE("/api/employee/delete")      → employee:delete
+EMPLOYEE_DETAIL("/api/employee/detail")      → employee:detail
+
+// 用户管理
+USER_ADD       ("/api/user/add")             → role:manage
+USER_UPDATE    ("/api/user/update")          → role:manage
+USER_DELETE    ("/api/user/delete")          → role:manage
+USER_LIST_PAGE ("/api/user/list/page/**")    → role:manage
+
+// 薪资管理（管理端）
+SALARY_BATCH_APPROVE("/api/salary-manage/batches/*/approve")  → salary:audit
+SALARY_BATCH_REJECT ("/api/salary-manage/batches/*/reject")   → salary:audit
+SALARY_MANAGE_ALL   ("/api/salary-manage/**")                  → salary:list
+// 自服务：/api/salary/slips、/api/salary/slip/{id}、/api/salary/trend → 不拦截
+
+// 组织架构（读写分离）
+DEPT_TREE  ("/api/departments/tree")      → employee:list
+DEPT_ADD   ("/api/departments/add")       → org:manage
+POS_LIST   ("/api/positions/list")        → employee:list
+POS_ADD    ("/api/positions/add")         → org:manage
+
+// 审批管理
+APPROVAL_PENDING ("/api/approval/pending")   → approval:process
+LEAVE_APPROVE    ("/api/attendance/leave/approve") → approval:process
+// 自服务：/api/attendance/leave/apply、/api/approval/delegation/** → 不拦截
+
+// 角色管理
+ROLE_ALL("/api/role/**") → role:manage
 ```
 
 ## 排期
