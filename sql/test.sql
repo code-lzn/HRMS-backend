@@ -749,3 +749,55 @@ INSERT INTO approval_detail (recordId, nodeId, nodeName, stepOrder, approverId, 
 -- 审批委托测试数据: 员工2（李四）委托员工15（张三）在2026-07-01~2026-07-31期间审批请假和补卡
 INSERT INTO approval_delegation (delegatorId, delegatorName, delegateId, delegateName, businessTypes, startDate, endDate, status) VALUES
 (2, '李四', 15, '张三', 'LEAVE,PATCH_CLOCK', '2026-07-01', '2026-07-31', 1);
+
+
+-- ============== 工作台/数据看板模块 ==============
+
+-- 操作日志表（审计/最近操作动态）
+CREATE TABLE IF NOT EXISTS oper_log (
+    id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+    operatorName    VARCHAR(64)     NOT NULL                 COMMENT '操作人姓名',
+    module          VARCHAR(64)     NOT NULL                 COMMENT '操作模块',
+    action          VARCHAR(64)     NOT NULL                 COMMENT '操作类型',
+    description     VARCHAR(512)    DEFAULT NULL             COMMENT '操作描述',
+    operateTime     DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '操作时间',
+    PRIMARY KEY (id),
+    KEY idx_module (module),
+    KEY idx_operate_time (operateTime)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='操作日志表';
+
+-- 近5天操作日志测试数据
+INSERT INTO oper_log (operatorName, module, action, description, operateTime) VALUES
+('张三', '用户管理', '新增用户', '新增了用户 王五', '2026-07-14 10:30:00'),
+('张三', '角色权限', '编辑角色', '修改了角色 管理员 的权限', '2026-07-14 09:45:00'),
+('赵六', '用户管理', '删除用户', '删除了用户 test001', '2026-07-13 16:20:00'),
+('张三', '系统配置', '修改配置', '修改了系统参数 登录超时时间', '2026-07-13 14:10:00'),
+('李四', '用户管理', '编辑用户', '修改了用户 王五 的信息', '2026-07-13 11:00:00'),
+('赵六', '部门管理', '新增部门', '新增了部门 研发二部', '2026-07-12 15:30:00'),
+('张三', '薪资管理', '核算薪资', '完成了2026-07月薪资核算', '2026-07-12 09:00:00'),
+('李四', '员工管理', '入职办理', '办理了员工 孙九 的入职', '2026-07-12 08:45:00'),
+('赵六', '角色权限', '新增角色', '新增了角色 财务专员', '2026-07-11 17:20:00'),
+('张三', '审批中心', '审批通过', '通过了员工 钱七 的请假申请', '2026-07-11 14:00:00'),
+('李四', '考勤管理', '补卡审批', '通过了员工 周八 的补卡申请', '2026-07-11 10:30:00'),
+('赵六', '系统配置', '修改配置', '修改了系统参数 密码策略', '2026-07-10 16:00:00'),
+('张三', '数据分析', '导出报表', '导出了2026-Q2员工分析报表', '2026-07-10 11:00:00'),
+('李四', '员工管理', '编辑员工', '修改了员工 周八 的职级信息', '2026-07-10 09:20:00');
+
+-- 页面访问日志表（访问趋势）
+CREATE TABLE IF NOT EXISTS page_view_log (
+    id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+    viewDate        DATE            NOT NULL                 COMMENT '访问日期',
+    viewCount       BIGINT          NOT NULL DEFAULT 0       COMMENT '页面访问量',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_view_date (viewDate)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='页面访问日志表';
+
+-- 近7天访问量测试数据
+INSERT INTO page_view_log (viewDate, viewCount) VALUES
+('2026-07-08', 520),
+('2026-07-09', 480),
+('2026-07-10', 630),
+('2026-07-11', 350),
+('2026-07-12', 280),
+('2026-07-13', 710),
+('2026-07-14', 590);

@@ -37,6 +37,16 @@ public class LoginUserVO implements Serializable {
     private String userRole;
 
     /**
+     * 角色ID（新版 RBAC）
+     */
+    private Long roleId;
+
+    /**
+     * 员工ID
+     */
+    private Long employeeId;
+
+    /**
      * 创建时间
      */
     private Date createTime;

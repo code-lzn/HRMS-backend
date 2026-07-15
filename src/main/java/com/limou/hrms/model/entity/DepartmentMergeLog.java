@@ -15,6 +15,7 @@ import lombok.Data;
 @Data
 public class DepartmentMergeLog implements Serializable {
 
+    /** 主键ID */
     @TableId(type = IdType.AUTO)
     private Long id;
 

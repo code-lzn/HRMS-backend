@@ -17,6 +17,7 @@ import java.util.Date;
 @Data
 public class SalaryBatch implements Serializable {
 
+    /** 主键ID */
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
@@ -50,8 +51,10 @@ public class SalaryBatch implements Serializable {
     /** 实际发放时间 */
     private Date paidAt;
 
+    /** 创建时间 */
     private Date createdAt;
 
+    /** 更新时间 */
     private Date updatedAt;
 
     private static final long serialVersionUID = 1L;

@@ -31,25 +31,43 @@ import java.util.stream.Collectors;
 @Slf4j
 public class SalaryBizServiceImpl implements SalaryBizService {
 
-    /** 月计薪天数 */
+    /**
+     * 月计薪天数
+     */
     private static final BigDecimal WORK_DAYS = BigDecimal.valueOf(21.75);
-    /** 日工作小时 */
+    /**
+     * 日工作小时
+     */
     private static final BigDecimal WORK_HOURS = BigDecimal.valueOf(8);
-    /** 迟到单次扣款 */
+    /**
+     * 迟到单次扣款
+     */
     private static final BigDecimal LATE_FINE = BigDecimal.valueOf(50);
 
-    @Resource private EmpSalaryProfileMapper empSalaryProfileMapper;
-    @Resource private SalaryBatchMapper salaryBatchMapper;
-    @Resource private SalarySlipMapper salarySlipMapper;
-    @Resource private SalAccountMapper salAccountMapper;
-    @Resource private SalItemMapper salItemMapper;
-    @Resource private SalChangeLogMapper salChangeLogMapper;
-    @Resource private SalChangeLogService salChangeLogService;
-    @Resource private SalTaxCumulativeService salTaxCumulativeService;
-    @Resource private EmployeeMapper employeeMapper;
-    @Resource private DepartmentMapper departmentMapper;
-    @Resource private AttendanceMapper attendanceMapper;
-    @Resource private LeaveMapper leaveMapper;
+    @Resource
+    private EmpSalaryProfileMapper empSalaryProfileMapper;
+    @Resource
+    private SalaryBatchMapper salaryBatchMapper;
+    @Resource
+    private SalarySlipMapper salarySlipMapper;
+    @Resource
+    private SalAccountMapper salAccountMapper;
+    @Resource
+    private SalItemMapper salItemMapper;
+    @Resource
+    private SalChangeLogMapper salChangeLogMapper;
+    @Resource
+    private SalChangeLogService salChangeLogService;
+    @Resource
+    private SalTaxCumulativeService salTaxCumulativeService;
+    @Resource
+    private EmployeeMapper employeeMapper;
+    @Resource
+    private DepartmentMapper departmentMapper;
+    @Resource
+    private AttendanceMapper attendanceMapper;
+    @Resource
+    private LeaveMapper leaveMapper;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -107,7 +125,10 @@ public class SalaryBizServiceImpl implements SalaryBizService {
 
         String oldJson = null;
         if (oldProfile != null) {
-            try { oldJson = objectMapper.writeValueAsString(oldProfile); } catch (Exception ignored) {}
+            try {
+                oldJson = objectMapper.writeValueAsString(oldProfile);
+            } catch (Exception ignored) {
+            }
             newProfile.setId(oldProfile.getId());
             newProfile.setUpdatedTime(new Date());
             empSalaryProfileMapper.updateById(newProfile);
@@ -120,7 +141,11 @@ public class SalaryBizServiceImpl implements SalaryBizService {
         }
 
         String newJson;
-        try { newJson = objectMapper.writeValueAsString(newProfile); } catch (Exception e) { newJson = null; }
+        try {
+            newJson = objectMapper.writeValueAsString(newProfile);
+        } catch (Exception e) {
+            newJson = null;
+        }
 
         // 自动判定变更类型
         int changeType = ChangeTypeEnum.SALARY_ADJUST.getValue();
@@ -532,7 +557,9 @@ public class SalaryBizServiceImpl implements SalaryBizService {
 
     // ==================== 内部辅助方法 ====================
 
-    /** 统计某月考勤状态次数 */
+    /**
+     * 统计某月考勤状态次数
+     */
     private int countAttendanceStatus(Long employeeId, int year, int month, int status) {
         Calendar cal = Calendar.getInstance();
         cal.set(year, month - 1, 1, 0, 0, 0);
@@ -551,7 +578,9 @@ public class SalaryBizServiceImpl implements SalaryBizService {
         return count != null ? count.intValue() : 0;
     }
 
-    /** 汇总某月请假天数 */
+    /**
+     * 汇总某月请假天数
+     */
     private BigDecimal sumLeaveDays(Long employeeId, int year, int month) {
         Calendar cal = Calendar.getInstance();
         cal.set(year, month - 1, 1, 0, 0, 0);
@@ -579,11 +608,16 @@ public class SalaryBizServiceImpl implements SalaryBizService {
         return total;
     }
 
-    /** 找上月工资条（用于异常检测） */
+    /**
+     * 找上月工资条（用于异常检测）
+     */
     private SalarySlip findLastMonthSlip(Long employeeId, int year, int month) {
         int lastMonth = month - 1;
         int lastYear = year;
-        if (lastMonth == 0) { lastMonth = 12; lastYear--; }
+        if (lastMonth == 0) {
+            lastMonth = 12;
+            lastYear--;
+        }
         String lastSalaryMonth = String.format("%04d-%02d", lastYear, lastMonth);
 
         // 找到上月批次
@@ -650,14 +684,22 @@ public class SalaryBizServiceImpl implements SalaryBizService {
     private String getStatusText(String status) {
         if (status == null) return "";
         switch (status) {
-            case "DRAFT": return "草稿";
-            case "CALCULATING": return "计算中";
-            case "PENDING_CONFIRM": return "待确认";
-            case "APPROVING": return "审批中";
-            case "APPROVED": return "已通过";
-            case "PAID": return "已发放";
-            case "REJECTED": return "已驳回";
-            default: return status;
+            case "DRAFT":
+                return "草稿";
+            case "CALCULATING":
+                return "计算中";
+            case "PENDING_CONFIRM":
+                return "待确认";
+            case "APPROVING":
+                return "审批中";
+            case "APPROVED":
+                return "已通过";
+            case "PAID":
+                return "已发放";
+            case "REJECTED":
+                return "已驳回";
+            default:
+                return status;
         }
     }
 }

@@ -9,6 +9,7 @@
 | 2026-07-10 | 1.0 | 初稿 | - |
 | 2026-07-12 | 1.1 | 修订：API路径、校验规则、DB列名映射、技术栈、代码结构 | - |
 | 2026-07-13 | 1.2 | 修正员工状态枚举值、部门更新NPE保护、接口路径精简 | - |
+| 2026-07-14 | 1.3 | 枚举统一迁移至 model/enums、代码结构更新 | - |
 
 ## 项目背景
 
@@ -80,24 +81,22 @@
 ### 1. 部门表 department
 
 ```sql
-#部门表----与employee进行关联
-CREATE TABLE department (
-    id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
-    deptName       VARCHAR(64)     NOT NULL                 COMMENT '部门名称',
-    deptCode       VARCHAR(16)     NOT NULL                 COMMENT '部门编码（2位，用于工号生成）',
-    parentId       BIGINT          DEFAULT NULL             COMMENT '上级部门ID，NULL表示根部门',
-    managerId      BIGINT          DEFAULT NULL             COMMENT '部门负责人ID（关联员工表）',
-    sortOrder      INT             NOT NULL DEFAULT 0       COMMENT '排序序号（越小越靠前）',
-    description     VARCHAR(256)    DEFAULT NULL             COMMENT '部门描述',
-    createdTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    updatedTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    isDeleted               tinyint  default 0                 not null comment '逻辑删除：0=否 1=是',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_dept_code (deptCode),
-    KEY idx_parent_id (parentId),
-    KEY idx_manager_id (managerId)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='部门表';
-
+CREATE TABLE IF NOT EXISTS `department` (
+    `id`                BIGINT UNSIGNED   NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `name`              VARCHAR(64)       NOT NULL COMMENT '部门名称',
+    `code`              VARCHAR(4)        NOT NULL COMMENT '部门编码，2位，用于工号生成',
+    `parent_id`         BIGINT UNSIGNED            COMMENT '上级部门ID，空表示根部门',
+    `manager_id`        BIGINT UNSIGNED            COMMENT '部门负责人ID，关联employee.id',
+    `sort_order`        INT               NOT NULL DEFAULT 0 COMMENT '排序序号，越小越靠前',
+    `description`       VARCHAR(256)               COMMENT '部门描述',
+    `is_deleted`        TINYINT           NOT NULL DEFAULT 0 COMMENT '逻辑删除：0=否 1=是',
+    `create_time`       DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `update_time`       DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_code` (`code`),
+    KEY `idx_parent_id` (`parent_id`),
+    KEY `idx_manager_id` (`manager_id`)
+) DEFAULT CHARACTER SET = utf8mb4 COMMENT = '部门表';
 ```
 
 **Java 实体映射（Department.java）**：
@@ -105,13 +104,13 @@ CREATE TABLE department (
 | DB 列名 | Java 字段 |
 |---|---|
 | `name` | `deptName` |
-| `code` | `deptCode     |
-| `parentId` | `parentId     |
-| `managerId` | `managerId` |
-| `sortOrder` | `sortOrder    |
-| `isDeleted` | `isDeleted    |
-| `createTime` | `createdTime` |
-| `updateTime` | `updatedTime` |
+| `code` | `deptCode` |
+| `parent_id` | `parentId` |
+| `manager_id` | `managerId` |
+| `sort_order` | `sortOrder` |
+| `is_deleted` | `isDeleted` |
+| `create_time` | `createdTime` |
+| `update_time` | `updatedTime` |
 
 ---
 
@@ -166,34 +165,13 @@ CREATE TABLE IF NOT EXISTS `department_merge_log` (
 
 ---
 
-### 4. 员工表 employee
+### 4. 员工主表 employee
 
-```sql
-#employee表-----存放员工的所以信息
-create table  if not exists employee
-(
-    id             bigint          auto_increment comment 'id' primary key,
-    employeeName   varchar(128)    not null comment '员工名称（真实姓名）',
-    userId         bigint          null comment '关联用户ID',
-    employeeNo     VARCHAR(16)     NOT NULL COMMENT '工号, 格式: 年份(4)+部门编码(2)+序号(3)',
-    status         tinyint         default 1                 not null comment '状态：0-离职，1-在职，2-试用期',
-    gender         TINYINT         NOT NULL DEFAULT 0 COMMENT '性别: 0=女, 1=男',
-    idCard         VARCHAR(256)    DEFAULT NULL COMMENT '身份证号（加密存储）',
-    
-    hireDate       datetime            null comment '入职日期',
-    hireType       tinyint             null comment '入职类型',
-    departmentId   bigint              null comment '部门ID',
-    positionId     bigint              null comment '职位ID',
-    employmentType     VARCHAR(16)     NOT NULL COMMENT '录用类型: FULL_TIME=全职, PART_TIME=兼职, INTERN=实习',
-    email                   varchar(256)     null comment '邮箱',
-    currentAddress          varchar(512)     null comment '现居住地址',
-    emergencyContactName    varchar(128)     null comment '紧急联系人姓名',
-    emergencyContactPhone   varchar(32)      null comment '紧急联系人电话',
-    createTime     datetime     default CURRENT_TIMESTAMP not null comment '创建时间',
-    updateTime     datetime     default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',
-    isDeleted      tinyint      default 0    not null comment '是否删除'
-) comment '员工' collate = utf8mb4_unicode_ci;
-```
+详细请参考 [HRMS-后端-员工档案管理.md](./HRMS-后端-员工档案管理.md) 数据库设计章节。
+
+主表存储列表查询核心字段（id, employeeName, employeeNo, phone, departmentId, positionId, status, gender, hireDate, employmentType 等），
+详情表 `employee_detail` 存储敏感/补充字段（idCard, birthday, contractType, baseSalary, bankAccount, emergencyContact 等），
+一对一通过 `employee_detail.employeeId` UNIQUE KEY 关联。
 
 ---
 
@@ -984,8 +962,10 @@ src/main/java/com/limou/hrms/
 │   ├── dto/department/             # DepartmentAdd/Update/MergeRequest
 │   ├── dto/position/               # PositionAdd/Update/QueryRequest
 │   └── vo/                         # DepartmentTreeVO, DepartmentMergeResultVO, PositionVO, SequenceLevelVO
-├── constant/
-│   └── OrgConstant.java            # 序列枚举、最大层级、员工状态常量
+├── model/enums/
+│   ├── OrgEnum.java                # 最大层级深度常量
+│   ├── PositionSequence.java       # 职位序列枚举（M/P/S）
+│   └── EmployeeStatus.java         # 员工状态枚举
 └── sql/
     └── org_structure.sql           # 建表 + 初始化数据
 ```

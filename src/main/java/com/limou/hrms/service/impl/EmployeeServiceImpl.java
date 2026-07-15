@@ -59,7 +59,7 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
     @Resource
     private UserMapper userMapper;
 
-    private static final Set<String> EDITABLE_FIELDS = Set.of("email", "currentAddress", "emergencyContactName");
+    private static final Set<String> EDITABLE_FIELDS = Set.of("email", "currentAddress", "emergencyContactName","emergencyContactPhone");
     private static final Set<String> LOCKED_FIELDS = Set.of("phone", "idCard", "departmentId", "positionId", "jobLevel", "directReportId", "workLocation", "employmentType", "contractType", "contractExpireDate", "probationRatio", "baseSalary", "bankAccount", "bankName");
     private static final String SALT = "hrms";
 

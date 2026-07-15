@@ -17,6 +17,7 @@ import java.util.Date;
 @Data
 public class SalAccount implements Serializable {
 
+    /** 主键ID */
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 

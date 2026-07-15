@@ -175,7 +175,24 @@ CREATE TABLE IF NOT EXISTS approval_record (
     KEY idx_current_step (currentStep)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='审批实例表';
 ```
+对，businessId 是一个多态外键。它存的是不同业务表的主键 ID，具体是哪张表由 businessType 决定。
 
+businessType = "LEAVE"        → businessId → leave 表的 id
+businessType = "PATCH_CLOCK"  → businessId → makeup_punch 表的 id
+
+在代码里就是这么用的：
+
+// LeaveServiceImpl.apply() — 传入请假记录ID
+approvalService.startApproval("LEAVE", request.getId(), ...);
+
+// MakeupPunchServiceImpl.apply() — 传入补卡记录ID
+approvalService.startApproval("PATCH_CLOCK", request.getId(), ...);
+
+审批通过后回写业务表时，也是靠这个组合查找：
+
+if ("LEAVE".equals(record.getBusinessType())) {
+Leave leave = leaveMapper.selectById(record.getBusinessId());  // 查 leave 表
+}
 ### 审批明细表 approval_detail
 
 ```sql

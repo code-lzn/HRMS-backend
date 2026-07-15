@@ -13,6 +13,7 @@ import java.util.Date;
 @Data
 public class Employee implements Serializable {
 
+    /** 主键ID */
     @TableId(type = IdType.AUTO)
     private Long id;
 

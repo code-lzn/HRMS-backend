@@ -1,6 +1,7 @@
 package com.limou.hrms.model.dto.employee;
 
 import lombok.Data;
+import org.springframework.format.annotation.DateTimeFormat;
 
 import java.io.Serializable;
 import java.util.Date;
@@ -28,9 +29,11 @@ public class EmployeeQueryRequest implements Serializable {
     private List<String> jobLevels;
 
     /** 入职日期起始 */
+    @DateTimeFormat(pattern = "yyyy-MM-dd")
     private Date hireDateStart;
 
     /** 入职日期截止 */
+    @DateTimeFormat(pattern = "yyyy-MM-dd")
     private Date hireDateEnd;
 
     /** 页码 */

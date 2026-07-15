@@ -249,13 +249,16 @@ public class UserController {
      */
     @PostMapping("/list/page")
     @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
-    public BaseResponse<Page<User>> listUserByPage(@RequestBody UserQueryRequest userQueryRequest,
+    public BaseResponse<Page<UserVO>> listUserByPage(@RequestBody UserQueryRequest userQueryRequest,
             HttpServletRequest request) {
         long current = userQueryRequest.getCurrent();
         long size = userQueryRequest.getPageSize();
         Page<User> userPage = userService.page(new Page<>(current, size),
                 userService.getQueryWrapper(userQueryRequest));
-        return ResultUtils.success(userPage);
+        Page<UserVO> userVOPage = new Page<>(current, size, userPage.getTotal());
+        List<UserVO> userVO = userService.getUserVO(userPage.getRecords());
+        userVOPage.setRecords(userVO);
+        return ResultUtils.success(userVOPage);
     }
 
     /**
@@ -284,6 +287,26 @@ public class UserController {
     }
 
     // endregion
+
+    /**
+     * 修改用户状态（启用/禁用，基于逻辑删除）
+     *
+     * @param id     用户ID
+     * @param status 状态：1=启用, 0=禁用
+     */
+    @PostMapping("/update/status")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
+    public BaseResponse<Boolean> updateUserStatus(long id, int status) {
+        if (id <= 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        User user = new User();
+        user.setId(id);
+        user.setIsDelete(status == 1 ? 0 : 1);
+        boolean result = userService.updateById(user);
+        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
+        return ResultUtils.success(true);
+    }
 
     /**
      * 更新个人信息

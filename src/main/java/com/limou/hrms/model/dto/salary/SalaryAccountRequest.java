@@ -1,5 +1,6 @@
 package com.limou.hrms.model.dto.salary;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 
 import java.util.Date;
@@ -21,6 +22,7 @@ public class SalaryAccountRequest {
     private String scopeIds;
 
     /** 生效日期 */
+    @JsonFormat(pattern = "yyyy-MM-dd", timezone = "GMT+8")
     private Date effectiveDate;
 
     /** 工资项目列表 */

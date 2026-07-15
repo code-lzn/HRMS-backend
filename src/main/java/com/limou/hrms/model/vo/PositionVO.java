@@ -44,6 +44,7 @@ public class PositionVO implements Serializable {
     /** 职位描述 */
     private String description;
 
+    /** 创建时间 */
     private Date createTime;
 
     private static final long serialVersionUID = 1L;
