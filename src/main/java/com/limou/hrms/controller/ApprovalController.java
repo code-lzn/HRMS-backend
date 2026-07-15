@@ -9,10 +9,7 @@ import com.limou.hrms.exception.ThrowUtils;
 import com.limou.hrms.model.dto.approval.ApprovalActionDTO;
 import com.limou.hrms.model.dto.approval.DelegateSettingDTO;
 import com.limou.hrms.model.entity.ApprovalDelegate;
-import com.limou.hrms.model.entity.Employee;
 import com.limou.hrms.model.entity.User;
-import com.limou.hrms.mapper.EmployeeMapper;
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.limou.hrms.model.query.ApprovalQuery;
 import com.limou.hrms.model.vo.ApprovalInstanceVO;
 import com.limou.hrms.model.vo.PendingItemVO;
@@ -56,8 +53,6 @@ public class ApprovalController {
     private ApprovalDelegateService approvalDelegateService;
     @Resource
     private UserService userService;
-    @Resource
-    private EmployeeMapper employeeMapper;
 
     // ================================================================
     //  审批人工作台 — 查询接口
@@ -270,20 +265,19 @@ public class ApprovalController {
     // ================================================================
 
     /**
-     * 从当前登录态获取操作人 employee.id。
+     * 从请求属性获取当前操作人的 employee.id。
      *
-     * <p>通过 {@link RequestContextHolder} 获取当前请求的 HttpSession，
-     * 解析登录用户，再通过 {@code employee.user_id} 映射到 {@code employee.id}。
+     * <p>由 {@link com.limou.hrms.config.EmployeeResolveInterceptor} 在请求进入时
+     * 解析并写入 {@code currentEmployeeId} 属性，无需每次查 DB。
      */
     private Long getCurrentEmployeeId() {
         ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.currentRequestAttributes();
         HttpServletRequest request = attrs.getRequest();
-        User loginUser = userService.getLoginUser(request);
-        Employee employee = employeeMapper.selectOne(
-                new QueryWrapper<Employee>().eq("user_id", loginUser.getId()));
-        if (employee == null) {
-            throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR, "当前用户未关联员工档案");
+        Long employeeId = (Long) request.getAttribute(
+                com.limou.hrms.config.EmployeeResolveInterceptor.CURRENT_EMPLOYEE_ID);
+        if (employeeId == null) {
+            throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR, "未登录或未关联员工档案");
         }
-        return employee.getId();
+        return employeeId;
     }
 }
