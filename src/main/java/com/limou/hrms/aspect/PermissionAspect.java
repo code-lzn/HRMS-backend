@@ -20,6 +20,12 @@ import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import java.lang.reflect.Method;
 
+/**
+ * 权限码校验 AOP（第3层防线）
+ * <p>
+ * 触发条件：方法上标注了 @RequirePermission("xxx:xxx")
+ * 校验逻辑：通过 PermissionService 查询用户角色的权限码列表，判断是否包含所需权限码
+ */
 @Slf4j
 @Aspect
 @Component
@@ -31,34 +37,34 @@ public class PermissionAspect {
     @Resource
     private PermissionService permissionService;
 
-//    @Around("@annotation(com.limou.hrms.annotation.RequirePermission)")
-//    public Object checkPermission(ProceedingJoinPoint joinPoint) throws Throwable {
-//        ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
-//        if (attributes == null) {
-//            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "无法获取请求上下文");
-//        }
-//        HttpServletRequest request = attributes.getRequest();
-//        User currentUser = userService.getLoginUserPermitNull(request);
-//
-//        if (currentUser == null) {
-//            throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
-//        }
-//
-//        MethodSignature signature = (MethodSignature) joinPoint.getSignature();
-//        Method method = signature.getMethod();
-//        RequirePermission requirePermission = method.getAnnotation(RequirePermission.class);
-//
-//        if (requirePermission != null) {
-//            String permissionCode = requirePermission.value();
-//            if (StrUtil.isNotBlank(permissionCode)) {
-//                boolean hasPermission = permissionService.hasPermission(currentUser.getId(), permissionCode);
-//                if (!hasPermission) {
-//                    log.warn("用户 {} 无权限访问: {}", currentUser.getUserAccount(), permissionCode);
-//                    throw new BusinessException(ErrorCode.FORBIDDEN_ERROR, "无权限访问：" + permissionCode);
-//                }
-//            }
-//        }
-//
-//        return joinPoint.proceed();
-//    }
+    @Around("@annotation(com.limou.hrms.annotation.RequirePermission)")
+    public Object checkPermission(ProceedingJoinPoint joinPoint) throws Throwable {
+        ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+        if (attributes == null) {
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "无法获取请求上下文");
+        }
+        HttpServletRequest request = attributes.getRequest();
+        User currentUser = userService.getLoginUserPermitNull(request);
+
+        if (currentUser == null) {
+            throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
+        }
+
+        MethodSignature signature = (MethodSignature) joinPoint.getSignature();
+        Method method = signature.getMethod();
+        RequirePermission requirePermission = method.getAnnotation(RequirePermission.class);
+
+        if (requirePermission != null) {
+            String permissionCode = requirePermission.value();
+            if (StrUtil.isNotBlank(permissionCode)) {
+                boolean hasPermission = permissionService.hasPermission(currentUser.getId(), permissionCode);
+                if (!hasPermission) {
+                    log.warn("用户 {} 无权限访问: {}", currentUser.getUserAccount(), permissionCode);
+                    throw new BusinessException(ErrorCode.FORBIDDEN_ERROR, "无权限访问：" + permissionCode);
+                }
+            }
+        }
+
+        return joinPoint.proceed();
+    }
 }

@@ -20,9 +20,20 @@ public enum PermissionUrlEnum {
     // ==================== 角色管理 —— 通配兜底 ====================
     ROLE_ALL("/api/role/**",               PermissionConstant.ROLE_MANAGE, "角色管理全部操作"),
 
-    // ==================== 组织架构 —— 通配兜底 ====================
-    DEPT_ALL("/api/departments/**",          PermissionConstant.ORG_MANAGE, "部门管理全部操作"),
-    POS_ALL("/api/positions/**",             PermissionConstant.ORG_MANAGE, "职位管理全部操作"),
+    // ==================== 组织架构 —— 读写分离（精确路径优先） ====================
+    // 写操作 — 需 org:manage
+    DEPT_ADD("/api/departments/add",          PermissionConstant.ORG_MANAGE, "新增部门"),
+    DEPT_UPDATE("/api/departments/update",    PermissionConstant.ORG_MANAGE, "更新部门"),
+    DEPT_DELETE("/api/departments/delete",    PermissionConstant.ORG_MANAGE, "删除部门"),
+    DEPT_MERGE("/api/departments/merge",      PermissionConstant.ORG_MANAGE, "合并部门"),
+    POS_ADD("/api/positions/add",             PermissionConstant.ORG_MANAGE, "新增职位"),
+    POS_UPDATE("/api/positions/update",        PermissionConstant.ORG_MANAGE, "更新职位"),
+    POS_DELETE("/api/positions/delete",        PermissionConstant.ORG_MANAGE, "删除职位"),
+    // 读操作 — 有 employee:list 即可（部门树、职位列表为管理员工时的参考数据）
+    DEPT_TREE("/api/departments/tree",         PermissionConstant.EMPLOYEE_LIST, "部门树"),
+    DEPT_DETAIL("/api/departments/detail",     PermissionConstant.EMPLOYEE_LIST, "部门详情"),
+    POS_LIST("/api/positions/list",            PermissionConstant.EMPLOYEE_LIST, "职位列表"),
+    POS_SEQUENCES("/api/positions/sequences",  PermissionConstant.EMPLOYEE_LIST, "序列职级对照"),
 
     // ==================== 员工管理（管理类接口） ====================
     EMPLOYEE_LIST("/api/employee/list",          PermissionConstant.EMPLOYEE_LIST, "员工列表"),
