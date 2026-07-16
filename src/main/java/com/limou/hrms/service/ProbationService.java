@@ -6,7 +6,10 @@ import com.limou.hrms.model.dto.probation.ProbationHandleResultDTO;
 import com.limou.hrms.model.dto.probation.ProbationUpdateDTO;
 import com.limou.hrms.model.query.ProbationQuery;
 import com.limou.hrms.model.vo.ProbationDetailVO;
+import com.limou.hrms.model.vo.PendingEmployeeVO;
 import com.limou.hrms.model.vo.ProbationListVO;
+
+import java.util.List;
 
 /**
  * 转正管理服务接口
@@ -36,4 +39,7 @@ public interface ProbationService {
 
     /** 获取详情（含审批进度） */
     ProbationDetailVO getDetail(Long id);
+
+    /** 查询待转正员工（试用期即将到期） */
+    List<PendingEmployeeVO> getPendingEmployees(Integer days);
 }

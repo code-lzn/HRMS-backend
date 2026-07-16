@@ -4,7 +4,9 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.limou.hrms.model.dto.transfer.TransferCreateDTO;
 import com.limou.hrms.model.dto.transfer.TransferUpdateDTO;
 import com.limou.hrms.model.query.TransferQuery;
+import com.limou.hrms.common.PageRequest;
 import com.limou.hrms.model.vo.TransferDetailVO;
+import com.limou.hrms.model.vo.TransferHistoryVO;
 import com.limou.hrms.model.vo.TransferListVO;
 
 /**
@@ -19,4 +21,7 @@ public interface TransferService {
     void cancel(Long id);
     Page<TransferListVO> list(TransferQuery query);
     TransferDetailVO getDetail(Long id);
+
+    /** 查询员工调岗历史 */
+    Page<TransferHistoryVO> getHistory(Long employeeId, PageRequest page);
 }

@@ -10,7 +10,9 @@ import com.limou.hrms.exception.ThrowUtils;
 import com.limou.hrms.model.dto.transfer.TransferCreateDTO;
 import com.limou.hrms.model.dto.transfer.TransferUpdateDTO;
 import com.limou.hrms.model.query.TransferQuery;
+import com.limou.hrms.common.PageRequest;
 import com.limou.hrms.model.vo.TransferDetailVO;
+import com.limou.hrms.model.vo.TransferHistoryVO;
 import com.limou.hrms.model.vo.TransferListVO;
 import com.limou.hrms.service.TransferService;
 import lombok.RequiredArgsConstructor;
@@ -79,5 +81,13 @@ public class TransferController {
         ThrowUtils.throwIf(id == null || id <= 0, ErrorCode.PARAMS_ERROR);
         transferService.cancel(id);
         return ResultUtils.success(null);
+    }
+
+    /** 查询员工调岗历史 */
+    @GetMapping("/history/{employeeId}")
+    @AuthCheck
+    public BaseResponse<Page<TransferHistoryVO>> getHistory(@PathVariable Long employeeId, PageRequest page) {
+        ThrowUtils.throwIf(employeeId == null || employeeId <= 0, ErrorCode.PARAMS_ERROR);
+        return ResultUtils.success(transferService.getHistory(employeeId, page));
     }
 }

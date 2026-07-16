@@ -18,6 +18,11 @@ import com.limou.hrms.model.enums.EmployeeStatus;
 import com.limou.hrms.model.enums.ProbationResult;
 import com.limou.hrms.model.query.ProbationQuery;
 import com.limou.hrms.model.vo.*;
+import com.limou.hrms.model.entity.OnboardingApplication;
+
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import com.limou.hrms.service.ApprovalCallback;
 import com.limou.hrms.service.ApprovalFlowService;
 import com.limou.hrms.service.ProbationService;
@@ -55,6 +60,8 @@ public class ProbationServiceImpl
     private DataScopeContext dataScopeContext;
     @Resource
     private ApproverResolver approverResolver;
+    @Resource
+    private OnboardingApplicationMapper onboardingMapper;
 
     // ==================== 转正 CRUD ====================
 
@@ -242,6 +249,50 @@ public class ProbationServiceImpl
             vo.setApprovalProgress(progress);
         }
         return vo;
+    }
+
+    @Override
+    public List<PendingEmployeeVO> getPendingEmployees(Integer days) {
+        if (days == null || days <= 0) days = 7;
+        LocalDate now = LocalDate.now();
+        List<PendingEmployeeVO> result = new ArrayList<>();
+
+        // 查询所有试用期员工
+        List<Employee> probationEmployees = employeeMapper.selectList(
+                new QueryWrapper<Employee>().eq("status", EmployeeStatus.PROBATION.getValue()));
+        for (Employee emp : probationEmployees) {
+            // 查入职申请获取试用期月数
+            OnboardingApplication oa = onboardingMapper.selectOne(
+                    new QueryWrapper<OnboardingApplication>()
+                            .eq("employee_id", emp.getId())
+                            .eq("status", 4)); // 已入职
+            Integer probationMonths = (oa != null && oa.getDefaultProbationMonths() != null)
+                    ? oa.getDefaultProbationMonths() : 3;
+            LocalDate probationEnd = emp.getHireDate().plusMonths(probationMonths);
+            long daysRemaining = ChronoUnit.DAYS.between(now, probationEnd);
+
+            // 试用期结束 - days天 ≤ 今天
+            if (daysRemaining <= days && daysRemaining >= -90) { // 已过90天的不显示
+                PendingEmployeeVO vo = new PendingEmployeeVO();
+                vo.setEmployeeId(emp.getId());
+                vo.setEmployeeName(approverResolver.getEmployeeName(emp.getId()));
+                vo.setEmployeeNo(emp.getEmployeeNo());
+                vo.setDepartmentName(getDeptNameByEmployeeId(emp.getId()));
+                vo.setPositionName(getPositionNameByEmployeeId(emp.getId()));
+                vo.setHireDate(emp.getHireDate());
+                vo.setProbationEndDate(probationEnd);
+                vo.setDaysRemaining(daysRemaining);
+                // 检查是否已有审批中/已完成的转正申请
+                Long pendingCount = probationMapper.selectCount(
+                        new QueryWrapper<ProbationApplication>()
+                                .eq("employee_id", emp.getId())
+                                .in("status", 2, 3)); // 审批中或已完成
+                vo.setHasPendingApplication(pendingCount > 0);
+                result.add(vo);
+            }
+        }
+        result.sort((a, b) -> Long.compare(a.getDaysRemaining(), b.getDaysRemaining()));
+        return result;
     }
 
     // ==================== 审批回调 ====================

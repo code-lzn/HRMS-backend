@@ -11,8 +11,11 @@ import com.limou.hrms.model.dto.probation.ProbationCreateDTO;
 import com.limou.hrms.model.dto.probation.ProbationHandleResultDTO;
 import com.limou.hrms.model.dto.probation.ProbationUpdateDTO;
 import com.limou.hrms.model.query.ProbationQuery;
+import com.limou.hrms.model.vo.PendingEmployeeVO;
 import com.limou.hrms.model.vo.ProbationDetailVO;
 import com.limou.hrms.model.vo.ProbationListVO;
+
+import java.util.List;
 import com.limou.hrms.service.ProbationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -96,5 +99,12 @@ public class ProbationController {
         ThrowUtils.throwIf(id == null || id <= 0, ErrorCode.PARAMS_ERROR);
         probationService.handleResult(id, dto);
         return ResultUtils.success(null);
+    }
+
+    /** 查询待转正员工（试用期即将到期） */
+    @GetMapping("/pending-employees")
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
+    public BaseResponse<List<PendingEmployeeVO>> getPendingEmployees(@RequestParam(defaultValue = "7") Integer days) {
+        return ResultUtils.success(probationService.getPendingEmployees(days));
     }
 }

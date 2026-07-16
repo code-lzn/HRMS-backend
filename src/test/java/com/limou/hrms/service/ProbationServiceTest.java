@@ -6,6 +6,7 @@ import com.limou.hrms.constant.DataScopeContext;
 import com.limou.hrms.constant.DataScopeEnum;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.mapper.*;
+import com.limou.hrms.model.vo.PendingEmployeeVO;
 import com.limou.hrms.model.dto.probation.ProbationCreateDTO;
 import com.limou.hrms.model.dto.probation.ProbationHandleResultDTO;
 import com.limou.hrms.model.dto.probation.ProbationUpdateDTO;
@@ -38,6 +39,7 @@ import static org.mockito.Mockito.*;
 class ProbationServiceTest {
 
     @Mock private ProbationApplicationMapper probationMapper;
+    @Mock private OnboardingApplicationMapper onboardingMapper;
     @Mock private ApprovalFlowService approvalFlowService;
     @Mock private EmployeeMapper employeeMapper;
     @Mock private EmployeeWorkInfoMapper workInfoMapper;

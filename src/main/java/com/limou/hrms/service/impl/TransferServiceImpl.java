@@ -15,6 +15,7 @@ import com.limou.hrms.model.entity.*;
 import com.limou.hrms.model.enums.ApprovalBizType;
 import com.limou.hrms.model.enums.EmployeeStatus;
 import com.limou.hrms.model.query.TransferQuery;
+import com.limou.hrms.common.PageRequest;
 import com.limou.hrms.model.vo.*;
 import com.limou.hrms.service.ApprovalCallback;
 import com.limou.hrms.service.ApprovalFlowService;
@@ -211,6 +212,33 @@ public class TransferServiceImpl
             vo.setApprovalProgress(approvalFlowService.getDetail(app.getApprovalInstanceId()));
         }
         return vo;
+    }
+
+    @Override
+    public Page<TransferHistoryVO> getHistory(Long employeeId, PageRequest page) {
+        QueryWrapper<TransferHistory> qw = new QueryWrapper<>();
+        qw.eq("employee_id", employeeId).orderByDesc("transfer_date");
+        Page<TransferHistory> historyPage = transferHistoryMapper.selectPage(
+                new Page<>(page.getCurrent(), page.getPageSize()), qw);
+
+        List<TransferHistoryVO> records = historyPage.getRecords().stream().map(h -> {
+            TransferHistoryVO vo = new TransferHistoryVO();
+            vo.setId(h.getId());
+            vo.setEmployeeId(h.getEmployeeId());
+            vo.setFromDepartmentName(getDeptName(h.getFromDepartmentId()));
+            vo.setToDepartmentName(getDeptName(h.getToDepartmentId()));
+            vo.setFromPositionName(getPositionName(h.getFromPositionId()));
+            vo.setToPositionName(getPositionName(h.getToPositionId()));
+            vo.setFromJobLevel(h.getFromJobLevel());
+            vo.setToJobLevel(h.getToJobLevel());
+            vo.setTransferDate(h.getTransferDate());
+            vo.setReason(h.getReason());
+            return vo;
+        }).collect(Collectors.toList());
+
+        Page<TransferHistoryVO> result = new Page<>(historyPage.getCurrent(), historyPage.getSize(), historyPage.getTotal());
+        result.setRecords(records);
+        return result;
     }
 
     // ==================== 审批回调 ====================
