@@ -104,6 +104,7 @@ class TransferServiceTest {
 
     // ==================== 创建 ====================
 
+    /** 保存为草稿，自动带入原岗位信息 */
     @Test
     void createApplication_shouldSucceed() {
         when(employeeMapper.selectById(EMPLOYEE_ID)).thenReturn(mockEmployee());
@@ -114,6 +115,7 @@ class TransferServiceTest {
         assertNotNull(id);
     }
 
+    /** 调岗前后部门相同应抛异常 */
     @Test
     void createApplication_sameDept_shouldThrow() {
         when(employeeMapper.selectById(EMPLOYEE_ID)).thenReturn(mockEmployee());
@@ -124,6 +126,7 @@ class TransferServiceTest {
         assertThrows(BusinessException.class, () -> service.createApplication(buildCreateDTO()));
     }
 
+    /** 非在职员工发起调岗应抛异常 */
     @Test
     void createApplication_notActive_shouldThrow() {
         Employee e = mockEmployee();
@@ -136,6 +139,7 @@ class TransferServiceTest {
 
     // ==================== 提交 ====================
 
+    /** 提交审批：状态→审批中 */
     @Test
     void submitToApproval_shouldSucceed() {
         TransferApplication app = mockApp();
@@ -153,6 +157,7 @@ class TransferServiceTest {
 
     // ==================== 回调 ====================
 
+    /** 审批通过回调：更新员工work_info + 写入调岗历史 */
     @Test
     void onApproved_shouldUpdateWorkInfoAndHistory() {
         TransferApplication app = mockApp();
@@ -172,6 +177,7 @@ class TransferServiceTest {
         verify(transferHistoryMapper, times(1)).insert(any());
     }
 
+    /** 审批拒绝回调：状态→已拒绝 */
     @Test
     void onRejected_shouldUpdateStatus() {
         TransferApplication app = mockApp();
@@ -185,6 +191,7 @@ class TransferServiceTest {
 
     // ==================== 详情 ====================
 
+    /** 获取详情正常返回 */
     @Test
     void getDetail_shouldReturnVO() {
         TransferApplication app = mockApp();
@@ -199,6 +206,7 @@ class TransferServiceTest {
 
     // ==================== 撤回 ====================
 
+    /** 撤回：状态回退草稿 */
     @Test
     void cancel_shouldSucceed() {
         TransferApplication app = mockApp();

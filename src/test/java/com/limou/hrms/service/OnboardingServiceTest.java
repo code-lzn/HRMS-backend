@@ -114,6 +114,7 @@ class OnboardingServiceTest {
 
     // ==================== 创建申请 ====================
 
+    /** 保存为草稿 */
     @Test
     void createApplication_draft_shouldSucceed() {
         Long id = service.createApplication(buildCreateDTO());
@@ -121,14 +122,17 @@ class OnboardingServiceTest {
         assertNotNull(id);
     }
 
+    /** 直接提交审批：创建入职申请时应创建审批实例 */
     @Test
     void createApplication_submitDirectly_shouldCallSubmit() {
         OnboardingCreateDTO dto = buildCreateDTO();
         dto.setSubmitDirectly(true);
         OnboardingApplication app = mockApp();
         when(onboardingMapper.selectById(anyLong())).thenReturn(app);
+        ApprovalInstance mockInstance = new ApprovalInstance();
+        mockInstance.setId(200L);
         when(approvalFlowService.createInstance(any(), anyLong(), anyLong()))
-                .thenReturn(new ApprovalInstance());
+                .thenReturn(mockInstance);
 
         Long id = service.createApplication(dto);
 
@@ -138,6 +142,7 @@ class OnboardingServiceTest {
 
     // ==================== 更新草稿 ====================
 
+    /** 草稿状态可编辑 */
     @Test
     void updateDraft_shouldSucceed() {
         OnboardingApplication app = mockApp();
@@ -151,6 +156,7 @@ class OnboardingServiceTest {
         assertEquals("李四", app.getName());
     }
 
+    /** 非草稿状态编辑应抛异常 */
     @Test
     void updateDraft_nonDraft_shouldThrow() {
         OnboardingApplication app = mockApp();
@@ -164,6 +170,7 @@ class OnboardingServiceTest {
 
     // ==================== 删除草稿 ====================
 
+    /** 草稿状态可删除 */
     @Test
     void deleteDraft_shouldSucceed() {
         OnboardingApplication app = mockApp();
@@ -173,6 +180,7 @@ class OnboardingServiceTest {
         assertDoesNotThrow(() -> service.deleteDraft(APP_ID));
     }
 
+    /** 非草稿状态删除应抛异常 */
     @Test
     void deleteDraft_nonDraft_shouldThrow() {
         OnboardingApplication app = mockApp();
@@ -184,6 +192,7 @@ class OnboardingServiceTest {
 
     // ==================== 提交审批 ====================
 
+    /** 提交审批：状态→审批中，关联审批实例 */
     @Test
     void submitToApproval_shouldSucceed() {
         OnboardingApplication app = mockApp();
@@ -199,6 +208,7 @@ class OnboardingServiceTest {
         assertEquals(100L, app.getApprovalInstanceId());
     }
 
+    /** 非草稿状态提交应抛异常 */
     @Test
     void submitToApproval_nonDraft_shouldThrow() {
         OnboardingApplication app = mockApp();
@@ -208,6 +218,7 @@ class OnboardingServiceTest {
         assertThrows(BusinessException.class, () -> service.submitToApproval(APP_ID));
     }
 
+    /** 必填字段不完整时提交应抛异常 */
     @Test
     void submitToApproval_incompleteFields_shouldThrow() {
         OnboardingApplication app = mockApp();
@@ -221,6 +232,7 @@ class OnboardingServiceTest {
 
     // ==================== 撤回 ====================
 
+    /** 撤回：状态回退草稿，清空审批实例ID */
     @Test
     void cancel_shouldSucceed() {
         OnboardingApplication app = mockApp();
@@ -236,6 +248,7 @@ class OnboardingServiceTest {
         verify(approvalFlowService, times(1)).cancel(100L);
     }
 
+    /** 非申请人撤回应抛异常 */
     @Test
     void cancel_notApplicant_shouldThrow() {
         OnboardingApplication app = mockApp();
@@ -248,6 +261,7 @@ class OnboardingServiceTest {
 
     // ==================== 确认入职 ====================
 
+    /** HR确认入职：状态→已入职，更新员工入职日期 */
     @Test
     void confirmJoin_shouldSucceed() {
         OnboardingApplication app = mockApp();
@@ -265,6 +279,7 @@ class OnboardingServiceTest {
         assertEquals(OnboardingStatus.JOINED.getCode(), app.getStatus());
     }
 
+    /** 非"已批准待入职"状态确认应抛异常 */
     @Test
     void confirmJoin_notApproved_shouldThrow() {
         OnboardingApplication app = mockApp();
@@ -277,6 +292,7 @@ class OnboardingServiceTest {
 
     // ==================== 放弃入职 ====================
 
+    /** HR标记放弃：状态→已放弃 */
     @Test
     void abandon_shouldSucceed() {
         OnboardingApplication app = mockApp();
@@ -291,6 +307,7 @@ class OnboardingServiceTest {
 
     // ==================== 审批回调 ====================
 
+    /** 审批通过回调：生成工号+写入employee/personal_info/work_info三表+创建系统账号 */
     @Test
     void onApproved_shouldWriteEmployeeAndThreeTables() {
         OnboardingApplication app = mockApp();
@@ -316,6 +333,7 @@ class OnboardingServiceTest {
         verify(workInfoMapper, times(1)).insert(any());
     }
 
+    /** 审批拒绝回调：状态→已拒绝 */
     @Test
     void onRejected_shouldUpdateStatus() {
         OnboardingApplication app = mockApp();
@@ -327,8 +345,7 @@ class OnboardingServiceTest {
         assertEquals(OnboardingStatus.REJECTED.getCode(), app.getStatus());
     }
 
-    // ==================== 获取详情 ====================
-
+    /** 获取详情正常返回 */
     @Test
     void getDetail_shouldReturnVO() {
         OnboardingApplication app = mockApp();
@@ -341,8 +358,7 @@ class OnboardingServiceTest {
         assertEquals(app.getName(), vo.getName());
     }
 
-    // ==================== 边界条件 ====================
-
+    /** 不存在的入职申请查询应抛异常 */
     @Test
     void getDetail_notFound_shouldThrow() {
         when(onboardingMapper.selectById(APP_ID)).thenReturn(null);

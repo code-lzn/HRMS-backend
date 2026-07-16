@@ -69,17 +69,20 @@ class ResignationServiceTest {
         e.setStatus(EmployeeStatus.REGULAR.getValue()); e.setEmployeeNo("202601005"); return e;
     }
 
+    /** 保存为草稿 */
     @Test void createApplication_shouldSucceed() {
         when(employeeMapper.selectById(EMPLOYEE_ID)).thenReturn(mockEmployee());
         assertNotNull(service.createApplication(buildDTO()));
     }
 
+    /** 非在职员工发起离职应抛异常 */
     @Test void createApplication_notActive_shouldThrow() {
         Employee e = mockEmployee(); e.setStatus(EmployeeStatus.RESIGNED.getValue());
         when(employeeMapper.selectById(EMPLOYEE_ID)).thenReturn(e);
         assertThrows(BusinessException.class, () -> service.createApplication(buildDTO()));
     }
 
+    /** 离职日期早于今天应抛异常 */
     @Test void createApplication_pastDate_shouldThrow() {
         ResignationCreateDTO dto = buildDTO();
         dto.setResignationDate(LocalDate.now().minusDays(1));
@@ -87,6 +90,7 @@ class ResignationServiceTest {
         assertThrows(BusinessException.class, () -> service.createApplication(dto));
     }
 
+    /** 审批通过回调：员工→待离职，申请→待离职 */
     @Test void onApproved_shouldSetPendingResignation() {
         ResignationApplication app = new ResignationApplication();
         app.setId(APP_ID); app.setEmployeeId(EMPLOYEE_ID);
@@ -102,6 +106,7 @@ class ResignationServiceTest {
         assertEquals(EmployeeStatus.PENDING_RESIGNATION.getValue(), e.getStatus());
     }
 
+    /** 审批拒绝回调：状态→已拒绝 */
     @Test void onRejected_shouldUpdateStatus() {
         ResignationApplication app = new ResignationApplication();
         app.setId(APP_ID);
@@ -112,6 +117,7 @@ class ResignationServiceTest {
         assertEquals(5, app.getStatus());
     }
 
+    /** 获取详情正常返回 */
     @Test void getDetail_shouldReturnVO() {
         ResignationApplication app = new ResignationApplication();
         app.setId(APP_ID); app.setEmployeeId(EMPLOYEE_ID); app.setReason("个人原因");

@@ -95,6 +95,7 @@ class ProbationServiceTest {
 
     // ==================== 创建申请 ====================
 
+    /** 保存为草稿，自动带入试用期信息 */
     @Test
     void createApplication_draft_shouldSucceed() {
         when(employeeMapper.selectById(EMPLOYEE_ID)).thenReturn(mockEmployee());
@@ -104,6 +105,7 @@ class ProbationServiceTest {
         assertNotNull(id);
     }
 
+    /** 直接提交审批：创建转正申请时应创建审批实例 */
     @Test
     void createApplication_submitDirectly_shouldCallSubmit() {
         ProbationCreateDTO dto = buildCreateDTO();
@@ -111,8 +113,10 @@ class ProbationServiceTest {
         when(employeeMapper.selectById(EMPLOYEE_ID)).thenReturn(mockEmployee());
         ProbationApplication app = mockApp();
         when(probationMapper.selectById(anyLong())).thenReturn(app);
+        ApprovalInstance mockInstance = new ApprovalInstance();
+        mockInstance.setId(200L);
         when(approvalFlowService.createInstance(any(), anyLong(), anyLong()))
-                .thenReturn(new ApprovalInstance());
+                .thenReturn(mockInstance);
         when(probationMapper.updateById(any())).thenReturn(1);
 
         service.createApplication(dto);
@@ -120,6 +124,7 @@ class ProbationServiceTest {
         verify(approvalFlowService, times(1)).createInstance(any(), anyLong(), anyLong());
     }
 
+    /** 非试用期员工发起转正应抛异常 */
     @Test
     void createApplication_notProbation_shouldThrow() {
         Employee e = mockEmployee();
@@ -131,6 +136,7 @@ class ProbationServiceTest {
 
     // ==================== 提交审批 ====================
 
+    /** 提交审批：状态→审批中，关联审批实例 */
     @Test
     void submitToApproval_shouldSucceed() {
         ProbationApplication app = mockApp();
@@ -146,6 +152,7 @@ class ProbationServiceTest {
         assertEquals(200L, app.getApprovalInstanceId());
     }
 
+    /** 非草稿状态提交应抛异常 */
     @Test
     void submitToApproval_nonDraft_shouldThrow() {
         ProbationApplication app = mockApp();
@@ -157,6 +164,7 @@ class ProbationServiceTest {
 
     // ==================== 撤回 ====================
 
+    /** 撤回：状态回退草稿，清空审批实例ID */
     @Test
     void cancel_shouldSucceed() {
         ProbationApplication app = mockApp();
@@ -174,6 +182,7 @@ class ProbationServiceTest {
 
     // ==================== 处理结果 ====================
 
+    /** 处理结果-通过：员工→正式，申请→已完成 */
     @Test
     void handleResult_pass_shouldUpdateEmployee() {
         ProbationApplication app = mockApp();
@@ -192,6 +201,7 @@ class ProbationServiceTest {
         assertEquals(EmployeeStatus.REGULAR.getValue(), e.getStatus());
     }
 
+    /** 处理结果-延长试用：记录延长后的试用期结束日期 */
     @Test
     void handleResult_extend_shouldSetExtendedDate() {
         ProbationApplication app = mockApp();
@@ -208,6 +218,7 @@ class ProbationServiceTest {
         assertNotNull(app.getExtendedEndDate());
     }
 
+    /** 处理结果-延长缺少日期应抛异常 */
     @Test
     void handleResult_extendWithoutDate_shouldThrow() {
         ProbationApplication app = mockApp();
@@ -220,6 +231,7 @@ class ProbationServiceTest {
         assertThrows(BusinessException.class, () -> service.handleResult(APP_ID, dto));
     }
 
+    /** 非已拒绝状态调用处理结果应抛异常 */
     @Test
     void handleResult_notRejected_shouldThrow() {
         ProbationApplication app = mockApp();
@@ -234,6 +246,7 @@ class ProbationServiceTest {
 
     // ==================== 审批回调 ====================
 
+    /** 审批通过回调：员工→正式，记录PASS结果 */
     @Test
     void onApproved_shouldMakeEmployeeRegular() {
         ProbationApplication app = mockApp();
@@ -250,6 +263,7 @@ class ProbationServiceTest {
         assertEquals(3, app.getStatus()); // 已完成
     }
 
+    /** 审批拒绝回调：状态→已拒绝 */
     @Test
     void onRejected_shouldUpdateStatus() {
         ProbationApplication app = mockApp();
@@ -261,8 +275,9 @@ class ProbationServiceTest {
         assertEquals(4, app.getStatus()); // 已拒绝
     }
 
-    // ==================== 获取详情 ====================
+    // ==================== 查询 ====================
 
+    /** 获取详情正常返回 */
     @Test
     void getDetail_shouldReturnVO() {
         ProbationApplication app = mockApp();
@@ -275,6 +290,7 @@ class ProbationServiceTest {
         assertEquals(app.getPerformanceReview(), vo.getPerformanceReview());
     }
 
+    /** 不存在的申请查询应抛异常 */
     @Test
     void getDetail_notFound_shouldThrow() {
         when(probationMapper.selectById(APP_ID)).thenReturn(null);
@@ -282,8 +298,7 @@ class ProbationServiceTest {
         assertThrows(BusinessException.class, () -> service.getDetail(APP_ID));
     }
 
-    // ==================== 更新草稿 ====================
-
+    /** 草稿状态可编辑 */
     @Test
     void updateDraft_shouldSucceed() {
         ProbationApplication app = mockApp();
