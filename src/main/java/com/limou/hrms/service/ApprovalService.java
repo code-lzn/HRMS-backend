@@ -27,6 +27,11 @@ public interface ApprovalService extends IService<ApprovalRecord> {
     ApprovalRecord startApproval(String businessType, Long businessId, Long applicantEmployeeId,
                                   String applicantName, Long targetDepartmentId);
 
+    /** 启动审批（支持按节点序号覆盖审批人，调岗审批专用） */
+    ApprovalRecord startApproval(String businessType, Long businessId, Long applicantEmployeeId,
+                                  String applicantName, Long targetDepartmentId,
+                                  java.util.Map<Integer, Long> nodeApproverOverrides);
+
     /** 获取审批记录的所有审批明细 */
     List<ApprovalDetail> getApprovalDetails(Long recordId);
 }

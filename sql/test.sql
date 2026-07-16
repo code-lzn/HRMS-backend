@@ -997,3 +997,32 @@ INSERT INTO page_view_log (viewDate, viewCount) VALUES
 ('2026-07-12', 280),
 ('2026-07-13', 710),
 ('2026-07-14', 590);
+-- ============================================================
+-- 员工异动模块（转正/调岗/离职）补充字段
+-- 需在数据库 szml1 中执行
+-- ============================================================
+
+-- emp_probation: 补充审批人、状态、薪资调整、审批结果等字段
+ALTER TABLE emp_probation
+    ADD COLUMN approverId bigint(20) DEFAULT NULL COMMENT '审批人ID(employee.id)' AFTER employeeId,
+    ADD COLUMN salaryAdjustment decimal(12,2) DEFAULT NULL COMMENT '转正后薪资调整金额' AFTER confirmBaseSalary,
+    ADD COLUMN result varchar(16) DEFAULT NULL COMMENT '审批结果: PASS=通过, EXTEND=延长, REJECT=不通过' AFTER salaryAdjustment,
+    ADD COLUMN extendedMonths int DEFAULT NULL COMMENT '延长试用月数' AFTER result,
+    ADD COLUMN status varchar(16) NOT NULL DEFAULT 'DRAFT' COMMENT '状态: DRAFT/APPROVING/APPROVED/REJECTED' AFTER extendedMonths;
+
+-- emp_transfer: 补充审批人、职级、汇报人、状态字段
+ALTER TABLE emp_transfer
+    ADD COLUMN approverId bigint(20) DEFAULT NULL COMMENT '审批人ID(employee.id)' AFTER employeeId,
+    ADD COLUMN toRankCode varchar(8) DEFAULT NULL COMMENT '新职级编码(可选)' AFTER newBaseSalary,
+    ADD COLUMN toReporterId bigint(20) DEFAULT NULL COMMENT '新直接汇报人ID(可选)' AFTER toRankCode,
+    ADD COLUMN status varchar(16) NOT NULL DEFAULT 'DRAFT' COMMENT '状态: DRAFT/APPROVING/APPROVED/REJECTED' AFTER toReporterId;
+
+-- emp_resign: 补充审批人、原因大类、状态字段
+ALTER TABLE emp_resign
+    ADD COLUMN approverId bigint(20) DEFAULT NULL COMMENT '审批人ID(employee.id)' AFTER employeeId,
+    ADD COLUMN resignReasonType varchar(16) DEFAULT NULL COMMENT '原因大类: VOLUNTARY=主动, INVOLUNTARY=被动, NEGOTIATED=协商' AFTER resignReason,
+    ADD COLUMN status varchar(16) NOT NULL DEFAULT 'DRAFT' COMMENT '状态: DRAFT/APPROVING/PENDING_RESIGN/RESIGNED/REJECTED' AFTER remark;
+
+-- emp_probation: 补充调整说明字段
+ALTER TABLE emp_probation
+    ADD COLUMN adjustRemark varchar(256) DEFAULT NULL COMMENT '薪资调整说明' AFTER salaryAdjustment;
