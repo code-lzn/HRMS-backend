@@ -69,7 +69,7 @@ public interface OnboardingService extends IService<HrOnboarding> {
     void employeeConfirm(Long id, Long employeeId);
 
     /**
-     * 获取员工的人事异动记录（入职申请）
+     * 获取员工的人事异动记录（入职申请），包含审批流程详情
      */
-    java.util.List<com.limou.hrms.model.entity.EmpMutationLog> getEmployeeMutationLogs(Long employeeId);
+    java.util.List<com.limou.hrms.model.vo.MutationLogVO> getEmployeeMutationLogs(Long userId);
 }
