@@ -21,7 +21,7 @@ import java.util.List;
  * HR二审触发条件（对应PRD 5.1.4）：
  * 1. 配置开关 approval.hr-node.enabled = true
  * 2. 非标准职位：职位未定义职级范围（levelMin/levelMax 为空）
- * 3. 薪资超出职级范围（待薪资模块接入后实现）
+ * 3. 薪资超出职级范围 → 由薪资模块在HR设置新员工薪资时触发额外审批
  */
 @Slf4j
 @Component
