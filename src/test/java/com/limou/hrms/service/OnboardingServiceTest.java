@@ -1,0 +1,349 @@
+package com.limou.hrms.service;
+
+import com.limou.hrms.builder.ApproverResolver;
+import com.limou.hrms.common.ErrorCode;
+import com.limou.hrms.constant.DataScopeContext;
+import com.limou.hrms.constant.DataScopeEnum;
+import com.limou.hrms.exception.BusinessException;
+import com.limou.hrms.mapper.*;
+import com.limou.hrms.model.dto.onboarding.OnboardingCreateDTO;
+import com.limou.hrms.model.dto.onboarding.OnboardingUpdateDTO;
+import com.limou.hrms.model.entity.*;
+import com.limou.hrms.model.enums.ApprovalBizType;
+import com.limou.hrms.model.enums.OnboardingStatus;
+import com.limou.hrms.model.vo.OnboardingDetailVO;
+import com.limou.hrms.service.impl.OnboardingServiceImpl;
+import com.limou.hrms.util.AesUtil;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.*;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.*;
+
+/**
+ * 入职管理服务单元测试
+ */
+@ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
+class OnboardingServiceTest {
+
+    @Mock private OnboardingApplicationMapper onboardingMapper;
+    @Mock private ApprovalFlowService approvalFlowService;
+    @Mock private EmployeeMapper employeeMapper;
+    @Mock private EmployeePersonalInfoMapper personalInfoMapper;
+    @Mock private EmployeeWorkInfoMapper workInfoMapper;
+    @Mock private EmployeeNoSequenceMapper noSequenceMapper;
+    @Mock private DepartmentMapper departmentMapper;
+    @Mock private ApprovalInstanceMapper approvalInstanceMapper;
+    @Mock private ApprovalNodeMapper approvalNodeMapper;
+    @Mock private PositionMapper positionMapper;
+    @Mock private AesUtil aesUtil;
+    @Mock private DataScopeContext dataScopeContext;
+    @Mock private ApproverResolver approverResolver;
+
+    @InjectMocks
+    private OnboardingServiceImpl service;
+
+    private static final Long APP_ID = 1L;
+    private static final Long APPLICANT_ID = 10L;
+
+    @BeforeEach
+    void setUp() {
+        when(dataScopeContext.getCurrentEmployeeId()).thenReturn(APPLICANT_ID);
+        when(dataScopeContext.getCurrentRole()).thenReturn("hr");
+        when(dataScopeContext.getApprovalScope()).thenReturn(DataScopeEnum.SELF);
+        when(aesUtil.encrypt(any())).thenReturn("encrypted");
+        when(approverResolver.resolveDeptManager(anyLong())).thenReturn(100L);
+        when(approverResolver.getEmployeeName(anyLong())).thenReturn("测试姓名");
+
+        // MyBatis-Plus insert 会自动设置 ID，Mockito 不会，用 doAnswer 模拟
+        doAnswer(inv -> { OnboardingApplication a = inv.getArgument(0); a.setId(APP_ID); return 1; })
+                .when(onboardingMapper).insert(any(OnboardingApplication.class));
+        doAnswer(inv -> { Employee e = inv.getArgument(0); e.setId(100L); return 1; })
+                .when(employeeMapper).insert(any(Employee.class));
+    }
+
+    private OnboardingCreateDTO buildCreateDTO() {
+        OnboardingCreateDTO dto = new OnboardingCreateDTO();
+        dto.setName("张三");
+        dto.setGender(1);
+        dto.setPhone("13800001234");
+        dto.setEmail("zhangsan@test.com");
+        dto.setIdCard("330100199001011234");
+        dto.setExpectedHireDate(LocalDate.of(2026, 8, 1));
+        dto.setDepartmentId(1L);
+        dto.setPositionId(1L);
+        dto.setHireType(1);
+        dto.setDefaultProbationMonths(3);
+        dto.setProbationRatio(new BigDecimal("0.80"));
+        dto.setSubmitDirectly(false);
+        return dto;
+    }
+
+    private OnboardingApplication mockApp() {
+        OnboardingApplication app = new OnboardingApplication();
+        app.setId(APP_ID);
+        app.setName("张三");
+        app.setGender(1);
+        app.setPhone("13800001234");
+        app.setEmail("zhangsan@test.com");
+        app.setIdCard("330100199001011234");
+        app.setExpectedHireDate(LocalDate.of(2026, 8, 1));
+        app.setDepartmentId(1L);
+        app.setPositionId(1L);
+        app.setHireType(1);
+        app.setDefaultProbationMonths(3);
+        app.setProbationRatio(new BigDecimal("0.80"));
+        app.setStatus(OnboardingStatus.DRAFT.getCode());
+        app.setApplicantId(APPLICANT_ID);
+        return app;
+    }
+
+    // ==================== 创建申请 ====================
+
+    @Test
+    void createApplication_draft_shouldSucceed() {
+        Long id = service.createApplication(buildCreateDTO());
+
+        assertNotNull(id);
+    }
+
+    @Test
+    void createApplication_submitDirectly_shouldCallSubmit() {
+        OnboardingCreateDTO dto = buildCreateDTO();
+        dto.setSubmitDirectly(true);
+        OnboardingApplication app = mockApp();
+        when(onboardingMapper.selectById(anyLong())).thenReturn(app);
+        when(approvalFlowService.createInstance(any(), anyLong(), anyLong()))
+                .thenReturn(new ApprovalInstance());
+
+        Long id = service.createApplication(dto);
+
+        assertNotNull(id);
+        verify(approvalFlowService, times(1)).createInstance(any(), anyLong(), anyLong());
+    }
+
+    // ==================== 更新草稿 ====================
+
+    @Test
+    void updateDraft_shouldSucceed() {
+        OnboardingApplication app = mockApp();
+        when(onboardingMapper.selectById(APP_ID)).thenReturn(app);
+        when(onboardingMapper.updateById(any())).thenReturn(1);
+
+        OnboardingUpdateDTO dto = new OnboardingUpdateDTO();
+        dto.setName("李四");
+
+        assertDoesNotThrow(() -> service.updateDraft(APP_ID, dto));
+        assertEquals("李四", app.getName());
+    }
+
+    @Test
+    void updateDraft_nonDraft_shouldThrow() {
+        OnboardingApplication app = mockApp();
+        app.setStatus(OnboardingStatus.PENDING.getCode());
+        when(onboardingMapper.selectById(APP_ID)).thenReturn(app);
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> service.updateDraft(APP_ID, new OnboardingUpdateDTO()));
+        assertEquals(ErrorCode.ONBOARDING_DRAFT_ONLY.getCode(), ex.getCode());
+    }
+
+    // ==================== 删除草稿 ====================
+
+    @Test
+    void deleteDraft_shouldSucceed() {
+        OnboardingApplication app = mockApp();
+        when(onboardingMapper.selectById(APP_ID)).thenReturn(app);
+        when(onboardingMapper.deleteById(APP_ID)).thenReturn(1);
+
+        assertDoesNotThrow(() -> service.deleteDraft(APP_ID));
+    }
+
+    @Test
+    void deleteDraft_nonDraft_shouldThrow() {
+        OnboardingApplication app = mockApp();
+        app.setStatus(OnboardingStatus.PENDING.getCode());
+        when(onboardingMapper.selectById(APP_ID)).thenReturn(app);
+
+        assertThrows(BusinessException.class, () -> service.deleteDraft(APP_ID));
+    }
+
+    // ==================== 提交审批 ====================
+
+    @Test
+    void submitToApproval_shouldSucceed() {
+        OnboardingApplication app = mockApp();
+        when(onboardingMapper.selectById(APP_ID)).thenReturn(app);
+        ApprovalInstance instance = new ApprovalInstance();
+        instance.setId(100L);
+        when(approvalFlowService.createInstance(any(), anyLong(), anyLong())).thenReturn(instance);
+        when(onboardingMapper.updateById(any())).thenReturn(1);
+
+        service.submitToApproval(APP_ID);
+
+        assertEquals(OnboardingStatus.PENDING.getCode(), app.getStatus());
+        assertEquals(100L, app.getApprovalInstanceId());
+    }
+
+    @Test
+    void submitToApproval_nonDraft_shouldThrow() {
+        OnboardingApplication app = mockApp();
+        app.setStatus(OnboardingStatus.PENDING.getCode());
+        when(onboardingMapper.selectById(APP_ID)).thenReturn(app);
+
+        assertThrows(BusinessException.class, () -> service.submitToApproval(APP_ID));
+    }
+
+    @Test
+    void submitToApproval_incompleteFields_shouldThrow() {
+        OnboardingApplication app = mockApp();
+        app.setName(null); // 缺少姓名
+        when(onboardingMapper.selectById(APP_ID)).thenReturn(app);
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> service.submitToApproval(APP_ID));
+        assertEquals(ErrorCode.ONBOARDING_FIELDS_INCOMPLETE.getCode(), ex.getCode());
+    }
+
+    // ==================== 撤回 ====================
+
+    @Test
+    void cancel_shouldSucceed() {
+        OnboardingApplication app = mockApp();
+        app.setStatus(OnboardingStatus.PENDING.getCode());
+        app.setApprovalInstanceId(100L);
+        when(onboardingMapper.selectById(APP_ID)).thenReturn(app);
+        when(onboardingMapper.updateById(any())).thenReturn(1);
+
+        service.cancel(APP_ID);
+
+        assertEquals(OnboardingStatus.DRAFT.getCode(), app.getStatus());
+        assertNull(app.getApprovalInstanceId());
+        verify(approvalFlowService, times(1)).cancel(100L);
+    }
+
+    @Test
+    void cancel_notApplicant_shouldThrow() {
+        OnboardingApplication app = mockApp();
+        app.setStatus(OnboardingStatus.PENDING.getCode());
+        app.setApplicantId(999L); // 不是当前用户
+        when(onboardingMapper.selectById(APP_ID)).thenReturn(app);
+
+        assertThrows(BusinessException.class, () -> service.cancel(APP_ID));
+    }
+
+    // ==================== 确认入职 ====================
+
+    @Test
+    void confirmJoin_shouldSucceed() {
+        OnboardingApplication app = mockApp();
+        app.setStatus(OnboardingStatus.APPROVED.getCode());
+        app.setEmployeeId(100L);
+        when(onboardingMapper.selectById(APP_ID)).thenReturn(app);
+        Employee employee = new Employee();
+        employee.setId(100L);
+        when(employeeMapper.selectById(100L)).thenReturn(employee);
+        when(employeeMapper.updateById(any())).thenReturn(1);
+        when(onboardingMapper.updateById(any())).thenReturn(1);
+
+        service.confirmJoin(APP_ID, LocalDate.of(2026, 8, 1));
+
+        assertEquals(OnboardingStatus.JOINED.getCode(), app.getStatus());
+    }
+
+    @Test
+    void confirmJoin_notApproved_shouldThrow() {
+        OnboardingApplication app = mockApp();
+        app.setStatus(OnboardingStatus.DRAFT.getCode());
+        when(onboardingMapper.selectById(APP_ID)).thenReturn(app);
+
+        assertThrows(BusinessException.class, () ->
+                service.confirmJoin(APP_ID, LocalDate.now()));
+    }
+
+    // ==================== 放弃入职 ====================
+
+    @Test
+    void abandon_shouldSucceed() {
+        OnboardingApplication app = mockApp();
+        app.setStatus(OnboardingStatus.APPROVED.getCode());
+        when(onboardingMapper.selectById(APP_ID)).thenReturn(app);
+        when(onboardingMapper.updateById(any())).thenReturn(1);
+
+        service.abandon(APP_ID);
+
+        assertEquals(OnboardingStatus.ABANDONED.getCode(), app.getStatus());
+    }
+
+    // ==================== 审批回调 ====================
+
+    @Test
+    void onApproved_shouldWriteEmployeeAndThreeTables() {
+        OnboardingApplication app = mockApp();
+        app.setDepartmentId(1L);
+        when(onboardingMapper.selectById(APP_ID)).thenReturn(app);
+        Department dept = new Department();
+        dept.setCode("01");
+        when(departmentMapper.selectById(1L)).thenReturn(dept);
+        EmployeeNoSequence seq = new EmployeeNoSequence();
+        seq.setCurrentSeq(5);
+        when(noSequenceMapper.selectOne(any())).thenReturn(seq);
+        when(noSequenceMapper.updateById(any())).thenReturn(1);
+        when(personalInfoMapper.insert(any())).thenReturn(1);
+        when(workInfoMapper.insert(any())).thenReturn(1);
+        when(onboardingMapper.updateById(any())).thenReturn(1);
+
+        service.onApproved(ApprovalBizType.ONBOARDING, APP_ID);
+
+        assertEquals(OnboardingStatus.APPROVED.getCode(), app.getStatus());
+        assertNotNull(app.getEmployeeId());
+        verify(employeeMapper, times(1)).insert(any());
+        verify(personalInfoMapper, times(1)).insert(any());
+        verify(workInfoMapper, times(1)).insert(any());
+    }
+
+    @Test
+    void onRejected_shouldUpdateStatus() {
+        OnboardingApplication app = mockApp();
+        when(onboardingMapper.selectById(APP_ID)).thenReturn(app);
+        when(onboardingMapper.updateById(any())).thenReturn(1);
+
+        service.onRejected(ApprovalBizType.ONBOARDING, APP_ID);
+
+        assertEquals(OnboardingStatus.REJECTED.getCode(), app.getStatus());
+    }
+
+    // ==================== 获取详情 ====================
+
+    @Test
+    void getDetail_shouldReturnVO() {
+        OnboardingApplication app = mockApp();
+        app.setStatus(OnboardingStatus.DRAFT.getCode());
+        when(onboardingMapper.selectById(APP_ID)).thenReturn(app);
+
+        OnboardingDetailVO vo = service.getDetail(APP_ID);
+
+        assertNotNull(vo);
+        assertEquals(app.getName(), vo.getName());
+    }
+
+    // ==================== 边界条件 ====================
+
+    @Test
+    void getDetail_notFound_shouldThrow() {
+        when(onboardingMapper.selectById(APP_ID)).thenReturn(null);
+
+        assertThrows(BusinessException.class, () -> service.getDetail(APP_ID));
+    }
+}

@@ -39,7 +39,16 @@ public enum ErrorCode {
     POSITION_NOT_FOUND(30010, "职位不存在"),
     POSITION_HAS_EMPLOYEES(30011, "该职位下有在职员工关联，请先调整员工职位"),
     POSITION_LEVEL_RANGE_INVALID(30012, "职级范围不合法"),
-    POSITION_NAME_DUPLICATE(30013, "同一部门下职位名称重复");
+    POSITION_NAME_DUPLICATE(30013, "同一部门下职位名称重复"),
+    // endregion
+
+    // region 入转调离 — 入职管理 (310xx)
+    ONBOARDING_NOT_FOUND(31001, "入职申请不存在"),
+    ONBOARDING_DRAFT_ONLY(31002, "仅草稿状态可操作"),
+    ONBOARDING_SUBMIT_DRAFT_ONLY(31003, "仅草稿状态可提交审批"),
+    ONBOARDING_CANCEL_FIRST_NODE_ONLY(31004, "仅第一级审批节点可撤回申请"),
+    ONBOARDING_CONFIRM_APPROVED_ONLY(31005, "仅\"已批准待入职\"状态可确认入职"),
+    ONBOARDING_FIELDS_INCOMPLETE(31006, "入职申请必填字段不完整");
     // endregion
 
 
