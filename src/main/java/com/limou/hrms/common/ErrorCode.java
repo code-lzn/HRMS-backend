@@ -58,7 +58,16 @@ public enum ErrorCode {
     PROBATION_CANCEL_FIRST_NODE_ONLY(32004, "仅第一级审批节点可撤回申请"),
     PROBATION_EMPLOYEE_NOT_PROBATION(32005, "员工不在试用期，无法发起转正"),
     PROBATION_HANDLE_REJECTED_ONLY(32006, "仅已拒绝状态可处理结果"),
-    PROBATION_EXTEND_DATE_REQUIRED(32007, "延长试用需填写新的试用期结束日期");
+    PROBATION_EXTEND_DATE_REQUIRED(32007, "延长试用需填写新的试用期结束日期"),
+    // endregion
+
+    // region 入转调离 — 调岗管理 (330xx)
+    TRANSFER_NOT_FOUND(33001, "调岗申请不存在"),
+    TRANSFER_DRAFT_ONLY(33002, "仅草稿状态可操作"),
+    TRANSFER_SUBMIT_DRAFT_ONLY(33003, "仅草稿状态可提交审批"),
+    TRANSFER_CANCEL_FIRST_NODE_ONLY(33004, "仅第一级审批节点可撤回申请"),
+    TRANSFER_EMPLOYEE_NOT_ACTIVE(33005, "员工在职状态不允许调岗"),
+    TRANSFER_DEPT_SAME(33006, "调岗前后部门不能相同");
     // endregion
 
 
