@@ -18,12 +18,18 @@ public interface DepartmentService extends IService<Department> {
     /**
      * 获取部门树（含递归人数统计）
      */
-    List<DepartmentTreeVO> getDepartmentTree();
+    List<DepartmentTreeVO> getDepartmentTree(Long userId);
 
     /**
      * 查询单个部门详情
      */
-    DepartmentTreeVO getDepartmentDetail(Long id);
+    DepartmentTreeVO getDepartmentDetail(Long id, Long userId);
+
+    /**
+     * 根据用户 ID 获取可见的部门 ID 列表
+     * @return 可见部门 ID 列表；null 表示全部可见；空列表表示无权限
+     */
+    List<Long> getVisibleDeptIds(Long userId);
 
     /**
      * 新增部门

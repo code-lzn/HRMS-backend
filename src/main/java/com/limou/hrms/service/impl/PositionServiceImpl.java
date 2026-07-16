@@ -15,6 +15,7 @@ import com.limou.hrms.model.entity.Department;
 import com.limou.hrms.model.entity.Position;
 import com.limou.hrms.model.vo.PositionVO;
 import com.limou.hrms.model.vo.SequenceLevelVO;
+import com.limou.hrms.service.DepartmentService;
 import com.limou.hrms.service.PositionService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -37,8 +38,17 @@ public class PositionServiceImpl extends ServiceImpl<PositionMapper, Position> i
     @Resource
     private DepartmentMapper departmentMapper;
 
+    @Resource
+    private DepartmentService departmentService;
+
     @Override
-    public List<PositionVO> listPositions(PositionQueryRequest request) {
+    public List<PositionVO> listPositions(PositionQueryRequest request, Long userId) {
+        // 数据权限：获取可见部门范围
+        List<Long> visibleDeptIds = departmentService.getVisibleDeptIds(userId);
+        if (visibleDeptIds != null && visibleDeptIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+
         LambdaQueryWrapper<Position> wrapper = new LambdaQueryWrapper<Position>()
                 .orderByAsc(Position::getSequence)
                 .orderByAsc(Position::getId);
@@ -46,7 +56,14 @@ public class PositionServiceImpl extends ServiceImpl<PositionMapper, Position> i
         if (request.getSequence() != null) {
             wrapper.eq(Position::getSequence, request.getSequence());
         }
-        if (request.getDepartmentId() != null) {
+
+        // 部门权限过滤
+        if (visibleDeptIds != null) {
+            // 受限角色：只能看到可见部门内的职位 + 全局通用职位
+            wrapper.and(w -> w.isNull(Position::getDepartmentId)
+                    .or().in(Position::getDepartmentId, visibleDeptIds));
+        } else if (request.getDepartmentId() != null) {
+            // 全量角色：按查询参数过滤
             wrapper.and(w -> w.isNull(Position::getDepartmentId)
                     .or().eq(Position::getDepartmentId, request.getDepartmentId()));
         }

@@ -11,10 +11,10 @@ public interface EmployeeService extends IService<Employee> {
     // ==================== 员工档案管理 ====================
 
     /** 员工列表（分页 + 高级搜索） */
-    Page<EmployeeVO> listEmployees(EmployeeQueryRequest request);
+    Page<EmployeeVO> listEmployees(EmployeeQueryRequest request, Long userId);
 
     /** 员工详情 */
-    EmployeeDetailVO getDetail(Long id);
+    EmployeeDetailVO getDetail(Long id, Long userId);
 
     /** 新增员工 + 生成工号 */
     Long addEmployee(EmployeeAddRequest request);

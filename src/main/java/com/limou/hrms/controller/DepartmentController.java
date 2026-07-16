@@ -9,12 +9,15 @@ import com.limou.hrms.exception.ThrowUtils;
 import com.limou.hrms.model.dto.department.DepartmentAddRequest;
 import com.limou.hrms.model.dto.department.DepartmentMergeRequest;
 import com.limou.hrms.model.dto.department.DepartmentUpdateRequest;
+import com.limou.hrms.model.entity.User;
 import com.limou.hrms.model.vo.DepartmentMergeResultVO;
 import com.limou.hrms.model.vo.DepartmentTreeVO;
 import com.limou.hrms.service.DepartmentService;
+import com.limou.hrms.service.UserService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 import javax.annotation.Resource;
+import javax.servlet.http.HttpServletRequest;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,12 +33,16 @@ public class DepartmentController {
     @Resource
     private DepartmentService departmentService;
 
+    @Resource
+    private UserService userService;
+
     /**
      * 获取部门树（含递归人数统计）
      */
     @GetMapping("/tree")
-    public BaseResponse<List<DepartmentTreeVO>> getDepartmentTree() {
-        List<DepartmentTreeVO> tree = departmentService.getDepartmentTree();
+    public BaseResponse<List<DepartmentTreeVO>> getDepartmentTree(HttpServletRequest request) {
+        User loginUser = userService.getLoginUser(request);
+        List<DepartmentTreeVO> tree = departmentService.getDepartmentTree(loginUser.getId());
         return ResultUtils.success(tree);
     }
 
@@ -43,9 +50,10 @@ public class DepartmentController {
      * 查询单个部门详情
      */
     @GetMapping("/detail")
-    public BaseResponse<DepartmentTreeVO> getDepartmentDetail(@RequestParam Long id) {
+    public BaseResponse<DepartmentTreeVO> getDepartmentDetail(@RequestParam Long id, HttpServletRequest request) {
         ThrowUtils.throwIf(id == null || id <= 0, ErrorCode.PARAMS_ERROR);
-        DepartmentTreeVO detail = departmentService.getDepartmentDetail(id);
+        User loginUser = userService.getLoginUser(request);
+        DepartmentTreeVO detail = departmentService.getDepartmentDetail(id, loginUser.getId());
         return ResultUtils.success(detail);
     }
 

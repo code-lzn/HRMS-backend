@@ -9,13 +9,16 @@ import com.limou.hrms.exception.ThrowUtils;
 import com.limou.hrms.model.dto.position.PositionAddRequest;
 import com.limou.hrms.model.dto.position.PositionQueryRequest;
 import com.limou.hrms.model.dto.position.PositionUpdateRequest;
+import com.limou.hrms.model.entity.User;
 import com.limou.hrms.model.vo.PositionVO;
 import com.limou.hrms.model.vo.SequenceLevelVO;
 import com.limou.hrms.service.PositionService;
+import com.limou.hrms.service.UserService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
+import javax.servlet.http.HttpServletRequest;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,17 +34,22 @@ public class PositionController {
     @Resource
     private PositionService positionService;
 
+    @Resource
+    private UserService userService;
+
     /**
      * 获取职位列表
      */
     @GetMapping("/list")
     public BaseResponse<List<PositionVO>> listPositions(
             @RequestParam(required = false) Integer sequence,
-            @RequestParam(required = false) Long departmentId) {
-        PositionQueryRequest request = new PositionQueryRequest();
-        request.setSequence(sequence);
-        request.setDepartmentId(departmentId);
-        List<PositionVO> list = positionService.listPositions(request);
+            @RequestParam(required = false) Long departmentId,
+            HttpServletRequest request) {
+        User loginUser = userService.getLoginUser(request);
+        PositionQueryRequest query = new PositionQueryRequest();
+        query.setSequence(sequence);
+        query.setDepartmentId(departmentId);
+        List<PositionVO> list = positionService.listPositions(query, loginUser.getId());
         return ResultUtils.success(list);
     }
 
