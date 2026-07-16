@@ -99,12 +99,11 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
         // 获取委托人所辖的待审批项
         List<ApprovalDetail> delegatedList = new ArrayList<>();
         if (!delegatorIds.isEmpty()) {
-            // 收集委托的业务类型范围
             Map<Long, Set<String>> delegatorBusinessTypes = new HashMap<>();
             for (ApprovalDelegation d : activeDelegations) {
                 Set<String> types = d.getBusinessTypes() != null
                         ? new HashSet<>(Arrays.asList(d.getBusinessTypes().split(",")))
-                        : null; // null = 全部业务类型
+                        : null;
                 delegatorBusinessTypes.put(d.getDelegatorId(), types);
             }
 
@@ -131,7 +130,7 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
 
         List<ApprovalPendingVO> result = new ArrayList<>();
         for (ApprovalDetail detail : allDetails) {
-            if (!seenRecordIds.add(detail.getRecordId())) continue; // 去重
+            if (!seenRecordIds.add(detail.getRecordId())) continue;
 
             ApprovalRecord record = this.getById(detail.getRecordId());
             if (record == null || !ApprovalRecordStatusEnum.APPROVING.getValue().equals(record.getStatus())) continue;
@@ -291,6 +290,7 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
         record.setCurrentStep(1);
         record.setTotalSteps(nodes.size());
         record.setStatus(ApprovalRecordStatusEnum.APPROVING.getValue());
+        record.setDepartmentId(targetDepartmentId);
         this.save(record);
 
         // 创建审批明细节点
@@ -346,6 +346,7 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
         record.setCurrentStep(1);
         record.setTotalSteps(nodes.size());
         record.setStatus(ApprovalRecordStatusEnum.APPROVING.getValue());
+        record.setDepartmentId(targetDepartmentId);
         this.save(record);
 
         Employee applicant = employeeService.getById(applicantEmployeeId);
@@ -384,7 +385,6 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
         ThrowUtils.throwIf(detail == null, ErrorCode.APPROVAL_NOT_FOUND);
         ThrowUtils.throwIf(!ApprovalActionEnum.PENDING.getValue().equals(detail.getAction()), ErrorCode.APPROVAL_NOT_PENDING);
 
-        // 检查权限：是审批人本人，或者是有效被委托人
         boolean hasPermission = Objects.equals(detail.getApproverId(), employeeId);
         if (!hasPermission) {
             hasPermission = approvalDelegationService.isActiveDelegate(detail.getApproverId(), employeeId,
@@ -392,7 +392,6 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
         }
         ThrowUtils.throwIf(!hasPermission, ErrorCode.APPROVAL_NO_PERMISSION);
 
-        // 如果是被委托人，标记代审批
         if (!Objects.equals(detail.getApproverId(), employeeId)) {
             detail.setIsDelegated(1);
             detail.setDelegatedBy(detail.getApproverId());

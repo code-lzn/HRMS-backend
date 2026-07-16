@@ -4,9 +4,11 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.limou.hrms.model.dto.onboarding.OnboardingAddRequest;
 import com.limou.hrms.model.entity.HrOnboarding;
+import com.limou.hrms.model.vo.ApprovalPendingVO;
 import com.limou.hrms.model.vo.OnboardingVO;
 
 import java.util.Date;
+import java.util.List;
 
 /**
  * 入职管理服务
@@ -72,4 +74,16 @@ public interface OnboardingService extends IService<HrOnboarding> {
      * 获取员工的人事异动记录（入职申请），包含审批流程详情
      */
     java.util.List<com.limou.hrms.model.vo.MutationLogVO> getEmployeeMutationLogs(Long userId);
+
+    /** 获取部门负责人管辖部门的入职待审批任务列表 */
+    List<ApprovalPendingVO> getDeptManagerOnboardingPendingList(Long employeeId);
+
+    /** 部门负责人审批入职申请通过 */
+    void deptManagerApprove(Long detailId, Long employeeId, String comment);
+
+    /** 部门负责人审批入职申请拒绝 */
+    void deptManagerReject(Long detailId, Long employeeId, String comment);
+
+    /** 获取可转交审批的人员列表（角色ID=1和3） */
+    List<com.limou.hrms.model.vo.UserVO> getTransferableUsers();
 }

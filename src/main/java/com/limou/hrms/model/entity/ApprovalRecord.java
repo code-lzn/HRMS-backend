@@ -70,6 +70,9 @@ public class ApprovalRecord implements Serializable {
     /** 审批状态: APPROVING=审批中, APPROVED=已通过, REJECTED=已拒绝, WITHDRAWN=已撤回 */
     private String status;
 
+    /** 目标部门ID（用于部门负责人权限匹配） */
+    private Long departmentId;
+
     /** 审批完成时间 */
     private Date finishedAt;
 

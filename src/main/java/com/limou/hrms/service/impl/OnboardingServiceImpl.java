@@ -9,8 +9,10 @@ import com.limou.hrms.mapper.*;
 import com.limou.hrms.model.dto.onboarding.OnboardingAddRequest;
 import com.limou.hrms.model.entity.*;
 import com.limou.hrms.model.enums.EmployeeStatus;
+import com.limou.hrms.model.vo.ApprovalPendingVO;
 import com.limou.hrms.model.vo.MutationLogVO;
 import com.limou.hrms.model.vo.OnboardingVO;
+import com.limou.hrms.model.vo.UserVO;
 import com.limou.hrms.service.ApprovalService;
 import com.limou.hrms.service.EmployeeService;
 import com.limou.hrms.service.OnboardingService;
@@ -47,6 +49,10 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
     private EmpMutationLogMapper empMutationLogMapper;
     @Resource
     private EmployeeService employeeService;
+    @Resource
+    private ApprovalDetailMapper approvalDetailMapper;
+    @Resource
+    private ApprovalRecordMapper approvalRecordMapper;
 
     private static final String SALT = "hrms";
 
@@ -222,6 +228,22 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
         LambdaQueryWrapper<HrOnboarding> wrapper = new LambdaQueryWrapper<HrOnboarding>()
                 .like(StringUtils.hasText(keyword), HrOnboarding::getCandidateName, keyword)
                 .orderByDesc(HrOnboarding::getCreateTime);
+
+        if (statuses != null && !statuses.isEmpty()) {
+            if ("DRAFT".equals(statuses.get(0))) {
+                wrapper.isNull(HrOnboarding::getRecordId);
+            } else {
+                List<Long> recordIds = approvalRecordMapper.selectList(
+                        new LambdaQueryWrapper<ApprovalRecord>()
+                                .eq(ApprovalRecord::getBusinessType, "ONBOARDING")
+                                .in(ApprovalRecord::getStatus, statuses)
+                ).stream().map(ApprovalRecord::getBusinessId).collect(Collectors.toList());
+
+                if (!recordIds.isEmpty()) {
+                    wrapper.in(HrOnboarding::getId, recordIds);
+                }
+            }
+        }
 
         Page<HrOnboarding> entityPage = page(new Page<>(page, size), wrapper);
         Set<Long> deptIds = entityPage.getRecords().stream().map(HrOnboarding::getDeptId).filter(Objects::nonNull).collect(Collectors.toSet());
@@ -410,5 +432,174 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
         if (employeeId == null) return null;
         Employee emp = employeeMapper.selectById(employeeId);
         return emp != null ? emp.getEmployeeName() : null;
+    }
+
+    @Override
+    public List<ApprovalPendingVO> getDeptManagerOnboardingPendingList(Long employeeId) {
+        List<Long> managedDeptIds = departmentMapper.selectList(
+                new LambdaQueryWrapper<Department>()
+                        .eq(Department::getManagerId, employeeId)
+        ).stream()
+                .map(Department::getId)
+                .collect(Collectors.toList());
+
+        if (managedDeptIds.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        List<ApprovalRecord> deptRecords = approvalRecordMapper.selectList(
+                new LambdaQueryWrapper<ApprovalRecord>()
+                        .in(ApprovalRecord::getDepartmentId, managedDeptIds)
+                        .eq(ApprovalRecord::getStatus, "APPROVING")
+                        .eq(ApprovalRecord::getBusinessType, "ONBOARDING")
+        );
+
+        Set<Long> seenRecordIds = new HashSet<>();
+        List<ApprovalPendingVO> result = new ArrayList<>();
+        for (ApprovalRecord record : deptRecords) {
+            if (!seenRecordIds.add(record.getId())) continue;
+
+            ApprovalDetail detail = approvalDetailMapper.selectOne(
+                    new LambdaQueryWrapper<ApprovalDetail>()
+                            .eq(ApprovalDetail::getRecordId, record.getId())
+                            .eq(ApprovalDetail::getStepOrder, record.getCurrentStep())
+                            .eq(ApprovalDetail::getAction, "PENDING")
+            );
+
+            if (detail == null) continue;
+
+            ApprovalPendingVO vo = new ApprovalPendingVO();
+            vo.setRecordId(record.getId());
+            vo.setDetailId(detail.getId());
+            vo.setBusinessType(record.getBusinessType());
+            vo.setBusinessTypeText("入职审批");
+            vo.setBusinessId(record.getBusinessId());
+            vo.setApplicantName(record.getApplicantName());
+            vo.setApplyTime(record.getCreateTime());
+            vo.setCurrentNodeName(detail.getNodeName());
+            result.add(vo);
+        }
+        return result;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deptManagerApprove(Long detailId, Long employeeId, String comment) {
+        ApprovalDetail detail = validateDeptManagerApproval(detailId, employeeId);
+
+        detail.setAction("APPROVE");
+        detail.setComment(comment);
+        detail.setOperateTime(new Date());
+        approvalDetailMapper.updateById(detail);
+
+        ApprovalRecord record = approvalRecordMapper.selectById(detail.getRecordId());
+        ThrowUtils.throwIf(record == null, ErrorCode.APPROVAL_NOT_FOUND);
+
+        advanceApproval(record.getId());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deptManagerReject(Long detailId, Long employeeId, String comment) {
+        ApprovalDetail detail = validateDeptManagerApproval(detailId, employeeId);
+
+        detail.setAction("REJECT");
+        detail.setComment(comment);
+        detail.setOperateTime(new Date());
+        approvalDetailMapper.updateById(detail);
+
+        ApprovalRecord record = approvalRecordMapper.selectById(detail.getRecordId());
+        ThrowUtils.throwIf(record == null, ErrorCode.APPROVAL_NOT_FOUND);
+
+        record.setStatus("REJECTED");
+        record.setFinishedAt(new Date());
+        approvalRecordMapper.updateById(record);
+
+        if ("ONBOARDING".equals(record.getBusinessType())) {
+            onApprovalRejected(record.getBusinessId());
+        }
+    }
+
+    private ApprovalDetail validateDeptManagerApproval(Long detailId, Long employeeId) {
+        ApprovalDetail detail = approvalDetailMapper.selectById(detailId);
+        ThrowUtils.throwIf(detail == null, ErrorCode.APPROVAL_NOT_FOUND);
+        ThrowUtils.throwIf(!"PENDING".equals(detail.getAction()), ErrorCode.APPROVAL_NOT_PENDING);
+
+        ApprovalRecord record = approvalRecordMapper.selectById(detail.getRecordId());
+        ThrowUtils.throwIf(record == null, ErrorCode.APPROVAL_NOT_FOUND);
+
+        boolean hasPermission = false;
+
+        if (detail.getApproverId() != null && Objects.equals(detail.getApproverId(), employeeId)) {
+            hasPermission = true;
+        }
+
+        if (!hasPermission && record.getDepartmentId() != null) {
+            Department dept = departmentMapper.selectById(record.getDepartmentId());
+            if (dept != null && Objects.equals(dept.getManagerId(), employeeId)) {
+                hasPermission = true;
+            }
+        }
+
+        ThrowUtils.throwIf(!hasPermission, ErrorCode.APPROVAL_NO_PERMISSION);
+
+        if (!Objects.equals(detail.getApproverId(), employeeId)) {
+            detail.setIsDelegated(1);
+            detail.setDelegatedBy(detail.getApproverId());
+            detail.setApproverId(employeeId);
+        }
+
+        return detail;
+    }
+
+    private void advanceApproval(Long recordId) {
+        ApprovalRecord record = approvalRecordMapper.selectById(recordId);
+        List<ApprovalDetail> details = approvalDetailMapper.selectList(
+                new LambdaQueryWrapper<ApprovalDetail>()
+                        .eq(ApprovalDetail::getRecordId, recordId)
+                        .orderByAsc(ApprovalDetail::getStepOrder)
+        );
+
+        int currentStep = record.getCurrentStep();
+        boolean allPassed = true;
+        int maxStep = 0;
+
+        for (ApprovalDetail detail : details) {
+            if (detail.getStepOrder() <= currentStep) {
+                if (!"APPROVE".equals(detail.getAction())) {
+                    allPassed = false;
+                    break;
+                }
+            }
+            maxStep = Math.max(maxStep, detail.getStepOrder());
+        }
+
+        if (allPassed && currentStep < maxStep) {
+            record.setCurrentStep(currentStep + 1);
+            approvalRecordMapper.updateById(record);
+        } else if (allPassed && currentStep >= maxStep) {
+            record.setStatus("APPROVED");
+            record.setFinishedAt(new Date());
+            approvalRecordMapper.updateById(record);
+
+            if ("ONBOARDING".equals(record.getBusinessType())) {
+                onApprovalPassed(record.getBusinessId());
+            }
+        }
+    }
+
+    @Override
+    public List<UserVO> getTransferableUsers() {
+        List<User> users = userMapper.selectList(
+                new LambdaQueryWrapper<User>()
+                        .in(User::getRoleId, 1, 3)
+                        .eq(User::getIsDelete, 0)
+                        .orderByAsc(User::getId)
+        );
+        return users.stream().map(user -> {
+            UserVO vo = new UserVO();
+            BeanUtils.copyProperties(user, vo);
+            return vo;
+        }).collect(Collectors.toList());
     }
 }

@@ -5,11 +5,15 @@ import com.limou.hrms.common.BaseResponse;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.common.ResultUtils;
 import com.limou.hrms.exception.BusinessException;
+import com.limou.hrms.model.dto.approval.ApprovalActionRequest;
 import com.limou.hrms.model.dto.onboarding.OnboardingAddRequest;
 import com.limou.hrms.model.entity.HrOnboarding;
 import com.limou.hrms.model.entity.User;
+import com.limou.hrms.model.vo.ApprovalPendingVO;
 import com.limou.hrms.model.vo.MutationLogVO;
 import com.limou.hrms.model.vo.OnboardingVO;
+import com.limou.hrms.model.vo.UserVO;
+import com.limou.hrms.service.EmployeeService;
 import com.limou.hrms.service.OnboardingService;
 import com.limou.hrms.service.UserService;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +37,9 @@ public class OnboardingController {
 
     @Resource
     private UserService userService;
+
+    @Resource
+    private EmployeeService employeeService;
 
     /** 从请求中获取当前登录用户的 userId */
     private Long getLoginUserId(HttpServletRequest request) {
@@ -124,5 +131,43 @@ public class OnboardingController {
         Long userId = getLoginUserId(httpReq);
         List<MutationLogVO> logs = onboardingService.getEmployeeMutationLogs(userId);
         return ResultUtils.success(logs);
+    }
+
+    @GetMapping("/dept-manager/pending")
+    public BaseResponse<List<ApprovalPendingVO>> getDeptManagerPendingList(HttpServletRequest httpReq) {
+        User loginUser = userService.getLoginUser(httpReq);
+        com.limou.hrms.model.entity.Employee emp = employeeService.getByUserId(loginUser.getId());
+        List<ApprovalPendingVO> list = onboardingService.getDeptManagerOnboardingPendingList(emp != null ? emp.getId() : null);
+        return ResultUtils.success(list);
+    }
+
+    @PostMapping("/dept-manager/approve")
+    public BaseResponse<Boolean> deptManagerApprove(@RequestBody ApprovalActionRequest actionRequest,
+                                                    HttpServletRequest httpReq) {
+        if (actionRequest == null || actionRequest.getDetailId() == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数错误");
+        }
+        User loginUser = userService.getLoginUser(httpReq);
+        com.limou.hrms.model.entity.Employee emp = employeeService.getByUserId(loginUser.getId());
+        onboardingService.deptManagerApprove(actionRequest.getDetailId(), emp != null ? emp.getId() : null, actionRequest.getComment());
+        return ResultUtils.success(true);
+    }
+
+    @PostMapping("/dept-manager/reject")
+    public BaseResponse<Boolean> deptManagerReject(@RequestBody ApprovalActionRequest actionRequest,
+                                                   HttpServletRequest httpReq) {
+        if (actionRequest == null || actionRequest.getDetailId() == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数错误");
+        }
+        User loginUser = userService.getLoginUser(httpReq);
+        com.limou.hrms.model.entity.Employee emp = employeeService.getByUserId(loginUser.getId());
+        onboardingService.deptManagerReject(actionRequest.getDetailId(), emp != null ? emp.getId() : null, actionRequest.getComment());
+        return ResultUtils.success(true);
+    }
+
+    @GetMapping("/transferable-users")
+    public BaseResponse<List<UserVO>> getTransferableUsers() {
+        List<UserVO> users = onboardingService.getTransferableUsers();
+        return ResultUtils.success(users);
     }
 }
