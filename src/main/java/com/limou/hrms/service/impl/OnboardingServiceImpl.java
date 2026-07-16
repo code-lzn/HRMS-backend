@@ -9,6 +9,7 @@ import com.limou.hrms.mapper.*;
 import com.limou.hrms.model.dto.onboarding.OnboardingAddRequest;
 import com.limou.hrms.model.entity.*;
 import com.limou.hrms.model.enums.EmployeeStatus;
+import com.limou.hrms.model.vo.MutationLogVO;
 import com.limou.hrms.model.vo.OnboardingVO;
 import com.limou.hrms.service.ApprovalService;
 import com.limou.hrms.service.EmployeeService;
@@ -47,7 +48,7 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
     @Resource
     private EmployeeService employeeService;
 
-    private static final String SALT = "hrms";
+    private static final String SALT = "limou";
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -303,16 +304,30 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
     }
 
     @Override
-    public java.util.List<EmpMutationLog> getEmployeeMutationLogs(Long userId) {
+    public java.util.List<MutationLogVO> getEmployeeMutationLogs(Long userId) {
         Employee emp = employeeService.getByUserId(userId);
         if (emp == null) {
             return new java.util.ArrayList<>();
         }
-        return empMutationLogMapper.selectList(
+
+        List<EmpMutationLog> logs = empMutationLogMapper.selectList(
                 new LambdaQueryWrapper<EmpMutationLog>()
                         .eq(EmpMutationLog::getEmployeeId, emp.getId())
                         .orderByDesc(EmpMutationLog::getCreateTime)
         );
+
+        return logs.stream().map(log -> {
+            MutationLogVO vo = new MutationLogVO();
+            BeanUtils.copyProperties(log, vo);
+
+            HrOnboarding onboarding = getById(log.getBusinessId());
+            if (onboarding != null && onboarding.getRecordId() != null) {
+                List<ApprovalDetail> details = approvalService.getApprovalDetails(onboarding.getRecordId());
+                vo.setApprovalDetails(details);
+            }
+
+            return vo;
+        }).collect(Collectors.toList());
     }
 
     private void validateRequest(OnboardingAddRequest req) {

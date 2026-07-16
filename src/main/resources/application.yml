@@ -15,6 +15,7 @@ spring:
     time-zone: GMT+8
   # session 配置
   session:
+    # todo 取消注释开启分布式 session（须先配置 Redis）
     store-type: redis
     timeout: 2592000
 

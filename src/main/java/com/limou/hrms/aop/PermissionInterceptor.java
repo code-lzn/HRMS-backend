@@ -1,4 +1,4 @@
-package com.limou.hrms.interceptor;
+package com.limou.hrms.aop;
 
 import cn.hutool.json.JSONUtil;
 import com.limou.hrms.common.BaseResponse;
@@ -38,45 +38,32 @@ public class PermissionInterceptor implements HandlerInterceptor {
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response,
                              Object handler) throws IOException {
-        String uri = request.getRequestURI();
-        String method = request.getMethod();
-
-        // GET 请求默认放行（只读操作不强制权限校验）
-        if ("GET".equalsIgnoreCase(method)) {
+        // OPTIONS 预检请求不带 Cookie，直接放行
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
             return true;
         }
+
+        String uri = request.getRequestURI();
 
         // 遍历枚举，查找该 URI 对应的权限码
         String requiredPermission = matchPermission(uri);
         if (requiredPermission == null) {
+            // 未命中枚举 → 自服务接口或公开接口，放行
             return true;
         }
 
-        // 尝试获取当前登录用户（不抛出异常）
-        // 注意：Interceptor 层的 request 与 AOP 层可能不同源（Redis session 反序列化问题），
-        // 这里作为快速路径：能拿到 session 就直接校验，拿不到就放行交给后面的 AOP 层处理
-        User currentUser;
-        try {
-            currentUser = userService.getLoginUser(request);
-        } catch (Exception e) {
-            log.warn("权限拦截: 无法获取用户登录信息 {}, 放行交由 AOP 层校验", uri);
-            return true;
+        // 获取当前登录用户（未登录会抛 BusinessException，由 GlobalExceptionHandler 统一处理）
+        User currentUser = userService.getLoginUser(request);
+
+        // 检查用户是否拥有该权限
+        if (!permissionService.hasPermission(currentUser.getId(), requiredPermission)) {
+            log.warn("权限拦截: 用户 {} 无权限 {} 访问 {}", currentUser.getUserAccount(),
+                    requiredPermission, uri);
+            writeJson(response, ErrorCode.FORBIDDEN_ERROR,
+                    "无权限访问，需要权限：" + requiredPermission);
+            return false;
         }
 
-        // 快速路径：session 可用时直接校验权限码
-        if (currentUser != null) {
-            if (!permissionService.hasPermission(currentUser.getId(), requiredPermission)) {
-                log.warn("权限拦截: 用户 {} 无权限 {} 访问 {}", currentUser.getUserAccount(),
-                        requiredPermission, uri);
-                writeJson(response, ErrorCode.FORBIDDEN_ERROR,
-                        "无权限访问，需要权限：" + requiredPermission);
-                return false;
-            }
-            return true;
-        }
-
-        // session 不可用，放行给 AOP 层（AuthInterceptor + PermissionAspect）做权限校验
-        log.warn("权限拦截: 未能从 session 获取用户信息 {}, 放行给 AOP 处理", uri);
         return true;
     }
 

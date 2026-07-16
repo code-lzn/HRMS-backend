@@ -783,3 +783,4 @@ CREATE TABLE ntf_email_log (
     KEY idx_recipient_email (recipient_email),
     KEY idx_created_at (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='邮件发送记录表';
+

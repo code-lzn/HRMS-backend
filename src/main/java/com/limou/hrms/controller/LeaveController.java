@@ -6,9 +6,13 @@ import com.limou.hrms.common.ResultUtils;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.model.dto.attendance.ApprovalRequest;
 import com.limou.hrms.model.dto.attendance.LeaveApplyRequest;
+import com.limou.hrms.model.entity.Employee;
 import com.limou.hrms.model.entity.User;
+import com.limou.hrms.model.vo.LeaveBalanceVO;
 import com.limou.hrms.model.vo.LeaveProgressVO;
 import com.limou.hrms.model.vo.LeaveVO;
+import com.limou.hrms.service.EmployeeLeaveBalanceService;
+import com.limou.hrms.service.EmployeeService;
 import com.limou.hrms.service.LeaveService;
 import com.limou.hrms.service.UserService;
 import io.swagger.annotations.ApiParam;
@@ -32,6 +36,26 @@ public class LeaveController {
 
     @Resource
     private UserService userService;
+
+    @Resource
+    private EmployeeService employeeService;
+
+    @Resource
+    private EmployeeLeaveBalanceService employeeLeaveBalanceService;
+
+    /**
+     * 查询当前员工请假余额
+     */
+    @GetMapping("/balance")
+    public BaseResponse<LeaveBalanceVO> getBalance(HttpServletRequest request) {
+        User loginUser = userService.getLoginUser(request);
+        Employee employee = employeeService.getByUserId(loginUser.getId());
+        if (employee == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "员工信息不存在");
+        }
+        LeaveBalanceVO vo = employeeLeaveBalanceService.getCurrentYearBalance(employee.getId());
+        return ResultUtils.success(vo);
+    }
 
     /**
      * 申请请假

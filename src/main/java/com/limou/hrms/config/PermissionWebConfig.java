@@ -1,6 +1,6 @@
 package com.limou.hrms.config;
 
-import com.limou.hrms.interceptor.PermissionInterceptor;
+import com.limou.hrms.aop.PermissionInterceptor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;

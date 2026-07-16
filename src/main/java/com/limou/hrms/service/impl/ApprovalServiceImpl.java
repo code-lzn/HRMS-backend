@@ -40,6 +40,9 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
     private ApprovalDetailService approvalDetailService;
 
     @Resource
+    private EmployeeLeaveBalanceService employeeLeaveBalanceService;
+
+    @Resource
     private ApprovalDelegationService approvalDelegationService;
 
     @Resource
@@ -60,6 +63,18 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
     @Resource
     @Lazy
     private OnboardingService onboardingService;
+
+    @Resource
+    @Lazy
+    private RegularizationService regularizationService;
+
+    @Resource
+    @Lazy
+    private TransferService transferService;
+
+    @Resource
+    @Lazy
+    private ResignationService resignationService;
 
     @Override
     public List<ApprovalPendingVO> getPendingList(Long employeeId) {
@@ -304,6 +319,64 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
         return record;
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ApprovalRecord startApproval(String businessType, Long businessId,
+                                         Long applicantEmployeeId, String applicantName,
+                                         Long targetDepartmentId,
+                                         Map<Integer, Long> nodeApproverOverrides) {
+        ApprovalFlow flow = approvalFlowService.lambdaQuery()
+                .eq(ApprovalFlow::getBusinessType, businessType)
+                .eq(ApprovalFlow::getStatus, 1)
+                .one();
+        ThrowUtils.throwIf(flow == null, ErrorCode.NOT_FOUND_ERROR, "审批流未定义");
+
+        List<ApprovalFlowNode> nodes = approvalFlowNodeService.lambdaQuery()
+                .eq(ApprovalFlowNode::getFlowId, flow.getId())
+                .orderByAsc(ApprovalFlowNode::getNodeOrder)
+                .list();
+        ThrowUtils.throwIf(nodes.isEmpty(), ErrorCode.SYSTEM_ERROR, "审批流节点未配置");
+
+        ApprovalRecord record = new ApprovalRecord();
+        record.setFlowId(flow.getId());
+        record.setBusinessType(businessType);
+        record.setBusinessId(businessId);
+        record.setApplicantId(applicantEmployeeId);
+        record.setApplicantName(applicantName);
+        record.setCurrentStep(1);
+        record.setTotalSteps(nodes.size());
+        record.setStatus(ApprovalRecordStatusEnum.APPROVING.getValue());
+        this.save(record);
+
+        Employee applicant = employeeService.getById(applicantEmployeeId);
+        for (int i = 0; i < nodes.size(); i++) {
+            ApprovalFlowNode node = nodes.get(i);
+            Long approverId = null;
+            if (nodeApproverOverrides != null && nodeApproverOverrides.containsKey(node.getNodeOrder())) {
+                approverId = nodeApproverOverrides.get(node.getNodeOrder());
+            } else {
+                approverId = resolveApprover(node, applicant, targetDepartmentId);
+            }
+            String approverName = null;
+            if (approverId != null) {
+                Employee approver = employeeService.getById(approverId);
+                approverName = approver != null ? approver.getEmployeeName() : null;
+            }
+            ApprovalDetail detail = new ApprovalDetail();
+            detail.setRecordId(record.getId());
+            detail.setNodeId(node.getId());
+            detail.setNodeName(node.getNodeName());
+            detail.setStepOrder(node.getNodeOrder());
+            detail.setApproverId(approverId);
+            detail.setApproverName(approverName);
+            detail.setAction(ApprovalActionEnum.PENDING.getValue());
+            detail.setIsDelegated(0);
+            approvalDetailService.save(detail);
+        }
+
+        return record;
+    }
+
     // ========== 私有方法 ==========
 
     private ApprovalDetail validateAndGetDetail(Long detailId, Long employeeId) {
@@ -371,6 +444,11 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
                     leave.setStatus(targetStatus);
                     leave.setApproveTime(now);
                     leaveMapper.updateById(leave);
+                    // 审批通过后扣减请假余额
+                    if (isApproved) {
+                        employeeLeaveBalanceService.deduct(
+                                leave.getEmployeeId(), leave.getLeaveType(), leave.getTotalDays());
+                    }
                 }
                 break;
             }
@@ -391,14 +469,43 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
                         bizType.getText(), record.getBusinessId(), targetStatus);
                 break;
             }
-            case REGULARIZATION:
-            case TRANSFER:
-            case RESIGNATION:
+            case REGULARIZATION: {
+                if (isApproved) {
+                    regularizationService.onApprovalPassed(record.getBusinessId());
+                } else {
+                    regularizationService.onApprovalRejected(record.getBusinessId());
+                }
+                break;
+            }
+            case TRANSFER: {
+                if (isApproved) {
+                    transferService.onApprovalPassed(record.getBusinessId());
+                } else {
+                    transferService.onApprovalRejected(record.getBusinessId());
+                }
+                break;
+            }
+            case RESIGNATION: {
+                if (isApproved) {
+                    resignationService.onApprovalPassed(record.getBusinessId());
+                } else {
+                    resignationService.onApprovalRejected(record.getBusinessId());
+                }
+                break;
+            }
             case SALARY_BATCH:
                 log.info("业务类型 [{}] 审批完成，businessId={}, status={}",
                         bizType.getText(), record.getBusinessId(), targetStatus);
                 break;
         }
+    }
+
+    @Override
+    public List<ApprovalDetail> getApprovalDetails(Long recordId) {
+        return approvalDetailService.lambdaQuery()
+                .eq(ApprovalDetail::getRecordId, recordId)
+                .orderByAsc(ApprovalDetail::getStepOrder)
+                .list();
     }
 
     /**
