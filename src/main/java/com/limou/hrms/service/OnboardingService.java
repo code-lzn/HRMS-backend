@@ -60,4 +60,16 @@ public interface OnboardingService {
      * 获取详情（含审批进度，审批中/已通过/已拒绝时返回）
      */
     OnboardingDetailVO getDetail(Long id);
+
+    /**
+     * 预览工号（不消耗序号）
+     */
+    String previewEmployeeNo(Long departmentId);
+
+    /**
+     * 校验手机号是否可用
+     * @param phone 手机号
+     * @param excludeId 排除的入职申请ID（编辑时传）
+     */
+    boolean isPhoneAvailable(String phone, Long excludeId);
 }

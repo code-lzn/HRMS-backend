@@ -3,8 +3,10 @@ package com.limou.hrms.job;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.limou.hrms.mapper.EmployeeMapper;
 import com.limou.hrms.mapper.ResignationApplicationMapper;
+import com.limou.hrms.mapper.UserMapper;
 import com.limou.hrms.model.entity.Employee;
 import com.limou.hrms.model.entity.ResignationApplication;
+import com.limou.hrms.model.entity.User;
 import com.limou.hrms.model.enums.EmployeeStatus;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -26,6 +28,8 @@ public class ResignationExecutionJob {
     private ResignationApplicationMapper resignationMapper;
     @Resource
     private EmployeeMapper employeeMapper;
+    @Resource
+    private UserMapper userMapper;
 
     /**
      * 每天凌晨 1:00 执行
@@ -47,6 +51,16 @@ public class ResignationExecutionJob {
                 if (employee != null) {
                     employee.setStatus(EmployeeStatus.RESIGNED.getValue());
                     employeeMapper.updateById(employee);
+
+                    // 禁用系统账号
+                    if (employee.getUserId() != null) {
+                        User user = userMapper.selectById(employee.getUserId());
+                        if (user != null) {
+                            user.setIsDelete(1);
+                            userMapper.updateById(user);
+                            log.info("【离职生效】账号已禁用: userId={}", user.getId());
+                        }
+                    }
                 }
 
                 // 更新离职申请
@@ -55,7 +69,6 @@ public class ResignationExecutionJob {
                 resignationMapper.updateById(app);
 
                 log.info("【离职生效】员工ID={} 已离职", app.getEmployeeId());
-                // TODO: 账号禁用、考勤组移除、薪资结算 via MQ
             } catch (Exception e) {
                 log.error("离职生效处理失败: resignationId={}, employeeId={}",
                         app.getId(), app.getEmployeeId(), e);

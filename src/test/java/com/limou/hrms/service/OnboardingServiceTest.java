@@ -13,6 +13,7 @@ import com.limou.hrms.model.enums.ApprovalBizType;
 import com.limou.hrms.model.enums.OnboardingStatus;
 import com.limou.hrms.model.vo.OnboardingDetailVO;
 import com.limou.hrms.service.impl.OnboardingServiceImpl;
+import com.limou.hrms.mapper.UserMapper;
 import com.limou.hrms.util.AesUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -50,6 +51,7 @@ class OnboardingServiceTest {
     @Mock private AesUtil aesUtil;
     @Mock private DataScopeContext dataScopeContext;
     @Mock private ApproverResolver approverResolver;
+    @Mock private UserMapper userMapper;
 
     @InjectMocks
     private OnboardingServiceImpl service;
@@ -65,6 +67,7 @@ class OnboardingServiceTest {
         when(aesUtil.encrypt(any())).thenReturn("encrypted");
         when(approverResolver.resolveDeptManager(anyLong())).thenReturn(100L);
         when(approverResolver.getEmployeeName(anyLong())).thenReturn("测试姓名");
+        when(userMapper.insert(any())).thenReturn(1);
 
         // MyBatis-Plus insert 会自动设置 ID，Mockito 不会，用 doAnswer 模拟
         doAnswer(inv -> { OnboardingApplication a = inv.getArgument(0); a.setId(APP_ID); return 1; })

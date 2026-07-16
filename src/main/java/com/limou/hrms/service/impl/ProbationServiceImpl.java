@@ -19,6 +19,7 @@ import com.limou.hrms.model.enums.ProbationResult;
 import com.limou.hrms.model.query.ProbationQuery;
 import com.limou.hrms.model.vo.*;
 import com.limou.hrms.model.entity.OnboardingApplication;
+import com.limou.hrms.model.entity.ResignationApplication;
 
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
@@ -62,6 +63,8 @@ public class ProbationServiceImpl
     private ApproverResolver approverResolver;
     @Resource
     private OnboardingApplicationMapper onboardingMapper;
+    @Resource
+    private ResignationApplicationMapper resignationMapper;
 
     // ==================== 转正 CRUD ====================
 
@@ -210,8 +213,17 @@ public class ProbationServiceImpl
                 break;
             case FAIL:
                 app.setResult(ProbationResult.FAIL.getCode());
-                app.setStatus(3); // 已完成（后续关联离职流程）
-                log.warn("转正不通过，需关联离职流程: employeeId={}", app.getEmployeeId());
+                app.setStatus(3); // 已完成
+                // 自动创建离职草稿
+                ResignationApplication resignation = new ResignationApplication();
+                resignation.setEmployeeId(app.getEmployeeId());
+                resignation.setResignationType(2); // 辞退
+                resignation.setReason("转正不通过，予以辞退");
+                resignation.setStatus(1); // 草稿
+                resignation.setApplicantId(dataScopeContext.getCurrentEmployeeId());
+                resignationMapper.insert(resignation);
+                log.info("转正不通过，已自动创建离职草稿: employeeId={}, resignationId={}",
+                        app.getEmployeeId(), resignation.getId());
                 break;
         }
 

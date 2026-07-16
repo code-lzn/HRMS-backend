@@ -40,6 +40,7 @@ class ProbationServiceTest {
 
     @Mock private ProbationApplicationMapper probationMapper;
     @Mock private OnboardingApplicationMapper onboardingMapper;
+    @Mock private ResignationApplicationMapper resignationMapper;
     @Mock private ApprovalFlowService approvalFlowService;
     @Mock private EmployeeMapper employeeMapper;
     @Mock private EmployeeWorkInfoMapper workInfoMapper;

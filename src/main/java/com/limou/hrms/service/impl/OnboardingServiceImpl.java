@@ -15,6 +15,8 @@ import com.limou.hrms.model.entity.*;
 import com.limou.hrms.model.enums.ApprovalBizType;
 import com.limou.hrms.model.enums.EmployeeStatus;
 import com.limou.hrms.model.enums.OnboardingStatus;
+import com.limou.hrms.model.enums.UserRoleEnum;
+import org.springframework.util.DigestUtils;
 import com.limou.hrms.model.query.OnboardingQuery;
 import com.limou.hrms.model.vo.*;
 import com.limou.hrms.service.ApprovalCallback;
@@ -27,6 +29,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
+import java.security.SecureRandom;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -67,6 +70,8 @@ public class OnboardingServiceImpl
     private DataScopeContext dataScopeContext;
     @Resource
     private ApproverResolver approverResolver;
+    @Resource
+    private UserMapper userMapper;
 
     // ==================== 入职 CRUD ====================
 
@@ -299,7 +304,20 @@ public class OnboardingServiceImpl
         workInfo.setDirectReportId(app.getDirectReportId());
         workInfoMapper.insert(workInfo);
 
-        // 5. 更新入职申请
+        // 5. 创建系统账号（账号=手机号，随机密码）
+        String initialPassword = generateRandomPassword();
+        User user = new User();
+        user.setUserAccount(app.getPhone());
+        user.setUserPassword(DigestUtils.md5DigestAsHex(("limou" + initialPassword).getBytes()));
+        user.setUserName(app.getName());
+        user.setUserRole(UserRoleEnum.USER.getValue());
+        userMapper.insert(user);
+
+        // 关联用户ID到员工
+        employee.setUserId(user.getId());
+        employeeMapper.updateById(employee);
+
+        // 6. 更新入职申请
         app.setEmployeeId(employee.getId());
         app.setStatus(OnboardingStatus.APPROVED.getCode());
         onboardingMapper.updateById(app);
@@ -370,6 +388,42 @@ public class OnboardingServiceImpl
             }
             return String.format("%04d%02d%03d", year, Integer.parseInt(shortCode), seq.getCurrentSeq());
         }
+    }
+
+    // ==================== 预览工号 & 手机查重 ====================
+
+    @Override
+    public String previewEmployeeNo(Long departmentId) {
+        Department dept = departmentMapper.selectById(departmentId);
+        if (dept == null) throw new BusinessException(ErrorCode.PARAMS_ERROR, "部门不存在");
+        String deptCode = dept.getCode();
+        String shortCode = deptCode.length() == 2 ? deptCode : deptCode.substring(deptCode.length() - 2);
+        int year = LocalDate.now().getYear();
+        // 查询当前最大序号，预览不消耗
+        QueryWrapper<EmployeeNoSequence> query = new QueryWrapper<>();
+        query.eq("year", year).eq("dept_code", shortCode);
+        EmployeeNoSequence seq = noSequenceMapper.selectOne(query);
+        int nextSeq = (seq != null) ? seq.getCurrentSeq() + 1 : 1;
+        return String.format("%04d%02d%03d", year, Integer.parseInt(shortCode), nextSeq);
+    }
+
+    @Override
+    public boolean isPhoneAvailable(String phone, Long excludeId) {
+        // 检查 employee 表
+        Long empCount = employeeMapper.selectCount(
+                new QueryWrapper<Employee>().eq("phone", phone).last("LIMIT 1"));
+        if (empCount != null && empCount > 0) return false;
+        // 检查 employee_personal_info 表
+        Long piCount = personalInfoMapper.selectCount(
+                new QueryWrapper<EmployeePersonalInfo>().eq("phone", phone).last("LIMIT 1"));
+        if (piCount != null && piCount > 0) return false;
+        // 检查入职申请表（排除自己）
+        QueryWrapper<OnboardingApplication> qw = new QueryWrapper<>();
+        qw.eq("phone", phone);
+        if (excludeId != null) qw.ne("id", excludeId);
+        qw.last("LIMIT 1");
+        Long onboardCount = onboardingMapper.selectCount(qw);
+        return onboardCount == null || onboardCount == 0;
     }
 
     // ==================== 角色路由查询 ====================
@@ -507,5 +561,16 @@ public class OnboardingServiceImpl
             case 3: return "实习";
             default: return "";
         }
+    }
+
+    private static final String PASSWORD_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    private static final SecureRandom RANDOM = new SecureRandom();
+
+    private String generateRandomPassword() {
+        StringBuilder sb = new StringBuilder(8);
+        for (int i = 0; i < 8; i++) {
+            sb.append(PASSWORD_CHARS.charAt(RANDOM.nextInt(PASSWORD_CHARS.length())));
+        }
+        return sb.toString();
     }
 }

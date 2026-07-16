@@ -19,6 +19,8 @@ import org.springframework.web.bind.annotation.*;
 
 import javax.validation.Valid;
 import java.time.LocalDate;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * 入职管理控制器 — 仅参数绑定，业务逻辑全部在 Service 层
@@ -105,5 +107,27 @@ public class OnboardingController {
         ThrowUtils.throwIf(id == null || id <= 0, ErrorCode.PARAMS_ERROR);
         onboardingService.abandon(id);
         return ResultUtils.success(null);
+    }
+
+    /** 预览工号（不消耗序号） */
+    @PostMapping("/generate-employee-no")
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
+    public BaseResponse<Map<String, String>> previewEmployeeNo(@RequestParam Long departmentId) {
+        String employeeNo = onboardingService.previewEmployeeNo(departmentId);
+        Map<String, String> result = new HashMap<>();
+        result.put("employeeNo", employeeNo);
+        return ResultUtils.success(result);
+    }
+
+    /** 校验手机号唯一性 */
+    @GetMapping("/check-phone")
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
+    public BaseResponse<Map<String, Object>> checkPhone(@RequestParam String phone,
+                                                         @RequestParam(required = false) Long excludeId) {
+        boolean available = onboardingService.isPhoneAvailable(phone, excludeId);
+        Map<String, Object> result = new HashMap<>();
+        result.put("available", available);
+        result.put("message", available ? "可用" : "该手机号已被占用");
+        return ResultUtils.success(result);
     }
 }
