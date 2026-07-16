@@ -135,9 +135,25 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
         ThrowUtils.throwIf(request.getPositionId() == null, ErrorCode.PARAMS_ERROR, "职位不能为空");
         // 手机号格式
         ThrowUtils.throwIf(!phone.matches("^1[3-9]\\d{9}$"), ErrorCode.PARAMS_ERROR, "手机号格式不正确");
-        // 姓名全局唯一
-        long nameCount = this.count(new LambdaQueryWrapper<Employee>().eq(Employee::getEmployeeName, name));
-        ThrowUtils.throwIf(nameCount > 0, ErrorCode.OPERATION_ERROR, "员工姓名 " + name + " 已存在");
+        // 手机号唯一
+        long phoneCount = this.count(new LambdaQueryWrapper<Employee>().eq(Employee::getPhone, phone));
+        ThrowUtils.throwIf(phoneCount > 0, ErrorCode.OPERATION_ERROR, "手机号 " + phone + " 已被其他员工使用");
+
+        // 身份证号唯一（存在 employee_detail 表）
+        if (request.getIdCard() != null && !request.getIdCard().isEmpty()) {
+            long idCardCount = employeeDetailMapper.selectCount(new LambdaQueryWrapper<EmployeeDetail>()
+                    .eq(EmployeeDetail::getIdCard, request.getIdCard()));
+            ThrowUtils.throwIf(idCardCount > 0, ErrorCode.OPERATION_ERROR, "身份证号已存在");
+        }
+
+        // 邮箱：允许为空，填了则验证格式和唯一性
+        String email = null;
+        if (request.getEmail() != null && !request.getEmail().isEmpty()) {
+            email = request.getEmail().trim();
+            ThrowUtils.throwIf(!email.matches("^[\\w.-]+@[\\w.-]+\\.\\w+$"), ErrorCode.PARAMS_ERROR, "邮箱格式不正确");
+            long emailCount = this.count(new LambdaQueryWrapper<Employee>().eq(Employee::getEmail, email));
+            ThrowUtils.throwIf(emailCount > 0, ErrorCode.OPERATION_ERROR, "邮箱 " + email + " 已被其他员工使用");
+        }
         // 部门/职位存在
         Department dept = departmentMapper.selectById(request.getDepartmentId());
         ThrowUtils.throwIf(dept == null, ErrorCode.NOT_FOUND_ERROR, "部门不存在");
@@ -150,8 +166,6 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
             ThrowUtils.throwIf(request.getBaseSalary().compareTo(java.math.BigDecimal.ZERO) < 0, ErrorCode.PARAMS_ERROR, "基本工资不能为负数");
         if (request.getContractType() != null && request.getContractType() == 1)
             ThrowUtils.throwIf(request.getContractExpireDate() == null, ErrorCode.PARAMS_ERROR, "固定期限合同到期日必填");
-        if (request.getEmail() != null && !request.getEmail().isEmpty())
-            ThrowUtils.throwIf(!request.getEmail().matches("^[\\w.-]+@[\\w.-]+\\.\\w+$"), ErrorCode.PARAMS_ERROR, "邮箱格式不正确");
 
         String employeeNo = generateEmployeeNo(request.getDepartmentId());
         Employee emp = new Employee();
@@ -159,7 +173,7 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
         emp.setEmployeeNo(employeeNo);
         emp.setGender(request.getGender());
         emp.setPhone(phone);
-        emp.setEmail(request.getEmail());
+        emp.setEmail(email);
         emp.setDepartmentId(request.getDepartmentId());
         emp.setPositionId(request.getPositionId());
         emp.setHireDate(request.getHireDate());
@@ -188,7 +202,10 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
         // 自动创建系统账号
         User user = new User();
         user.setUserAccount(phone);
-        String initPwd = generateRandomPwd();
+        // 初始密码统一为 12345678
+        String initPwd = "12345678";
+        // 如需启用随机密码，取消下行注释即可（generateRandomPwd() 方法已保留在下方）
+        // String initPwd = generateRandomPwd();
         user.setUserPassword(DigestUtils.md5DigestAsHex((SALT + initPwd).getBytes()));
         user.setUserName(name);
         // roleId 不在此处设置，由管理员后续通过角色分配接口指定
