@@ -50,7 +50,7 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
                 .eq(Attendance::getAttendanceDate, DateUtil.parseDate(today))
                 .one();
 
-        boolean isPunchIn = (punchType == null || punchType == PunchTypeEnum.WEB.getValue());
+        boolean isPunchIn = (punchType == null || punchType.equals(PunchTypeEnum.WEB.getValue()));
 
         if (record == null) {
             // 首次打卡，新建记录

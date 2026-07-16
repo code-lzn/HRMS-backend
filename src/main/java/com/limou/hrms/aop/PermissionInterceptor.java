@@ -16,7 +16,10 @@ import org.springframework.web.servlet.HandlerInterceptor;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpSession;
 import java.io.IOException;
+
+import static com.limou.hrms.constant.UserConstant.USER_LOGIN_STATE;
 
 /**
  * 权限拦截器 —— 遍历 {@link PermissionUrlEnum} 匹配 URL，强制校验权限码
@@ -38,10 +41,25 @@ public class PermissionInterceptor implements HandlerInterceptor {
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response,
                              Object handler) throws IOException {
+
+
+//        // 1. 看 Request 被谁包装了（决定能不能走 Redis）
+//        System.out.println("Request实际类型: " + request.getClass().getName());
+//
+//        // 2. 强制获取 Session（不创建新的）
+//        HttpSession session = request.getSession(false);
+//        System.out.println("当前Session ID: " + (session != null ? session.getId() : "null"));
+//
+//        // 3. 如果 session 不为 null，直接拿原生的 Attribute（绕过你的 service 方法）
+//        if (session != null) {
+//            System.out.println("直接从Session取User: " + session.getAttribute(USER_LOGIN_STATE));
+//        }
+
         // OPTIONS 预检请求不带 Cookie，直接放行
-        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
-            return true;
-        }
+//        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+//            return true;
+//        }
+
 
         String uri = request.getRequestURI();
 
@@ -54,6 +72,7 @@ public class PermissionInterceptor implements HandlerInterceptor {
 
         // 获取当前登录用户（未登录会抛 BusinessException，由 GlobalExceptionHandler 统一处理）
         User currentUser = userService.getLoginUser(request);
+        log.info("当前登录用户: {}", currentUser);
 
         // 检查用户是否拥有该权限
         if (!permissionService.hasPermission(currentUser.getId(), requiredPermission)) {
