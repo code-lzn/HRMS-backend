@@ -8,6 +8,7 @@ package com.limou.hrms.constant;
  */
 public interface UserConstant {
 
+
     /**
      * 用户登录态键
      */

@@ -18,6 +18,14 @@ public enum ErrorCode {
     SYSTEM_ERROR(50000, "系统内部异常"),
     OPERATION_ERROR(50001, "操作失败"),
 
+    // 审批相关
+    APPROVAL_INSTANCE_NOT_FOUND(40001, "审批实例不存在"),
+    APPROVAL_NODE_NOT_FOUND(40002, "审批节点不存在"),
+    APPROVAL_NODE_NOT_OWNER(40003, "该节点不属于当前用户"),
+    APPROVAL_NODE_ALREADY_HANDLED(40004, "该节点已被处理"),
+    APPROVAL_CANCEL_ONLY_FIRST_NODE(40005, "仅第一节点可撤回"),
+    APPROVAL_NODE_TIMEOUT(40011, "审批已超时，无法操作"),
+
     // region 组织架构管理 (30xxx)
     DEPARTMENT_NOT_FOUND(30000, "部门不存在"),
     DEPARTMENT_NAME_DUPLICATE(30001, "部门名称已存在"),

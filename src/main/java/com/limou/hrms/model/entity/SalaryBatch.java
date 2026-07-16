@@ -6,7 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import java.io.Serializable;
 import java.math.BigDecimal;
-import java.util.Date;
+import java.time.LocalDateTime;
 import lombok.Data;
 
 /**
@@ -58,10 +58,10 @@ public class SalaryBatch implements Serializable {
      * 创建人 ID（HR）→ user.id
      */
     private Long createBy;
+    private Long approvalInstanceId;
+    private LocalDateTime createTime;
+    private LocalDateTime updateTime;
 
-    private Date createTime;
-
-    private Date updateTime;
 
     @TableField(exist = false)
     private static final long serialVersionUID = 1L;
