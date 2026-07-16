@@ -2,11 +2,12 @@ package com.limou.hrms.model.dto.department;
 
 import lombok.Data;
 
+import javax.validation.constraints.Min;
 import javax.validation.constraints.Pattern;
 import java.io.Serializable;
 
 /**
- * 更新部门请求
+ * 更新部门请求（部分更新，仅校验格式；非空校验在 Service 层处理）
  */
 @Data
 public class DepartmentUpdateRequest implements Serializable {
@@ -17,9 +18,9 @@ public class DepartmentUpdateRequest implements Serializable {
     private String name;
 
     /**
-     * 部门编码
+     * 部门编码（传值时必须为纯数字）
      */
-    @Pattern(regexp = "^\\d+$", message = "部门编码必须为纯数字")
+    @Pattern(regexp = "^\\d*$", message = "部门编码必须为纯数字")
     private String code;
 
     /**
@@ -35,6 +36,7 @@ public class DepartmentUpdateRequest implements Serializable {
     /**
      * 排序序号
      */
+    @Min(value = 0, message = "排序序号不能小于0")
     private Integer sortOrder;
 
     /**

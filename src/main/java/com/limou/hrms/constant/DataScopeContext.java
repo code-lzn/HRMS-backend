@@ -62,8 +62,16 @@ public class DataScopeContext {
     }
 
     /** 组织架构管理权限 — 仅 admin / hr */
-    public boolean canManageOrganization() {
-        return "admin".equals(currentRole) || "hr".equals(currentRole);
+    public DataScopeEnum canManageOrganization() {
+        switch(currentRole){
+            case "hr":
+            case "admin":
+                return DataScopeEnum.ALL;
+            case "dept_head":
+                return DataScopeEnum.DEPT;
+            default:
+                return DataScopeEnum.NONE;
+        }
     }
 
     /** 考勤管理数据范围 */

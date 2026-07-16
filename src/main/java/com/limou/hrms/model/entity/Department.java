@@ -41,6 +41,11 @@ public class Department implements Serializable {
     private Long managerId;
 
     /**
+     * 层级深度（0=根部门，逐级+1）
+     */
+    private Integer level;
+
+    /**
      * 排序序号
      */
     private Integer sortOrder;

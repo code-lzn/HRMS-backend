@@ -5,9 +5,12 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.limou.hrms.common.ErrorCode;
+import com.limou.hrms.constant.DataScopeContext;
+import com.limou.hrms.constant.DataScopeEnum;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.mapper.DepartmentMapper;
 import com.limou.hrms.mapper.EmployeeMapper;
+import com.limou.hrms.mapper.EmployeePersonalInfoMapper;
 import com.limou.hrms.mapper.EmployeeWorkInfoMapper;
 import com.limou.hrms.model.dto.department.DepartmentCreateRequest;
 import com.limou.hrms.model.dto.department.DepartmentQueryRequest;
@@ -15,10 +18,10 @@ import com.limou.hrms.model.dto.department.DepartmentUpdateRequest;
 import com.limou.hrms.model.entity.Department;
 import com.limou.hrms.model.entity.DeptEmployeeCount;
 import com.limou.hrms.model.entity.Employee;
+import com.limou.hrms.model.entity.EmployeePersonalInfo;
 import com.limou.hrms.model.entity.EmployeeWorkInfo;
 import com.limou.hrms.model.entity.User;
 import com.limou.hrms.model.enums.EmployeeStatus;
-import com.limou.hrms.model.enums.UserRoleEnum;
 import com.limou.hrms.model.vo.DepartmentTreeNode;
 import com.limou.hrms.model.vo.DepartmentVO;
 import com.limou.hrms.service.DepartmentService;
@@ -44,6 +47,10 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
 
     private final EmployeeWorkInfoMapper employeeWorkInfoMapper;
 
+    private final EmployeePersonalInfoMapper employeePersonalInfoMapper;
+
+    private final DataScopeContext dataScopeContext;
+
     private static final int MAX_DEPTH = 5;
 
     // ==================== 创建部门 ====================
@@ -54,11 +61,12 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
         checkNameUnique(dto.getName(), null);
         checkCodeUnique(dto.getCode(), null);
         checkSortOrderUnique(dto.getParentId(), dto.getSortOrder(), null);
-        validateParentAndDepth(dto.getParentId());
+        Department parent = validateParentAndDepth(dto.getParentId());
         validateManagerActive(dto.getManagerId());
 
         Department department = new Department();
         BeanUtils.copyProperties(dto, department);
+        department.setLevel(parent.getLevel() + 1);
         boolean saved = this.save(department);
         if (!saved) {
             throw new BusinessException(ErrorCode.OPERATION_ERROR, "创建部门失败");
@@ -80,12 +88,23 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
         if (StringUtils.hasText(dto.getCode())) {
             checkCodeUnique(dto.getCode(), id);
         }
-        if (dto.getParentId() != null) {
+        if (dto.getParentId() != null && !dto.getParentId().equals(existDept.getParentId())) {
             checkNotCircularRef(id, dto.getParentId());
-            int level = calculateLevel(dto.getParentId());
-            if (level >= MAX_DEPTH) {
+            Department newParent = getUndeletedDeptOrThrow(dto.getParentId());
+
+            // 最深子节点移动后不能超过最大层级
+            int newRootLevel = newParent.getLevel() + 1;
+            int levelDiff = newRootLevel - existDept.getLevel();
+            int maxDescLevel = getMaxDescendantLevel(id);
+            if (maxDescLevel + levelDiff >= MAX_DEPTH) {
                 throw new BusinessException(ErrorCode.DEPARTMENT_MAX_DEPTH_EXCEEDED);
             }
+
+            // 级联更新当前部门及所有子部门的 level
+            if (levelDiff != 0) {
+                updateDescendantLevels(id, levelDiff);
+            }
+            existDept.setLevel(newRootLevel);
         }
         if (dto.getSortOrder() != null) {
             Long effectiveParentId = dto.getParentId() != null ? dto.getParentId() : existDept.getParentId();
@@ -116,19 +135,10 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
         getUndeletedDeptOrThrow(id);
 
         // ① 检查是否有子部门
-        List<Department> children = this.lambdaQuery()
-                .eq(Department::getParentId, id).list();
-        if (!children.isEmpty()) {
-            Map<String, Object> data = new HashMap<>();
-            data.put("childDepartments", children.stream()
-                    .map(d -> {
-                        Map<String, Object> m = new HashMap<>();
-                        m.put("id", d.getId());
-                        m.put("name", d.getName());
-                        return m;
-                    }).collect(Collectors.toList()));
-            throw new BusinessException(ErrorCode.DEPARTMENT_HAS_CHILDREN.getCode(),
-                    ErrorCode.DEPARTMENT_HAS_CHILDREN.getMessage());
+        long childCount = this.lambdaQuery()
+                .eq(Department::getParentId, id).count();
+        if (childCount > 0) {
+            throw new BusinessException(ErrorCode.DEPARTMENT_HAS_CHILDREN);
         }
 
         // ② 检查是否有在职员工
@@ -143,10 +153,8 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
                             .in(Employee::getId, employeeIds)
                             .in(Employee::getStatus, EmployeeStatus.getActiveValues()));
             if (activeCount > 0) {
-                Map<String, Object> data = new HashMap<>();
-                data.put("employeeCount", activeCount);
-                throw new BusinessException(ErrorCode.DEPARTMENT_HAS_EMPLOYEES.getCode(),
-                        ErrorCode.DEPARTMENT_HAS_EMPLOYEES.getMessage());
+                throw new BusinessException(ErrorCode.DEPARTMENT_HAS_EMPLOYEES,
+                        "该部门下存在 " + activeCount + " 名在职员工，无法删除");
             }
         }
 
@@ -158,188 +166,173 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
         log.info("用户 {} 删除了部门 ID: {}", loginUser.getId(), id);
     }
 
-    // ==================== 部门树 ====================
+    // ==================== 部门查询（数据权限） ====================
 
-    @Override
-    public List<DepartmentTreeNode> getDepartmentTree(User loginUser) {
-        List<Department> allDepts = this.lambdaQuery()
-                .orderByAsc(Department::getSortOrder).list();//查询出来所有的部门集合
-
-        if (allDepts.isEmpty()) {
-            return Collections.emptyList();//如果没有部门，则返回空集合
-        }
-
-        // 批量统计在职员工数
-        List<DeptEmployeeCount> countResults =
-                employeeMapper.countActiveByDept(EmployeeStatus.getActiveValues());
-
-        Map<Long, Integer> directCountMap = countResults.stream()
-                .collect(Collectors.toMap(
-                        DeptEmployeeCount::getDepartmentId,
-                        DeptEmployeeCount::getCnt
-                ));
-
-        // 数据权限过滤
-        Set<Long> allowedDeptIds = resolveDataScope(loginUser, allDepts);
-        if (allowedDeptIds != null) {
-            Set<Long> withAncestors = new HashSet<>(allowedDeptIds);
-            for (Department dept : allDepts) {
-                if (allowedDeptIds.contains(dept.getId())) {
-                    addAncestors(dept, allDepts, withAncestors);
-                }
-            }
-            allDepts = allDepts.stream()
-                    .filter(d -> withAncestors.contains(d.getId()))
-                    .collect(Collectors.toList());
-        }
-
-        // 构建父子关系 Map
-        Map<Long, List<Department>> childrenMap = allDepts.stream()
-                .collect(Collectors.groupingBy(d ->
-                        d.getParentId() == null ? 0L : d.getParentId()));
-
-        // dept_head 以本人管理的部门为根构建子树
-        if (allowedDeptIds != null && loginUser != null) {
-            UserRoleEnum role = UserRoleEnum.getEnumByValue(loginUser.getUserRole());
-            if (role == UserRoleEnum.DEPT_HEAD) {
-                Employee employee = employeeMapper.selectByUserId(loginUser.getId());
-                if (employee != null) {
-                    Department rootDept = allDepts.stream()
-                            .filter(d -> employee.getId().equals(d.getManagerId()))
-                            .findFirst().orElse(null);
-                    if (rootDept != null) {
-                        List<DepartmentTreeNode> result = new ArrayList<>();
-                        result.add(buildNode(rootDept, childrenMap, directCountMap));
-                        return result;
-                    }
-                }
-                return Collections.emptyList();
-            }
-        }
-
-        // 从根部门出发递归组装
-        return childrenMap.getOrDefault(0L, Collections.emptyList()).stream()
-                .map(dept -> buildNode(dept, childrenMap, directCountMap))
-                .collect(Collectors.toList());
+    /**
+     * HR/admin 全量查询所有部门（按层级+排序号保证父节点在子节点前）
+     */
+    private List<Department> queryAllDepartments() {
+        return this.lambdaQuery()
+                .orderByAsc(Department::getLevel, Department::getSortOrder).list();
     }
 
-    // ==================== 部门列表（平铺） ====================
+    /**
+     * dept_head 管辖部门查询（SQL IN 过滤）
+     */
+    private List<Department> queryManagedDepartments() {
+        Set<Long> allowedIds = dataScopeContext.getManagedDepartmentIds();
+        if (allowedIds == null || allowedIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return this.lambdaQuery()
+                .in(Department::getId, allowedIds)
+                .orderByAsc(Department::getLevel, Department::getSortOrder).list();
+    }
+
+    // ==================== 部门树 ====================
+
+    // ==================== 部门查询 ====================
 
     @Override
-    public Page<DepartmentVO> getDepartmentList(DepartmentQueryRequest queryReq, User loginUser) {
-        checkReadPermission(loginUser);
-
-        LambdaQueryWrapper<Department> query = Wrappers.<Department>lambdaQuery();
-        if (StringUtils.hasText(queryReq.getKeyword())) {
-            query.like(Department::getName, queryReq.getKeyword());
+    public List<DepartmentTreeNode> queryDepartments(String keyword) {
+        DataScopeEnum scope = dataScopeContext.canManageOrganization();
+        if (scope == DataScopeEnum.NONE) {
+            return Collections.emptyList();
         }
-        if (queryReq.getParentId() != null) {
-            query.eq(Department::getParentId, queryReq.getParentId());
+
+        LambdaQueryWrapper<Department> query = Wrappers.lambdaQuery();
+
+        // keyword 模糊匹配 name 或 code
+        if (StringUtils.hasText(keyword)) {
+            query.and(w -> w.like(Department::getName, keyword)
+                    .or().like(Department::getCode, keyword));
         }
-        query.orderByAsc(Department::getSortOrder);
 
-        Page<Department> page = this.page(
-                new Page<>(queryReq.getCurrent(), queryReq.getPageSize()), query);
-
-        // 部门主管只返回管辖范围内的部门
-        UserRoleEnum role = UserRoleEnum.getEnumByValue(loginUser.getUserRole());
-        if (role == UserRoleEnum.DEPT_HEAD) {
-            List<Department> allDepts = this.lambdaQuery().list();
-            Set<Long> allowedIds = resolveDataScope(loginUser, allDepts);
+        // dept_head：只查管辖范围
+        if (scope == DataScopeEnum.DEPT) {
+            Set<Long> allowedIds = dataScopeContext.getManagedDepartmentIds();
             if (allowedIds == null || allowedIds.isEmpty()) {
-                return new Page<>(queryReq.getCurrent(), queryReq.getPageSize(), 0);
+                return Collections.emptyList();
             }
-            List<Department> filtered = page.getRecords().stream()
-                    .filter(d -> allowedIds.contains(d.getId()))
-                    .collect(Collectors.toList());
-            page.setRecords(filtered);
-            page.setTotal(filtered.size());
+            query.in(Department::getId, allowedIds);
         }
 
-        // 批量查人数
-        List<DeptEmployeeCount> countResults =
-                employeeMapper.countActiveByDept(EmployeeStatus.getActiveValues());
+        query.orderByAsc(Department::getLevel, Department::getSortOrder);
+        List<Department> depts = this.list(query);
 
-        Map<Long, Integer> countMap = countResults.stream()
-                .collect(Collectors.toMap(DeptEmployeeCount::getDepartmentId, DeptEmployeeCount::getCnt));
+        if (depts.isEmpty()) {
+            return Collections.emptyList();
+        }
 
-        // 全量部门（用于查 parentName、level、childCount）
-        List<Department> allDepts = this.lambdaQuery().list();
-        Map<Long, Department> deptMap = allDepts.stream()
-                .collect(Collectors.toMap(Department::getId, d -> d));
+        // 员工数聚合 + 负责人姓名
+        Map<Long, Integer> directCountMap = loadDirectCountMap();
+        Map<Long, Integer> totalCountMap = aggregateEmployeeCount(depts, directCountMap);
+        Map<Long, String> managerNameMap = loadManagerNameMap(depts);
 
-        // 统计子部门数
-        Map<Long, Long> childCountMap = allDepts.stream()
-                .filter(d -> d.getParentId() != null)
-                .collect(Collectors.groupingBy(Department::getParentId, Collectors.counting()));
-
-        List<DepartmentVO> voList = page.getRecords().stream().map(dept -> {
-            DepartmentVO vo = new DepartmentVO();
-            BeanUtils.copyProperties(dept, vo);
-            if (dept.getParentId() != null && deptMap.containsKey(dept.getParentId())) {
-                vo.setParentName(deptMap.get(dept.getParentId()).getName());
-            }
-            vo.setLevel(calculateLevelFromMap(dept, deptMap));
-            vo.setEmployeeCount(countMap.getOrDefault(dept.getId(), 0));
-            vo.setChildCount(childCountMap.getOrDefault(dept.getId(), 0L).intValue());
-            return vo;
+        return depts.stream().map(d -> {
+            DepartmentTreeNode node = new DepartmentTreeNode();
+            node.setId(d.getId());
+            node.setName(d.getName());
+            node.setCode(d.getCode());
+            node.setParentId(d.getParentId());
+            node.setManagerId(d.getManagerId());
+            node.setManagerName(managerNameMap.get(d.getManagerId()));
+            node.setSortOrder(d.getSortOrder());
+            node.setLevel(d.getLevel());
+            node.setDescription(d.getDescription());
+            node.setEmployeeCount(totalCountMap.getOrDefault(d.getId(), 0));
+            return node;
         }).collect(Collectors.toList());
+    }
 
-        Page<DepartmentVO> resultPage = new Page<>(page.getCurrent(), page.getSize(), page.getTotal());
-        resultPage.setRecords(voList);
-        return resultPage;
+    /**
+     * 按 level 降序自底向上聚合员工数（叶子 → 根）
+     */
+    private Map<Long, Integer> aggregateEmployeeCount(List<Department> depts,
+                                                       Map<Long, Integer> directCountMap) {
+        List<Department> levelDesc = new ArrayList<>(depts);
+        levelDesc.sort((a, b) -> Integer.compare(b.getLevel(), a.getLevel()));
+
+        Map<Long, Integer> totalMap = new HashMap<>();
+        for (Department d : levelDesc) {
+            int direct = directCountMap.getOrDefault(d.getId(), 0);
+            int childrenSum = totalMap.getOrDefault(d.getId(), 0);
+            int myTotal = direct + childrenSum;
+            totalMap.put(d.getId(), myTotal);
+
+            if (d.getParentId() != null) {
+                totalMap.merge(d.getParentId(), myTotal, Integer::sum);
+            }
+        }
+        return totalMap;
     }
 
     // ==================== 部门详情 ====================
 
     @Override
-    public DepartmentVO getDepartmentDetail(Long id, User loginUser) {
-        checkReadPermission(loginUser);
-        Department dept = getUndeletedDeptOrThrow(id);
-
-        // 部门主管只能查看自己管辖范围内的部门
-        UserRoleEnum role = UserRoleEnum.getEnumByValue(loginUser.getUserRole());
-        if (role == UserRoleEnum.DEPT_HEAD) {
-            List<Department> allDepts = this.lambdaQuery().list();
-            Set<Long> allowedIds = resolveDataScope(loginUser, allDepts);
-            if (allowedIds == null || !allowedIds.contains(id)) {
-                throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
-            }
+    public DepartmentVO getDepartmentDetail(Long id) {
+        DataScopeEnum scope = dataScopeContext.canManageOrganization();
+        if (scope == DataScopeEnum.NONE) {
+            throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
         }
+        if (scope == DataScopeEnum.DEPT) {
+            //部门管理员逻辑
+            return getDeptDetailForDeptHead(id);
+        }
+        //HR管理员逻辑
+        return getDeptDetailForAdminHr(id);
+    }
 
-        List<Department> allDepts = this.lambdaQuery()
-                .orderByAsc(Department::getSortOrder).list();
+    /**
+     * HR/admin：直接查详情
+     */
+    private DepartmentVO getDeptDetailForAdminHr(Long id) {
+        Department dept = getUndeletedDeptOrThrow(id);
+        List<Department> allDepts = this.lambdaQuery().list();
+
+        //部门id->部门
         Map<Long, Department> deptMap = allDepts.stream()
                 .collect(Collectors.toMap(Department::getId, d -> d));
+        //查询每个部门的人数
+        Map<Long, Integer> countMap = loadCountMap();
+        //查询负责人姓名
+        Map<Long, String> managerNameMap = loadManagerNameMap(allDepts);
 
-        // 批量查人数
-        List<DeptEmployeeCount> countResults =
-                employeeMapper.countActiveByDept(EmployeeStatus.getActiveValues());
-        Map<Long, Integer> countMap = new HashMap<>();
-        for (DeptEmployeeCount r : countResults) {
-            countMap.put(r.getDepartmentId(), r.getCnt());
-        }
-
-        DepartmentVO vo = toDepartmentVO(dept, deptMap, countMap);
-
-        // 直接子部门简要信息
+        DepartmentVO vo = toDepartmentVO(dept, deptMap, countMap, managerNameMap);
         List<DepartmentVO> children = allDepts.stream()
                 .filter(d -> id.equals(d.getParentId()))
-                .map(d -> toDepartmentVO(d, deptMap, countMap))
+                .map(d -> toDepartmentVO(d, deptMap, countMap, managerNameMap))
                 .collect(Collectors.toList());
         vo.setChildren(children);
+        return vo;
+    }
 
+    /**
+     * 部门管理员：校验管辖范围后查详情
+     */
+    private DepartmentVO getDeptDetailForDeptHead(Long id) {
+        Set<Long> allowedIds = dataScopeContext.getManagedDepartmentIds();
+        if (allowedIds == null || !allowedIds.contains(id)) {
+            throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
+        }
+
+        Department dept = getUndeletedDeptOrThrow(id);
+        List<Department> allDepts = this.lambdaQuery().list();
+        Map<Long, Department> deptMap = allDepts.stream()
+                .collect(Collectors.toMap(Department::getId, d -> d));
+        Map<Long, Integer> countMap = loadCountMap();
+        Map<Long, String> managerNameMap = loadManagerNameMap(allDepts);
+
+        DepartmentVO vo = toDepartmentVO(dept, deptMap, countMap, managerNameMap);
+        List<DepartmentVO> children = allDepts.stream()
+                .filter(d -> id.equals(d.getParentId()))
+                .map(d -> toDepartmentVO(d, deptMap, countMap, managerNameMap))
+                .collect(Collectors.toList());
+        vo.setChildren(children);
         return vo;
     }
 
     // ==================== 私有校验方法 ====================
-
-    private void checkReadPermission(User loginUser) {
-        UserRoleEnum role = UserRoleEnum.getEnumByValue(loginUser.getUserRole());
-        if (role != UserRoleEnum.ADMIN && role != UserRoleEnum.HR && role != UserRoleEnum.DEPT_HEAD) {
-            throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
-        }
-    }
 
     private Department getUndeletedDeptOrThrow(Long id) {
         Department dept = this.lambdaQuery().eq(Department::getId, id).one();
@@ -384,33 +377,15 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
         }
     }
 
-    private int validateParentAndDepth(Long parentId) {
+    private Department validateParentAndDepth(Long parentId) {
         if (parentId == null) {
             throw new BusinessException(ErrorCode.DEPARTMENT_PARENT_REQUIRED);
         }
-        getUndeletedDeptOrThrow(parentId);
-        int level = calculateLevel(parentId);
-        if (level >= MAX_DEPTH) {
+        Department parent = getUndeletedDeptOrThrow(parentId);
+        if (parent.getLevel() >= MAX_DEPTH) {
             throw new BusinessException(ErrorCode.DEPARTMENT_MAX_DEPTH_EXCEEDED);
         }
-        return level + 1;
-    }
-
-    private int calculateLevel(Long parentId) {
-        if (parentId == null) return 0;
-        int level = 1;
-        Long currentId = parentId;
-        while (currentId != null) {
-            Department parent = this.lambdaQuery()
-                    .eq(Department::getId, currentId).one();
-            if (parent == null || parent.getParentId() == null) {
-                break;
-            }
-            level++;
-            if (level > MAX_DEPTH) break;
-            currentId = parent.getParentId();
-        }
-        return level;
+        return parent;
     }
 
     private void validateManagerActive(Long managerId) {
@@ -445,80 +420,92 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
         return result;
     }
 
-    // ==================== 树构建辅助 ====================
-
-    private DepartmentTreeNode buildNode(Department dept,
-                                         Map<Long, List<Department>> childrenMap,
-                                         Map<Long, Integer> directCountMap) {
-        DepartmentTreeNode node = new DepartmentTreeNode();
-        BeanUtils.copyProperties(dept, node);
-        node.setChildren(new ArrayList<>());
-
-        List<DepartmentTreeNode> children = childrenMap
-                .getOrDefault(dept.getId(), Collections.emptyList()).stream()
-                .map(child -> buildNode(child, childrenMap, directCountMap))
-                .collect(Collectors.toList());
-        node.setChildren(children);
-
-        int directCount = directCountMap.getOrDefault(dept.getId(), 0);
-        int childrenCount = children.stream()
-                .mapToInt(DepartmentTreeNode::getEmployeeCount).sum();
-        node.setEmployeeCount(directCount + childrenCount);
-
-        return node;
+    /**
+     * 获取当前部门及所有子孙部门中的最大 level
+     */
+    private int getMaxDescendantLevel(Long deptId) {
+        Set<Long> ids = new HashSet<>(collectDescendantIds(deptId));
+        ids.add(deptId);
+        return this.lambdaQuery()
+                .in(Department::getId, ids)
+                .list().stream()
+                .mapToInt(Department::getLevel)
+                .max().orElse(0);
     }
 
-    // ==================== 数据权限辅助 ====================
-
-    private Set<Long> resolveDataScope(User loginUser, List<Department> allDepts) {
-        if (loginUser == null) return Collections.emptySet();
-
-        UserRoleEnum role = UserRoleEnum.getEnumByValue(loginUser.getUserRole());
-        if (role == null) return Collections.emptySet();
-
-        // admin / hr → 全量
-        if (role == UserRoleEnum.ADMIN || role == UserRoleEnum.HR) {
-            return null;
+    /**
+     * 批量更新当前部门及所有子孙部门的 level（平移时使用）
+     */
+    private void updateDescendantLevels(Long deptId, int levelDiff) {
+        Set<Long> ids = new HashSet<>(collectDescendantIds(deptId));
+        ids.add(deptId);
+        List<Department> subtree = this.lambdaQuery()
+                .in(Department::getId, ids).list();
+        for (Department d : subtree) {
+            d.setLevel(d.getLevel() + levelDiff);
         }
-        // dept_head → 本人管理的部门及所有子部门
-        if (role == UserRoleEnum.DEPT_HEAD) {
-            Employee employee = employeeMapper.selectByUserId(loginUser.getId());
-            if (employee == null) return Collections.emptySet();
-            Set<Long> managedDeptIds = allDepts.stream()
-                    .filter(d -> employee.getId().equals(d.getManagerId()))
-                    .map(Department::getId)
-                    .collect(Collectors.toSet());
-            if (managedDeptIds.isEmpty()) return Collections.emptySet();
-            // 包含所有子部门
-            Set<Long> expanded = new HashSet<>(managedDeptIds);
-            for (Long deptId : managedDeptIds) {
-                expanded.addAll(collectDescendantIds(deptId));
-            }
-            return expanded;
-        }
-        return Collections.emptySet();
+        this.updateBatchById(subtree);
     }
 
-    private void addAncestors(Department dept, List<Department> allDepts, Set<Long> result) {
-        Long parentId = dept.getParentId();
-        while (parentId != null) {
-            result.add(parentId);
-            Long finalPid = parentId;
-            Department parent = allDepts.stream()
-                    .filter(d -> d.getId().equals(finalPid)).findFirst().orElse(null);
-            parentId = parent != null ? parent.getParentId() : null;
+    // ==================== 数据加载辅助 ====================
+
+    /**
+     * 批量加载各部门直属在职员工数
+     */
+    private Map<Long, Integer> loadDirectCountMap() {
+        List<DeptEmployeeCount> countResults =
+                employeeMapper.countActiveByDept(EmployeeStatus.getActiveValues());
+        return countResults.stream()
+                .collect(Collectors.toMap(
+                        DeptEmployeeCount::getDepartmentId,
+                        DeptEmployeeCount::getCnt
+                ));
+    }
+
+    /**
+     * 批量加载各部门在职员工数（HashMap，用于详情/列表）
+     */
+    private Map<Long, Integer> loadCountMap() {
+        List<DeptEmployeeCount> countResults =
+                employeeMapper.countActiveByDept(EmployeeStatus.getActiveValues());
+        Map<Long, Integer> countMap = new HashMap<>();
+        for (DeptEmployeeCount r : countResults) {
+            countMap.put(r.getDepartmentId(), r.getCnt());
         }
+        return countMap;
+    }
+
+    /**
+     * 批量加载部门负责人姓名（employeeId → name）
+     */
+    private Map<Long, String> loadManagerNameMap(List<Department> depts) {
+        Set<Long> managerIds = depts.stream()
+                .map(Department::getManagerId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (managerIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        return employeePersonalInfoMapper.selectList(
+                        Wrappers.<EmployeePersonalInfo>lambdaQuery()
+                                .in(EmployeePersonalInfo::getEmployeeId, managerIds))
+                .stream()
+                .collect(Collectors.toMap(
+                        EmployeePersonalInfo::getEmployeeId,
+                        EmployeePersonalInfo::getName));
     }
 
     // ==================== VO 转换辅助 ====================
 
     private DepartmentVO toDepartmentVO(Department dept, Map<Long, Department> deptMap,
-                                        Map<Long, Integer> countMap) {
+                                        Map<Long, Integer> countMap,
+                                        Map<Long, String> managerNameMap) {
         DepartmentVO vo = new DepartmentVO();
         BeanUtils.copyProperties(dept, vo);
         if (dept.getParentId() != null && deptMap.containsKey(dept.getParentId())) {
             vo.setParentName(deptMap.get(dept.getParentId()).getName());
         }
+        vo.setManagerName(managerNameMap.get(dept.getManagerId()));
         vo.setLevel(calculateLevelFromMap(dept, deptMap));
         vo.setEmployeeCount(countMap.getOrDefault(dept.getId(), 0));
         return vo;
