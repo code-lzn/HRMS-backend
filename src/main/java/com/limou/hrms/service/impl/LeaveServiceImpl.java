@@ -31,6 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 import javax.annotation.Resource;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
 import java.util.Objects;
@@ -69,9 +70,8 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
 
         ThrowUtils.throwIf(start.after(end), ErrorCode.PARAMS_ERROR, "开始日期不能晚于结束日期");
 
-        // 计算请假天数（8小时=1天，最少0.5天）
-        long hours = DateUtil.between(start, end, DateUnit.HOUR, false);
-        double days = Math.max(hours / 8.0, 0.5);
+        // 计算请假天数（基于工作时间 9:00-18:00，最少0.5天）
+        double days = calculateLeaveDays(start, end);
 
         // 年假/病假/调休校验余额
         checkLeaveBalance(emp.getId(), leaveType, BigDecimal.valueOf(days));
@@ -259,6 +259,44 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
 
         ThrowUtils.throwIf(remaining.compareTo(days) < 0,
                 ErrorCode.PARAMS_ERROR, label + "余额不足，剩余 " + remaining + " 天，申请 " + days + " 天");
+    }
+
+    /**
+     * 计算请假天数，仅统计工作时间 (9:00-18:00) 内的重叠小时数
+     */
+    private double calculateLeaveDays(Date start, Date end) {
+        final int WORK_START = AttendanceConstant.DEFAULT_WORK_START_HOUR; // 9
+        final int WORK_END = AttendanceConstant.DEFAULT_WORK_END_HOUR;     // 18
+        final double WORK_HOURS_PER_DAY = WORK_END - WORK_START;           // 9
+
+        long totalWorkMinutes = 0;
+        Calendar cursor = DateUtil.beginOfDay(start).toCalendar();
+        cursor.set(Calendar.MILLISECOND, 0);
+        Date endDate = end;
+
+        while (!cursor.getTime().after(endDate)) {
+            Date dayStart = cursor.getTime();
+            Date dayEnd = DateUtil.endOfDay(dayStart);
+
+            // 当天的工作时间段
+            Date workStart = DateUtil.offsetHour(dayStart, WORK_START);
+            Date workEnd = DateUtil.offsetHour(dayStart, WORK_END);
+
+            // 当天请假区间 ∩ 工作时间
+            Date segStart = start.after(dayStart) ? start : dayStart;
+            Date segEnd = end.before(dayEnd) ? end : dayEnd;
+            Date overlapStart = segStart.after(workStart) ? segStart : workStart;
+            Date overlapEnd = segEnd.before(workEnd) ? segEnd : workEnd;
+
+            if (overlapStart.before(overlapEnd)) {
+                totalWorkMinutes += DateUtil.between(overlapStart, overlapEnd, DateUnit.MINUTE);
+            }
+
+            cursor.add(Calendar.DAY_OF_MONTH, 1);
+        }
+
+        double days = totalWorkMinutes / 60.0 / WORK_HOURS_PER_DAY;
+        return Math.max(days, 0.5);
     }
 
     private LeaveVO convertToVO(Leave request, Employee emp) {

@@ -519,13 +519,18 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
     private Long resolveApprover(ApprovalFlowNode node, Employee applicant) {
         return resolveApprover(node, applicant, null);
     }
+    //解析审批流；部门id是否为空进行校验-有部门id，部门主管进行审批，
+    // 没有的话是直接上级进行审批
+    //否则是这个节点的审批人id进行负责
 
     private Long resolveApprover(ApprovalFlowNode node, Employee applicant, Long targetDepartmentId) {
+        //审批员工校验
         if (applicant == null) return null;
-
+        //审批类型校验
         ApproverTypeEnum approverType = ApproverTypeEnum.getEnumByValue(node.getApproverType());
+        //当审批类型为空时，直接返回节点的审批人
         if (approverType == null) return node.getApproverId();
-
+        //审批类型不是空的时候，根据审批类型进行审批人解析
         switch (approverType) {
             case DEPT_MANAGER: {
                 Long deptId = targetDepartmentId != null ? targetDepartmentId : applicant.getDepartmentId();

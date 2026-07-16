@@ -9,10 +9,7 @@ import com.limou.hrms.mapper.MakeupPunchMapper;
 import com.limou.hrms.model.entity.Attendance;
 import com.limou.hrms.model.entity.Employee;
 import com.limou.hrms.model.entity.MakeupPunch;
-import com.limou.hrms.model.enums.ApprovalStatusEnum;
-import com.limou.hrms.model.enums.AttendanceStatusEnum;
-import com.limou.hrms.model.enums.MakeupPunchTypeEnum;
-import com.limou.hrms.model.enums.PunchTypeEnum;
+import com.limou.hrms.model.enums.*;
 import com.limou.hrms.model.vo.MakeupPunchVO;
 import com.limou.hrms.service.ApprovalService;
 import com.limou.hrms.service.AttendanceService;
@@ -65,7 +62,7 @@ public class MakeupPunchServiceImpl extends ServiceImpl<MakeupPunchMapper, Makeu
         ThrowUtils.throwIf(!saved, ErrorCode.OPERATION_ERROR, "补卡申请失败");
 
         // 同步到审批中心
-        approvalService.startApproval("PATCH_CLOCK", request.getId(), emp.getId(), emp.getEmployeeName());
+        approvalService.startApproval(BusinessTypeEnum.PATCH_CLOCK.getValue(), request.getId(), emp.getId(), emp.getEmployeeName());
 
         return convertToVO(request, emp);
     }
