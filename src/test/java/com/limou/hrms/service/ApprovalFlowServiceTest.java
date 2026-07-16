@@ -1,6 +1,7 @@
 package com.limou.hrms.service;
 
 import com.limou.hrms.common.ErrorCode;
+import com.limou.hrms.constant.DataScopeContext;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.mapper.*;
 import com.limou.hrms.model.entity.*;
@@ -32,6 +33,7 @@ class ApprovalFlowServiceTest {
     @Mock private ApprovalNodeMapper nodeMapper;
     @Mock private EmployeeMapper employeeMapper;
     @Mock private ApprovalDelegateService delegateService;
+    @Mock private DataScopeContext dataScopeContext;
     @Mock private CacheManager cacheManager;
 
     @InjectMocks

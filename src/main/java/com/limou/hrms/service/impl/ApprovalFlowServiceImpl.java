@@ -7,8 +7,8 @@ import com.limou.hrms.builder.ApprovalNodeBuilder;
 import com.limou.hrms.builder.ApprovalNodeBuilderFactory;
 import com.limou.hrms.builder.ApproverResolver;
 import com.limou.hrms.common.ErrorCode;
+import com.limou.hrms.constant.DataScopeContext;
 import com.limou.hrms.exception.BusinessException;
-import com.limou.hrms.interceptor.EmployeeResolveInterceptor;
 import com.limou.hrms.mapper.*;
 import com.limou.hrms.model.entity.*;
 import com.limou.hrms.model.enums.ApprovalBizType;
@@ -22,14 +22,10 @@ import com.limou.hrms.service.ApprovalFlowService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.cache.CacheManager;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
 
 import javax.annotation.Resource;
-import javax.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -51,6 +47,8 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
     private ApprovalDelegateService approvalDelegateService;
     @Resource
     private ApproverResolver approverResolver;
+    @Resource
+    private DataScopeContext dataScopeContext;
     @Resource
     private CacheManager cacheManager;
 
@@ -597,9 +595,7 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
 
     private Long resolveCurrentEmployeeId() {
         if (testEmployeeId != null) return testEmployeeId;
-        ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.currentRequestAttributes();
-        HttpServletRequest request = attrs.getRequest();
-        Long employeeId = (Long) request.getAttribute(EmployeeResolveInterceptor.CURRENT_EMPLOYEE_ID);
+        Long employeeId = dataScopeContext.getCurrentEmployeeId();
         if (employeeId == null) {
             throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR, "未登录或未关联员工档案");
         }
@@ -608,9 +604,7 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
 
     private String resolveCurrentUserRole() {
         if (testRole != null) return testRole;
-        ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.currentRequestAttributes();
-        HttpServletRequest request = attrs.getRequest();
-        String role = (String) request.getAttribute(EmployeeResolveInterceptor.CURRENT_USER_ROLE);
+        String role = dataScopeContext.getCurrentRole();
         return role != null ? role : "user";
     }
 

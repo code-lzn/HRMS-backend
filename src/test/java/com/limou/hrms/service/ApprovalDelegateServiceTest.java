@@ -1,6 +1,7 @@
 package com.limou.hrms.service;
 
 import com.limou.hrms.common.ErrorCode;
+import com.limou.hrms.constant.DataScopeContext;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.mapper.ApprovalDelegateMapper;
 import com.limou.hrms.model.dto.approval.DelegateSettingDTO;
@@ -32,6 +33,8 @@ class ApprovalDelegateServiceTest {
 
     @Mock
     private ApprovalDelegateMapper approvalDelegateMapper;
+    @Mock
+    private DataScopeContext dataScopeContext;
     @Mock
     private CacheManager cacheManager;
 

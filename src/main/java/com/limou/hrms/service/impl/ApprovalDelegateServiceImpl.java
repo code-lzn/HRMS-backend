@@ -3,8 +3,8 @@ package com.limou.hrms.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.limou.hrms.common.ErrorCode;
+import com.limou.hrms.constant.DataScopeContext;
 import com.limou.hrms.exception.BusinessException;
-import com.limou.hrms.interceptor.EmployeeResolveInterceptor;
 import com.limou.hrms.mapper.ApprovalDelegateMapper;
 import com.limou.hrms.model.dto.approval.DelegateSettingDTO;
 import com.limou.hrms.model.entity.ApprovalDelegate;
@@ -13,11 +13,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
 
 import javax.annotation.Resource;
-import javax.servlet.http.HttpServletRequest;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +30,8 @@ public class ApprovalDelegateServiceImpl extends ServiceImpl<ApprovalDelegateMap
 
     @Resource
     private ApprovalDelegateMapper approvalDelegateMapper;
+    @Resource
+    private DataScopeContext dataScopeContext;
     @Resource
     private CacheManager cacheManager;
 
@@ -138,9 +137,7 @@ public class ApprovalDelegateServiceImpl extends ServiceImpl<ApprovalDelegateMap
 
     private Long resolveCurrentEmployeeId() {
         if (testEmployeeId != null) return testEmployeeId;
-        ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.currentRequestAttributes();
-        HttpServletRequest request = attrs.getRequest();
-        Long employeeId = (Long) request.getAttribute(EmployeeResolveInterceptor.CURRENT_EMPLOYEE_ID);
+        Long employeeId = dataScopeContext.getCurrentEmployeeId();
         if (employeeId == null) {
             log.warn("未登录或未关联员工档案, employeeId={}", (Object) null);
             throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR, "未登录或未关联员工档案");
