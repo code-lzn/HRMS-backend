@@ -7,6 +7,7 @@
     <resultMap id="BaseResultMap" type="com.limou.hrms.model.entity.Employee">
             <id property="id" column="id" />
             <result property="employeeName" column="employeeName" />
+            <result property="account" column="account" />
             <result property="userId" column="userId" />
             <result property="employeeNo" column="employeeNo" />
             <result property="status" column="status" />
@@ -28,7 +29,7 @@
     </resultMap>
 
     <sql id="Base_Column_List">
-        id,employeeName,userId,employeeNo,status,gender,
+        id,employeeName,account,userId,employeeNo,status,gender,
         idCard,hireDate,hireType,phone,departmentId,
         positionId,employmentType,email,currentAddress,emergencyContactName,
         emergencyContactPhone,createTime,updateTime,isDeleted

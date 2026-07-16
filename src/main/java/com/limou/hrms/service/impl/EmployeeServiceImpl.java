@@ -227,6 +227,8 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
         emp.setPositionId(request.getPositionId());
         emp.setHireDate(request.getHireDate());
         emp.setEmploymentType(request.getEmploymentType());
+        // 账号先用手机号占位，创建 User 后更新 userId
+        emp.setAccount(phone);
         this.save(emp);
 
         EmployeeDetail detail = new EmployeeDetail();

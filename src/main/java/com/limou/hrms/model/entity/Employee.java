@@ -24,6 +24,7 @@ public class Employee implements Serializable {
     private String employeeNo;
 
     /** 系统账号（=手机号） */
+    @TableField("account")
     private String account;
 
     /** 关联用户ID */
