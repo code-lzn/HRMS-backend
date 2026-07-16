@@ -43,22 +43,22 @@ public class PermissionInterceptor implements HandlerInterceptor {
                              Object handler) throws IOException {
 
 
-//        // 1. 看 Request 被谁包装了（决定能不能走 Redis）
+        // 1. 看 Request 被谁包装了（决定能不能走 Redis）
 //        System.out.println("Request实际类型: " + request.getClass().getName());
 //
 //        // 2. 强制获取 Session（不创建新的）
 //        HttpSession session = request.getSession(false);
 //        System.out.println("当前Session ID: " + (session != null ? session.getId() : "null"));
-//
+
 //        // 3. 如果 session 不为 null，直接拿原生的 Attribute（绕过你的 service 方法）
 //        if (session != null) {
 //            System.out.println("直接从Session取User: " + session.getAttribute(USER_LOGIN_STATE));
 //        }
 
         // OPTIONS 预检请求不带 Cookie，直接放行
-//        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
-//            return true;
-//        }
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+            return true;
+        }
 
 
         String uri = request.getRequestURI();
