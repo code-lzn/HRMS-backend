@@ -48,7 +48,17 @@ public enum ErrorCode {
     ONBOARDING_SUBMIT_DRAFT_ONLY(31003, "仅草稿状态可提交审批"),
     ONBOARDING_CANCEL_FIRST_NODE_ONLY(31004, "仅第一级审批节点可撤回申请"),
     ONBOARDING_CONFIRM_APPROVED_ONLY(31005, "仅\"已批准待入职\"状态可确认入职"),
-    ONBOARDING_FIELDS_INCOMPLETE(31006, "入职申请必填字段不完整");
+    ONBOARDING_FIELDS_INCOMPLETE(31006, "入职申请必填字段不完整"),
+    // endregion
+
+    // region 入转调离 — 转正管理 (320xx)
+    PROBATION_NOT_FOUND(32001, "转正申请不存在"),
+    PROBATION_DRAFT_ONLY(32002, "仅草稿状态可操作"),
+    PROBATION_SUBMIT_DRAFT_ONLY(32003, "仅草稿状态可提交审批"),
+    PROBATION_CANCEL_FIRST_NODE_ONLY(32004, "仅第一级审批节点可撤回申请"),
+    PROBATION_EMPLOYEE_NOT_PROBATION(32005, "员工不在试用期，无法发起转正"),
+    PROBATION_HANDLE_REJECTED_ONLY(32006, "仅已拒绝状态可处理结果"),
+    PROBATION_EXTEND_DATE_REQUIRED(32007, "延长试用需填写新的试用期结束日期");
     // endregion
 
 

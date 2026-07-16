@@ -1,0 +1,422 @@
+package com.limou.hrms.service.impl;
+
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.limou.hrms.builder.ApproverResolver;
+import com.limou.hrms.common.ErrorCode;
+import com.limou.hrms.constant.DataScopeContext;
+import com.limou.hrms.constant.DataScopeEnum;
+import com.limou.hrms.exception.BusinessException;
+import com.limou.hrms.mapper.*;
+import com.limou.hrms.model.dto.probation.ProbationCreateDTO;
+import com.limou.hrms.model.dto.probation.ProbationHandleResultDTO;
+import com.limou.hrms.model.dto.probation.ProbationUpdateDTO;
+import com.limou.hrms.model.entity.*;
+import com.limou.hrms.model.enums.ApprovalBizType;
+import com.limou.hrms.model.enums.EmployeeStatus;
+import com.limou.hrms.model.enums.ProbationResult;
+import com.limou.hrms.model.query.ProbationQuery;
+import com.limou.hrms.model.vo.*;
+import com.limou.hrms.service.ApprovalCallback;
+import com.limou.hrms.service.ApprovalFlowService;
+import com.limou.hrms.service.ProbationService;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import javax.annotation.Resource;
+import java.util.List;
+import java.util.stream.Collectors;
+
+/**
+ * 转正管理服务实现 — 含转正 CRUD + 审批回调 + 结果处理
+ */
+@Service
+@Slf4j
+public class ProbationServiceImpl
+        extends ServiceImpl<ProbationApplicationMapper, ProbationApplication>
+        implements ProbationService, ApprovalCallback {
+
+    @Resource
+    private ProbationApplicationMapper probationMapper;
+    @Resource
+    private ApprovalFlowService approvalFlowService;
+    @Resource
+    private EmployeeMapper employeeMapper;
+    @Resource
+    private EmployeeWorkInfoMapper workInfoMapper;
+    @Resource
+    private DepartmentMapper departmentMapper;
+    @Resource
+    private PositionMapper positionMapper;
+    @Resource
+    private DataScopeContext dataScopeContext;
+    @Resource
+    private ApproverResolver approverResolver;
+
+    // ==================== 转正 CRUD ====================
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createApplication(ProbationCreateDTO dto) {
+        // 校验员工在职状态为试用期
+        Employee employee = employeeMapper.selectById(dto.getEmployeeId());
+        if (employee == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "员工不存在");
+        }
+        if (employee.getStatus() == null || employee.getStatus() != EmployeeStatus.PROBATION.getValue()) {
+            throw new BusinessException(ErrorCode.PROBATION_EMPLOYEE_NOT_PROBATION);
+        }
+
+        ProbationApplication app = new ProbationApplication();
+        app.setEmployeeId(dto.getEmployeeId());
+        app.setPerformanceReview(dto.getPerformanceReview());
+        app.setSalaryAdjustment(dto.getSalaryAdjustment());
+        app.setRemark(dto.getRemark());
+        // 从员工档案自动带入试用期信息
+        app.setProbationStartDate(employee.getHireDate());
+        if (employee.getHireDate() != null) {
+            app.setProbationStartDate(employee.getHireDate());
+        }
+        app.setApplicantId(dataScopeContext.getCurrentEmployeeId());
+        app.setStatus(1); // 草稿
+        probationMapper.insert(app);
+
+        // 直接提交审批
+        if (Boolean.TRUE.equals(dto.getSubmitDirectly())) {
+            submitToApproval(app.getId());
+        }
+
+        log.info("转正申请创建成功: id={}, employeeId={}", app.getId(), dto.getEmployeeId());
+        return app.getId();
+    }
+
+    @Override
+    public void updateDraft(Long id, ProbationUpdateDTO dto) {
+        ProbationApplication app = getAppOrThrow(id);
+        if (app.getStatus() != 1) { // 仅草稿
+            throw new BusinessException(ErrorCode.PROBATION_DRAFT_ONLY);
+        }
+        Long currentEmployeeId = dataScopeContext.getCurrentEmployeeId();
+        if (!app.getApplicantId().equals(currentEmployeeId)) {
+            throw new BusinessException(ErrorCode.PROBATION_DRAFT_ONLY, "仅申请人可编辑草稿");
+        }
+
+        if (StringUtils.isNotBlank(dto.getPerformanceReview())) app.setPerformanceReview(dto.getPerformanceReview());
+        if (dto.getSalaryAdjustment() != null) app.setSalaryAdjustment(dto.getSalaryAdjustment());
+        if (dto.getRemark() != null) app.setRemark(dto.getRemark());
+
+        probationMapper.updateById(app);
+        log.info("转正草稿更新成功: id={}", id);
+    }
+
+    @Override
+    public void deleteDraft(Long id) {
+        ProbationApplication app = getAppOrThrow(id);
+        if (app.getStatus() != 1) {
+            throw new BusinessException(ErrorCode.PROBATION_DRAFT_ONLY);
+        }
+        Long currentEmployeeId = dataScopeContext.getCurrentEmployeeId();
+        if (!app.getApplicantId().equals(currentEmployeeId)) {
+            throw new BusinessException(ErrorCode.PROBATION_DRAFT_ONLY, "仅申请人可删除草稿");
+        }
+        probationMapper.deleteById(id);
+        log.info("转正草稿删除成功: id={}", id);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void submitToApproval(Long id) {
+        ProbationApplication app = getAppOrThrow(id);
+        if (app.getStatus() != 1) {
+            throw new BusinessException(ErrorCode.PROBATION_SUBMIT_DRAFT_ONLY);
+        }
+        // 校验必填字段
+        if (StringUtils.isBlank(app.getPerformanceReview())) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "试用期表现评价不能为空");
+        }
+
+        ApprovalInstance instance = approvalFlowService.createInstance(
+                ApprovalBizType.PROBATION, app.getId(), app.getApplicantId());
+
+        app.setStatus(2); // 审批中
+        app.setApprovalInstanceId(instance.getId());
+        probationMapper.updateById(app);
+
+        log.info("转正申请已提交审批: id={}, instanceId={}", id, instance.getId());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void cancel(Long id) {
+        ProbationApplication app = getAppOrThrow(id);
+        if (app.getStatus() != 2) {
+            throw new BusinessException(ErrorCode.PROBATION_CANCEL_FIRST_NODE_ONLY);
+        }
+        Long currentEmployeeId = dataScopeContext.getCurrentEmployeeId();
+        if (!app.getApplicantId().equals(currentEmployeeId)) {
+            throw new BusinessException(ErrorCode.PROBATION_CANCEL_FIRST_NODE_ONLY, "仅申请人可撤回");
+        }
+
+        approvalFlowService.cancel(app.getApprovalInstanceId());
+
+        app.setStatus(1); // 回退草稿
+        app.setApprovalInstanceId(null);
+        probationMapper.updateById(app);
+
+        log.info("转正申请已撤回: id={}", id);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void handleResult(Long id, ProbationHandleResultDTO dto) {
+        ProbationApplication app = getAppOrThrow(id);
+        if (app.getStatus() != 4) { // 仅已拒绝状态
+            throw new BusinessException(ErrorCode.PROBATION_HANDLE_REJECTED_ONLY);
+        }
+
+        ProbationResult result = ProbationResult.fromCode(dto.getResult());
+        if (result == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "无效的处理结果");
+        }
+
+        switch (result) {
+            case PASS:
+                // 审批已通过时调用onApproved，此处不适用。但如果HR在已拒绝后决定改为通过，也可以
+                Employee emp = employeeMapper.selectById(app.getEmployeeId());
+                if (emp != null) {
+                    emp.setStatus(EmployeeStatus.REGULAR.getValue());
+                    employeeMapper.updateById(emp);
+                }
+                app.setResult(ProbationResult.PASS.getCode());
+                app.setStatus(3); // 已完成
+                break;
+            case EXTEND:
+                if (dto.getExtendedEndDate() == null) {
+                    throw new BusinessException(ErrorCode.PROBATION_EXTEND_DATE_REQUIRED);
+                }
+                app.setExtendedEndDate(dto.getExtendedEndDate());
+                app.setResult(ProbationResult.EXTEND.getCode());
+                app.setStatus(3); // 已完成（延长试用也是终态）
+                break;
+            case FAIL:
+                app.setResult(ProbationResult.FAIL.getCode());
+                app.setStatus(3); // 已完成（后续关联离职流程）
+                log.warn("转正不通过，需关联离职流程: employeeId={}", app.getEmployeeId());
+                break;
+        }
+
+        probationMapper.updateById(app);
+        log.info("转正结果已处理: id={}, result={}", id, result.getDesc());
+    }
+
+    @Override
+    public Page<ProbationListVO> list(ProbationQuery query) {
+        DataScopeEnum scope = dataScopeContext.getApprovalScope();
+        switch (scope) {
+            case ALL:
+                return queryAllList(query);
+            case DEPT:
+                Long deptId = dataScopeContext.getCurrentDepartmentId();
+                if (deptId == null) return new Page<>(query.getCurrent(), query.getPageSize());
+                return queryDeptList(deptId, query);
+            case SELF:
+                Long employeeId = dataScopeContext.getCurrentEmployeeId();
+                if (employeeId == null) return new Page<>(query.getCurrent(), query.getPageSize());
+                return queryPersonalList(employeeId, query);
+            default:
+                return new Page<>(query.getCurrent(), query.getPageSize());
+        }
+    }
+
+    @Override
+    public ProbationDetailVO getDetail(Long id) {
+        ProbationApplication app = getAppOrThrow(id);
+        ProbationDetailVO vo = buildDetailVO(app);
+
+        // 审批中/已通过/已拒绝时附带审批进度
+        if (app.getApprovalInstanceId() != null) {
+            ApprovalInstanceVO progress = approvalFlowService.getDetail(app.getApprovalInstanceId());
+            vo.setApprovalProgress(progress);
+        }
+        return vo;
+    }
+
+    // ==================== 审批回调 ====================
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void onApproved(ApprovalBizType bizType, Long bizId) {
+        if (bizType != ApprovalBizType.PROBATION) return;
+        ProbationApplication app = getAppOrThrow(bizId);
+
+        // 员工状态 → 正式
+        Employee employee = employeeMapper.selectById(app.getEmployeeId());
+        if (employee != null) {
+            employee.setStatus(EmployeeStatus.REGULAR.getValue());
+            employeeMapper.updateById(employee);
+        }
+
+        app.setResult(ProbationResult.PASS.getCode());
+        app.setStatus(3); // 已完成
+        probationMapper.updateById(app);
+
+        log.info("转正审批通过: id={}, employeeId={}", bizId, app.getEmployeeId());
+    }
+
+    @Override
+    public void onRejected(ApprovalBizType bizType, Long bizId) {
+        if (bizType != ApprovalBizType.PROBATION) return;
+        ProbationApplication app = getAppOrThrow(bizId);
+        app.setStatus(4); // 已拒绝
+        probationMapper.updateById(app);
+        log.info("转正审批已拒绝: id={}", bizId);
+    }
+
+    // ==================== 私有方法 ====================
+
+    private ProbationApplication getAppOrThrow(Long id) {
+        ProbationApplication app = probationMapper.selectById(id);
+        if (app == null) {
+            throw new BusinessException(ErrorCode.PROBATION_NOT_FOUND);
+        }
+        return app;
+    }
+
+    // ==================== 角色路由查询 ====================
+
+    private Page<ProbationListVO> queryAllList(ProbationQuery query) {
+        QueryWrapper<ProbationApplication> qw = buildQueryWrapper(query);
+        qw.orderByDesc("create_time");
+        Page<ProbationApplication> page = probationMapper.selectPage(
+                new Page<>(query.getCurrent(), query.getPageSize()), qw);
+        return toListVOPage(page);
+    }
+
+    private Page<ProbationListVO> queryDeptList(Long deptId, ProbationQuery query) {
+        // 部门的员工：通过 work_info 关联
+        QueryWrapper<ProbationApplication> qw = buildQueryWrapper(query);
+        qw.inSql("employee_id",
+                "SELECT w.employee_id FROM employee_work_info w WHERE w.department_id = " + deptId);
+        qw.orderByDesc("create_time");
+        Page<ProbationApplication> page = probationMapper.selectPage(
+                new Page<>(query.getCurrent(), query.getPageSize()), qw);
+        return toListVOPage(page);
+    }
+
+    private Page<ProbationListVO> queryPersonalList(Long employeeId, ProbationQuery query) {
+        QueryWrapper<ProbationApplication> qw = buildQueryWrapper(query);
+        qw.eq("applicant_id", employeeId);
+        qw.orderByDesc("create_time");
+        Page<ProbationApplication> page = probationMapper.selectPage(
+                new Page<>(query.getCurrent(), query.getPageSize()), qw);
+        return toListVOPage(page);
+    }
+
+    private QueryWrapper<ProbationApplication> buildQueryWrapper(ProbationQuery query) {
+        QueryWrapper<ProbationApplication> qw = new QueryWrapper<>();
+        if (query.getStatus() != null) {
+            qw.eq("status", query.getStatus());
+        }
+        if (query.getEmployeeId() != null) {
+            qw.eq("employee_id", query.getEmployeeId());
+        }
+        return qw;
+    }
+
+    private Page<ProbationListVO> toListVOPage(Page<ProbationApplication> page) {
+        List<ProbationListVO> records = page.getRecords().stream().map(app -> {
+            ProbationListVO vo = new ProbationListVO();
+            vo.setId(app.getId());
+            vo.setEmployeeId(app.getEmployeeId());
+            vo.setEmployeeName(approverResolver.getEmployeeName(app.getEmployeeId()));
+            vo.setEmployeeNo(getEmployeeNo(app.getEmployeeId()));
+            vo.setDepartmentName(getDeptNameByEmployeeId(app.getEmployeeId()));
+            vo.setPositionName(getPositionNameByEmployeeId(app.getEmployeeId()));
+            vo.setProbationStartDate(app.getProbationStartDate());
+            vo.setProbationEndDate(app.getProbationEndDate());
+            vo.setSalaryAdjustment(app.getSalaryAdjustment());
+            vo.setStatus(app.getStatus());
+            vo.setStatusDesc(getStatusDesc(app.getStatus()));
+            vo.setApplicantName(approverResolver.getEmployeeName(app.getApplicantId()));
+            vo.setCreateTime(app.getCreateTime());
+            return vo;
+        }).collect(Collectors.toList());
+
+        Page<ProbationListVO> voPage = new Page<>(page.getCurrent(), page.getSize(), page.getTotal());
+        voPage.setRecords(records);
+        return voPage;
+    }
+
+    private ProbationDetailVO buildDetailVO(ProbationApplication app) {
+        ProbationDetailVO vo = new ProbationDetailVO();
+        vo.setId(app.getId());
+        vo.setEmployeeId(app.getEmployeeId());
+        vo.setEmployeeName(approverResolver.getEmployeeName(app.getEmployeeId()));
+        vo.setEmployeeNo(getEmployeeNo(app.getEmployeeId()));
+        vo.setDepartmentName(getDeptNameByEmployeeId(app.getEmployeeId()));
+        vo.setPositionName(getPositionNameByEmployeeId(app.getEmployeeId()));
+        vo.setJobLevel(getJobLevel(app.getEmployeeId()));
+        vo.setProbationStartDate(app.getProbationStartDate());
+        vo.setProbationEndDate(app.getProbationEndDate());
+        vo.setPerformanceReview(app.getPerformanceReview());
+        vo.setSalaryAdjustment(app.getSalaryAdjustment());
+        vo.setResult(app.getResult());
+        ProbationResult resultEnum = ProbationResult.fromCode(app.getResult());
+        vo.setResultDesc(resultEnum != null ? resultEnum.getDesc() : null);
+        vo.setExtendedEndDate(app.getExtendedEndDate());
+        vo.setStatus(app.getStatus());
+        vo.setStatusDesc(getStatusDesc(app.getStatus()));
+        vo.setApprovalInstanceId(app.getApprovalInstanceId());
+        vo.setApplicantId(app.getApplicantId());
+        vo.setApplicantName(approverResolver.getEmployeeName(app.getApplicantId()));
+        vo.setRemark(app.getRemark());
+        vo.setCreateTime(app.getCreateTime());
+        vo.setUpdateTime(app.getUpdateTime());
+        return vo;
+    }
+
+    private String getStatusDesc(Integer status) {
+        if (status == null) return "";
+        switch (status) {
+            case 1: return "草稿";
+            case 2: return "审批中";
+            case 3: return "已完成";
+            case 4: return "已拒绝";
+            default: return "";
+        }
+    }
+
+    private String getEmployeeNo(Long employeeId) {
+        if (employeeId == null) return null;
+        Employee emp = employeeMapper.selectById(employeeId);
+        return emp != null ? emp.getEmployeeNo() : null;
+    }
+
+    private String getDeptNameByEmployeeId(Long employeeId) {
+        if (employeeId == null) return null;
+        EmployeeWorkInfo wi = workInfoMapper.selectOne(
+                new QueryWrapper<EmployeeWorkInfo>().eq("employee_id", employeeId));
+        if (wi == null || wi.getDepartmentId() == null) return null;
+        Department dept = departmentMapper.selectById(wi.getDepartmentId());
+        return dept != null ? dept.getName() : null;
+    }
+
+    private String getPositionNameByEmployeeId(Long employeeId) {
+        if (employeeId == null) return null;
+        EmployeeWorkInfo wi = workInfoMapper.selectOne(
+                new QueryWrapper<EmployeeWorkInfo>().eq("employee_id", employeeId));
+        if (wi == null || wi.getPositionId() == null) return null;
+        Position pos = positionMapper.selectById(wi.getPositionId());
+        return pos != null ? pos.getName() : null;
+    }
+
+    private String getJobLevel(Long employeeId) {
+        if (employeeId == null) return null;
+        EmployeeWorkInfo wi = workInfoMapper.selectOne(
+                new QueryWrapper<EmployeeWorkInfo>().eq("employee_id", employeeId));
+        return wi != null ? wi.getJobLevel() : null;
+    }
+}
