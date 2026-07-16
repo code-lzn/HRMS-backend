@@ -48,7 +48,7 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
     @Resource
     private EmployeeService employeeService;
 
-    private static final String SALT = "limou";
+    private static final String SALT = "hrms";
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -108,6 +108,7 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
         HrOnboarding entity = getById(id);
         ThrowUtils.throwIf(entity == null, ErrorCode.NOT_FOUND_ERROR);
         ThrowUtils.throwIf(entity.getRecordId() == null, ErrorCode.OPERATION_ERROR, "请先提交审批");
+        ThrowUtils.throwIf(entity.getEmployeeId() != null, ErrorCode.OPERATION_ERROR, "该申请已确认入职，不可重复操作");
 
         ApprovalRecord record = approvalService.getById(entity.getRecordId());
         ThrowUtils.throwIf(record == null || !"APPROVED".equals(record.getStatus()),

@@ -73,6 +73,21 @@ public class Attendance implements Serializable {
     private String punchOutLocation;
 
     /**
+     * 迟到时长（分钟）
+     */
+    private Integer lateMinutes;
+
+    /**
+     * 早退时长（分钟）
+     */
+    private Integer earlyMinutes;
+
+    /**
+     * 加班时长（小时）
+     */
+    private Double overtimeHours;
+
+    /**
      * 备注
      */
     private String remark;

@@ -70,6 +70,12 @@ public enum PermissionUrlEnum {
     // ==================== 考勤管理（管理类接口） ====================
     ATTENDANCE_LIST("/api/attendance/list",      PermissionConstant.ATTENDANCE_LIST, "考勤列表"),
     ATTENDANCE_MANAGE("/api/attendance/manage",  PermissionConstant.ATTENDANCE_MANAGE, "考勤管理"),
+    // HR端考勤管理接口
+    HR_ATTENDANCE_LIST("/api/hr/attendance/list",        PermissionConstant.ATTENDANCE_LIST, "HR考勤列表"),
+    HR_ATTENDANCE_CREATE("/api/hr/attendance/create",    PermissionConstant.ATTENDANCE_MANAGE, "HR新增考勤"),
+    HR_ATTENDANCE_UPDATE("/api/hr/attendance/update",    PermissionConstant.ATTENDANCE_MANAGE, "HR编辑考勤"),
+    HR_ATTENDANCE_DELETE("/api/hr/attendance/delete/**", PermissionConstant.ATTENDANCE_MANAGE, "HR删除考勤"),
+    HR_ATTENDANCE_BATCH_DELETE("/api/hr/attendance/batch-delete", PermissionConstant.ATTENDANCE_MANAGE, "HR批量删除考勤"),
     // 注意：/api/attendance/punch、/api/attendance/today、/api/attendance/calendar、
     //       /api/attendance/records 为自服务接口（我的考勤），不拦截
 
