@@ -14,14 +14,9 @@ import java.io.Serializable;
 public class DepartmentQueryRequest extends PageRequest implements Serializable {
 
     /**
-     * 部门名称模糊搜索
+     * 部门名称或编码模糊搜索
      */
     private String keyword;
-
-    /**
-     * 按上级部门筛选
-     */
-    private Long parentId;
 
     private static final long serialVersionUID = 1L;
 }

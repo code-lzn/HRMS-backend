@@ -1,9 +1,7 @@
 package com.limou.hrms.service;
 
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.limou.hrms.model.dto.department.DepartmentCreateRequest;
-import com.limou.hrms.model.dto.department.DepartmentQueryRequest;
 import com.limou.hrms.model.dto.department.DepartmentUpdateRequest;
 import com.limou.hrms.model.entity.Department;
 import com.limou.hrms.model.entity.User;
@@ -33,17 +31,13 @@ public interface DepartmentService extends IService<Department> {
     void deleteDepartment(Long id, User loginUser);
 
     /**
-     * 查询部门树（含人数统计 + 数据权限）
+     * 查询部门（平铺，前端按 parentId 自行组装树）
+     * @param keyword 部门名称或编码模糊搜索，null 则返回全量
      */
-    List<DepartmentTreeNode> getDepartmentTree(User loginUser);
-
-    /**
-     * 查询部门列表（平铺/分页）
-     */
-    Page<DepartmentVO> getDepartmentList(DepartmentQueryRequest query, User loginUser);
+    List<DepartmentTreeNode> queryDepartments(String keyword);
 
     /**
      * 查询部门详情
      */
-    DepartmentVO getDepartmentDetail(Long id, User loginUser);
+    DepartmentVO getDepartmentDetail(Long id);
 }
