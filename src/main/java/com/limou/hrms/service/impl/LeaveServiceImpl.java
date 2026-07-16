@@ -15,9 +15,11 @@ import com.limou.hrms.model.enums.AttendanceStatusEnum;
 import com.limou.hrms.model.enums.BusinessTypeEnum;
 import com.limou.hrms.model.enums.LeaveTypeEnum;
 import com.limou.hrms.model.enums.ProgressNodeStatusEnum;
+import com.limou.hrms.model.vo.LeaveBalanceVO;
 import com.limou.hrms.model.vo.LeaveProgressVO;
 import com.limou.hrms.model.vo.LeaveVO;
 import com.limou.hrms.service.AttendanceService;
+import com.limou.hrms.service.EmployeeLeaveBalanceService;
 import com.limou.hrms.service.EmployeeService;
 import com.limou.hrms.service.LeaveService;
 import com.limou.hrms.service.ApprovalService;
@@ -54,6 +56,9 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
     @Resource
     private ApprovalService approvalService;
 
+    @Resource
+    private EmployeeLeaveBalanceService employeeLeaveBalanceService;
+
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -64,9 +69,12 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
 
         ThrowUtils.throwIf(start.after(end), ErrorCode.PARAMS_ERROR, "开始日期不能晚于结束日期");
 
-        // 计算请假天数
-        long days = DateUtil.between(start, end, DateUnit.DAY, false) + 1;
-        ThrowUtils.throwIf(days <= 0, ErrorCode.PARAMS_ERROR, "请假天数不正确");
+        // 计算请假天数（8小时=1天，最少0.5天）
+        long hours = DateUtil.between(start, end, DateUnit.HOUR, false);
+        double days = Math.max(hours / 8.0, 0.5);
+
+        // 年假/病假/调休校验余额
+        checkLeaveBalance(emp.getId(), leaveType, BigDecimal.valueOf(days));
 
         // 检查是否有重叠的请假记录
         long overlapCount = this.lambdaQuery()
@@ -108,9 +116,8 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
     public LeaveVO approve(Long requestId, Integer result, String comment, Long approverId) {
         Leave request = this.getById(requestId);
         ThrowUtils.throwIf(request == null, ErrorCode.NOT_FOUND_ERROR, "请假申请不存在");
-        ThrowUtils.throwIf(request.getStatus() != ApprovalStatusEnum.PENDING.getValue(),
+        ThrowUtils.throwIf(!Objects.equals(request.getStatus(), ApprovalStatusEnum.PENDING.getValue()),
                 ErrorCode.APPROVAL_NOT_PENDING_ERROR);
-
         Date now = new Date();
         request.setStatus(result);
         request.setApproverId(approverId);
@@ -164,12 +171,12 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
         // 节点2: 审批结果
         LeaveProgressVO.ProgressNode approveNode = new LeaveProgressVO.ProgressNode();
         approveNode.setNodeName("审批");
-        if (request.getStatus() == ApprovalStatusEnum.PENDING.getValue()) {
+        if (Objects.equals(request.getStatus(), ApprovalStatusEnum.PENDING.getValue())) {
             approveNode.setStatus(ProgressNodeStatusEnum.IN_PROGRESS.getValue());
             approveNode.setOperatorName(null);
             approveNode.setOperateTime(null);
             approveNode.setComment(null);
-        } else if (request.getStatus() == ApprovalStatusEnum.CANCELLED.getValue()) {
+        } else if (Objects.equals(request.getStatus(), ApprovalStatusEnum.CANCELLED.getValue())) {
             approveNode.setStatus(ProgressNodeStatusEnum.NOT_STARTED.getValue());
             approveNode.setNodeName("审批（已撤销）");
             approveNode.setOperatorName(null);
@@ -197,7 +204,7 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
         Leave request = this.getById(requestId);
         ThrowUtils.throwIf(request == null, ErrorCode.NOT_FOUND_ERROR, "请假申请不存在");
         ThrowUtils.throwIf(!Objects.equals(request.getUserId(), userId), ErrorCode.NO_AUTH_ERROR);
-        ThrowUtils.throwIf(request.getStatus() != ApprovalStatusEnum.PENDING.getValue(),
+        ThrowUtils.throwIf(!Objects.equals(request.getStatus(), ApprovalStatusEnum.PENDING.getValue()),
                 ErrorCode.APPROVAL_NOT_PENDING_ERROR);
 
         request.setStatus(ApprovalStatusEnum.CANCELLED.getValue());
@@ -225,6 +232,33 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
         Employee emp = employeeService.lambdaQuery().eq(Employee::getUserId, userId).one();
         ThrowUtils.throwIf(emp == null, ErrorCode.NOT_FOUND_ERROR, "员工档案不存在");
         return emp;
+    }
+
+    private void checkLeaveBalance(Long employeeId, Integer leaveType, BigDecimal days) {
+        if (leaveType == null || days == null) return;
+        LeaveBalanceVO balance = employeeLeaveBalanceService.getCurrentYearBalance(employeeId);
+
+        String label;
+        BigDecimal remaining;
+        switch (leaveType) {
+            case 1:
+                label = "病假";
+                remaining = balance.getSickRemaining();
+                break;
+            case 2:
+                label = "年假";
+                remaining = balance.getAnnualRemaining();
+                break;
+            case 6:
+                label = "调休";
+                remaining = balance.getCompRemaining();
+                break;
+            default:
+                return;
+        }
+
+        ThrowUtils.throwIf(remaining.compareTo(days) < 0,
+                ErrorCode.PARAMS_ERROR, label + "余额不足，剩余 " + remaining + " 天，申请 " + days + " 天");
     }
 
     private LeaveVO convertToVO(Leave request, Employee emp) {

@@ -40,6 +40,9 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
     private ApprovalDetailService approvalDetailService;
 
     @Resource
+    private EmployeeLeaveBalanceService employeeLeaveBalanceService;
+
+    @Resource
     private ApprovalDelegationService approvalDelegationService;
 
     @Resource
@@ -441,6 +444,11 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
                     leave.setStatus(targetStatus);
                     leave.setApproveTime(now);
                     leaveMapper.updateById(leave);
+                    // 审批通过后扣减请假余额
+                    if (isApproved) {
+                        employeeLeaveBalanceService.deduct(
+                                leave.getEmployeeId(), leave.getLeaveType(), leave.getTotalDays());
+                    }
                 }
                 break;
             }

@@ -997,6 +997,27 @@ INSERT INTO page_view_log (viewDate, viewCount) VALUES
 ('2026-07-12', 280),
 ('2026-07-13', 710),
 ('2026-07-14', 590);
+
+-- ============== 请假余额表 ==============
+CREATE TABLE IF NOT EXISTS employee_leave_balance (
+    id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+    employeeId      BIGINT          NOT NULL                 COMMENT '员工ID',
+    year            INT             NOT NULL                 COMMENT '年度',
+    annualTotal     DECIMAL(5,1)    NOT NULL DEFAULT 0       COMMENT '年假总额',
+    annualUsed      DECIMAL(5,1)    NOT NULL DEFAULT 0       COMMENT '年假已用',
+    sickTotal       DECIMAL(5,1)    NOT NULL DEFAULT 0       COMMENT '病假总额',
+    sickUsed        DECIMAL(5,1)    NOT NULL DEFAULT 0       COMMENT '病假已用',
+    compTotal       DECIMAL(5,1)    NOT NULL DEFAULT 0       COMMENT '调休总额',
+    compUsed        DECIMAL(5,1)    NOT NULL DEFAULT 0       COMMENT '调休已用',
+    createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updateTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_employee_year (employeeId, year)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='员工请假余额表';
+
+-- 测试数据：员工15(王五) 的2026年请假额度
+INSERT INTO employee_leave_balance (employeeId, year, annualTotal, annualUsed, sickTotal, sickUsed, compTotal, compUsed) VALUES
+(15, 2026, 10, 2, 5, 0, 3, 1);
 -- ============================================================
 -- 员工异动模块（转正/调岗/离职）补充字段
 -- 需在数据库 szml1 中执行
