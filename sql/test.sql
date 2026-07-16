@@ -1018,6 +1018,16 @@ CREATE TABLE IF NOT EXISTS employee_leave_balance (
 -- 测试数据：员工15(王五) 的2026年请假额度
 INSERT INTO employee_leave_balance (employeeId, year, annualTotal, annualUsed, sickTotal, sickUsed, compTotal, compUsed) VALUES
 (15, 2026, 10, 2, 5, 0, 3, 1);
+
+-- 员工薪资档案测试数据
+INSERT INTO emp_salary_profile (employeeId, accountSetId, baseSalary, allowanceBase, performanceBase,
+                                socialInsuranceBase, housingFundBase, probationSalaryRatio,
+                                bankAccount, bankName, effectiveDate) VALUES
+(15, NULL, 10000.00, 2500.00, 2000.00, 10000.00, 10000.00, 0.80,
+ '622202******1234', '招商银行', '2026-01-01'),
+(19, NULL, 8000.00, 1500.00, 1500.00, 8000.00, 8000.00, 1.00,
+ '621700******5678', '工商银行', '2026-07-01');
+
 -- ============================================================
 -- 员工异动模块（转正/调岗/离职）补充字段
 -- 需在数据库 szml1 中执行

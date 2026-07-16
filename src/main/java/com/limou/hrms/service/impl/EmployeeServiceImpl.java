@@ -448,6 +448,8 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
         vo.setIdCard(maskIdCard(detail != null ? detail.getIdCard() : null));
         vo.setPhone(maskPhone(emp.getPhone()));
         vo.setEditableFields(EDITABLE_FIELDS);
+        //将employmentType字段设置为字符串
+        vo.setEmploymentType(EmploymentType.getDesc(vo.getEmploymentType()));
         return vo;
     }
 

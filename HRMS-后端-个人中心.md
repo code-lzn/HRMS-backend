@@ -40,6 +40,8 @@
 
 ### 功能模块树
 
+
+点击头像触发图片选择 → 自动上传到 POST /api/file/upload → 返回 URL → 调用 updateMyUserUsingPost 更新头像
 ```plain
 个人中心
 ├── 我的考勤
