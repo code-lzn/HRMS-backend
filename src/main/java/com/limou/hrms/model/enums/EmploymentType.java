@@ -1,8 +1,11 @@
 package com.limou.hrms.model.enums;
 
+import lombok.Getter;
+
 /**
  * 录用类型枚举
  */
+@Getter
 public enum EmploymentType {
     FULL_TIME("FULL_TIME", "全职"),
     PART_TIME("PART_TIME", "兼职"),
@@ -15,9 +18,6 @@ public enum EmploymentType {
         this.code = code;
         this.desc = desc;
     }
-
-    public String getCode() { return code; }
-    public String getDesc() { return desc; }
 
     public static String getDesc(String code) {
         for (EmploymentType t : values()) {
