@@ -9,6 +9,7 @@ import com.limou.hrms.mapper.*;
 import com.limou.hrms.model.dto.onboarding.OnboardingAddRequest;
 import com.limou.hrms.model.entity.*;
 import com.limou.hrms.model.enums.EmployeeStatus;
+import com.limou.hrms.model.vo.MutationLogVO;
 import com.limou.hrms.model.vo.OnboardingVO;
 import com.limou.hrms.service.ApprovalService;
 import com.limou.hrms.service.EmployeeService;
