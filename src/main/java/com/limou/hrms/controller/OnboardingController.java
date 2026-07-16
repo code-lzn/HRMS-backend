@@ -6,9 +6,9 @@ import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.common.ResultUtils;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.model.dto.onboarding.OnboardingAddRequest;
-import com.limou.hrms.model.entity.EmpMutationLog;
 import com.limou.hrms.model.entity.HrOnboarding;
 import com.limou.hrms.model.entity.User;
+import com.limou.hrms.model.vo.MutationLogVO;
 import com.limou.hrms.model.vo.OnboardingVO;
 import com.limou.hrms.service.OnboardingService;
 import com.limou.hrms.service.UserService;
@@ -120,9 +120,9 @@ public class OnboardingController {
     }
 
     @GetMapping("/mutation-logs")
-    public BaseResponse<List<EmpMutationLog>> getMutationLogs(HttpServletRequest httpReq) {
+    public BaseResponse<List<MutationLogVO>> getMutationLogs(HttpServletRequest httpReq) {
         Long userId = getLoginUserId(httpReq);
-        List<EmpMutationLog> logs = onboardingService.getEmployeeMutationLogs(userId);
+        List<MutationLogVO> logs = onboardingService.getEmployeeMutationLogs(userId);
         return ResultUtils.success(logs);
     }
 }

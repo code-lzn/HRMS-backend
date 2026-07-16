@@ -1,6 +1,7 @@
 package com.limou.hrms.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
+import com.limou.hrms.model.entity.ApprovalDetail;
 import com.limou.hrms.model.entity.ApprovalRecord;
 import com.limou.hrms.model.vo.ApprovalDetailVO;
 import com.limou.hrms.model.vo.ApprovalPendingVO;
@@ -25,4 +26,7 @@ public interface ApprovalService extends IService<ApprovalRecord> {
     /** 启动审批（按目标部门解析 DEPT_MANAGER，入职审批专用） */
     ApprovalRecord startApproval(String businessType, Long businessId, Long applicantEmployeeId,
                                   String applicantName, Long targetDepartmentId);
+
+    /** 获取审批记录的所有审批明细 */
+    List<ApprovalDetail> getApprovalDetails(Long recordId);
 }

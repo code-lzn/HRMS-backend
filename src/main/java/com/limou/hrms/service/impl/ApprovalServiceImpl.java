@@ -401,6 +401,14 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
         }
     }
 
+    @Override
+    public List<ApprovalDetail> getApprovalDetails(Long recordId) {
+        return approvalDetailService.lambdaQuery()
+                .eq(ApprovalDetail::getRecordId, recordId)
+                .orderByAsc(ApprovalDetail::getStepOrder)
+                .list();
+    }
+
     /**
      * 解析审批人
      *
