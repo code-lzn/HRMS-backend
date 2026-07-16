@@ -47,7 +47,7 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
     @Resource
     private EmployeeService employeeService;
 
-    private static final String SALT = "hrms";
+    private static final String SALT = "limou";
 
     @Override
     @Transactional(rollbackFor = Exception.class)
