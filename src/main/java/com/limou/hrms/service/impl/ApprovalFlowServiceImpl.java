@@ -8,6 +8,7 @@ import com.limou.hrms.builder.ApprovalNodeBuilderFactory;
 import com.limou.hrms.builder.ApproverResolver;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.exception.BusinessException;
+import com.limou.hrms.interceptor.EmployeeResolveInterceptor;
 import com.limou.hrms.mapper.*;
 import com.limou.hrms.model.entity.*;
 import com.limou.hrms.model.enums.ApprovalBizType;
@@ -21,12 +22,14 @@ import com.limou.hrms.service.ApprovalFlowService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.cache.CacheManager;
-import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import javax.annotation.Resource;
+import javax.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -101,8 +104,8 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
     }
 
     @Override
-    @Cacheable(value = "pendingCount", key = "#employeeId")
-    public long getPendingCount(Long employeeId) {
+    public long getPendingCount() {
+        Long employeeId = resolveCurrentEmployeeId();
         // 1. 自己的待办
         long myCount = approvalNodeMapper.selectCount(
                 new QueryWrapper<ApprovalNode>()
@@ -129,8 +132,9 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    @CacheEvict(value = "pendingCount", key = "#employeeId")
-    public void approve(Long nodeId, Long employeeId, String comment) {
+    public void approve(Long nodeId, String comment) {
+        Long employeeId = resolveCurrentEmployeeId();
+        evictPendingCountCache(employeeId);
         ApprovalNode node = getNodeOrThrow(nodeId);
         validateNodeOwner(node, employeeId);
         validateNodePending(node);
@@ -172,12 +176,13 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    @CacheEvict(value = "pendingCount", key = "#employeeId")
-    public void reject(Long nodeId, Long employeeId, String comment) {
+    public void reject(Long nodeId, String comment) {
         if (StringUtils.isBlank(comment)) {
-            log.warn("拒绝时必须填写审批意见，不能为空: comment={}, nodeId={}", comment, nodeId);
+            log.warn("拒绝时必须填写审批意见: nodeId={}", nodeId);
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "拒绝时必须填写审批意见");
         }
+        Long employeeId = resolveCurrentEmployeeId();
+        evictPendingCountCache(employeeId);
         ApprovalNode node = getNodeOrThrow(nodeId);
         validateNodeOwner(node, employeeId);
         validateNodePending(node);
@@ -207,8 +212,9 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    @CacheEvict(value = "pendingCount", allEntries = true)
-    public void transfer(Long nodeId, Long fromEmployeeId, Long toEmployeeId) {
+    public void transfer(Long nodeId, Long toEmployeeId) {
+        Long fromEmployeeId = resolveCurrentEmployeeId();
+        evictPendingCountCacheAll();
         ApprovalNode node = getNodeOrThrow(nodeId);
         validateNodeOwner(node, fromEmployeeId);
         validateNodePending(node);
@@ -246,20 +252,24 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    @CacheEvict(value = "pendingCount", key = "#operatorId")
-    public void cancel(Long instanceId, Long operatorId) {
+    public void cancel(Long instanceId) {
+        Long operatorId = resolveCurrentEmployeeId();
+        evictPendingCountCache(operatorId);
         ApprovalInstance instance = getInstanceOrThrow(instanceId);
 
         // 校验：仅申请人可撤回
         if (!instance.getApplicantId().equals(operatorId)) {
-            throw new BusinessException(ErrorCode.APPROVAL_CANCEL_ONLY_FIRST_NODE);
+            log.warn("仅申请人可撤回 instanceId={}, operatorId={}", instanceId, operatorId);
+            throw new BusinessException(ErrorCode.APPROVAL_NODE_NOT_OWNER);
         }
         // 校验：必须是审批中状态
         if (ApprovalStatus.PENDING.getCode() != instance.getStatus()) {
-            throw new BusinessException(ErrorCode.APPROVAL_NODE_ALREADY_HANDLED, "当前状态不允许撤回");
+            log.warn("当前状态不允许撤回 instanceId={}", instanceId);
+            throw new BusinessException(ErrorCode.APPROVAL_NODE_ALREADY_HANDLED);
         }
         // 校验：必须是第一节点
         if (instance.getCurrentNodeOrder() != 1) {
+            log.warn("仅第一节点可撤回 instanceId={}", instanceId);
             throw new BusinessException(ErrorCode.APPROVAL_CANCEL_ONLY_FIRST_NODE);
         }
 
@@ -270,11 +280,25 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
     }
 
     @Override
-    public Page<PendingItemVO> getPendingList(Long employeeId, ApprovalQuery query) {
+    public Page<PendingItemVO> getPendingList(ApprovalQuery query) {
+        Long employeeId = resolveCurrentEmployeeId();
+        String role = resolveCurrentUserRole();
+        // 角色路由：admin/hr → 全平台，dept_head → 本部门，其他 → 仅自己
+        if (isAdminOrHr(role)) {
+            return getAllPendingList(query);
+        }
+        if (isDeptHead(role)) {
+            Long deptId = approverResolver.resolveDepartmentId(employeeId);
+            return queryDeptPendingList(deptId, query);
+        }
+        return queryPersonalPendingList(employeeId, query);
+    }
+
+    /** 个人待办（含委托路由） */
+    private Page<PendingItemVO> queryPersonalPendingList(Long employeeId, ApprovalQuery query) {
         int pageSize = query.getPageSize();
         int offset = Math.max(0, (query.getCurrent() - 1) * pageSize);
 
-        // 1. 统计两个来源的总数（准确的 total）
         long ownCount = approvalNodeMapper.selectCount(
                 new QueryWrapper<ApprovalNode>()
                         .eq("approver_id", employeeId)
@@ -288,7 +312,6 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
                                 "WHERE d.delegate_id = " + employeeId + " " +
                                 "AND d.enabled = 1 AND NOW() BETWEEN d.start_time AND d.end_time"));
 
-        // 2. 从两个来源各取足够的记录（pageSize 条），覆盖当前页窗口
         QueryWrapper<ApprovalNode> ownQw = new QueryWrapper<>();
         ownQw.eq("approver_id", employeeId)
              .eq("status", NodeStatus.PENDING.getCode())
@@ -313,7 +336,7 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
             delegateNodeIds.add(n.getId());
         }
 
-        // 3. 合并、排序、取当前页
+        // 合并、排序、取当前页
         List<ApprovalNode> merged = new ArrayList<>(ownNodes);
         for (ApprovalNode n : delegateNodes) {
             if (ownNodes.stream().noneMatch(o -> o.getId().equals(n.getId()))) {
@@ -327,87 +350,171 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
 
         long total = ownCount + delegateCount;
 
-        // 4. 关联 instance 信息组装 VO
-        List<PendingItemVO> records = merged.stream().map(node -> {
-            ApprovalInstance instance = approvalInstanceMapper.selectById(node.getInstanceId());
-            PendingItemVO vo = new PendingItemVO();
-            vo.setInstanceId(node.getInstanceId());
-            vo.setNodeId(node.getId());
-            if (instance != null) {
-                vo.setBizType(instance.getBizType());
-                ApprovalBizType bizType = ApprovalBizType.fromCode(instance.getBizType());
-                vo.setBizTypeDesc(bizType != null ? bizType.getDesc() : instance.getBizType());
-                vo.setTitle(instance.getTitle());
-                vo.setApplicantId(instance.getApplicantId());
-                vo.setApplicantName(approverResolver.getEmployeeName(instance.getApplicantId()));
-                vo.setCreateTime(instance.getCreateTime());
-            }
-            vo.setNodeName(node.getNodeName());
-            vo.setNodeOrder(node.getNodeOrder());
-            // 截止时间：节点创建后 48h
-            if (node.getCreateTime() != null) {
-                vo.setDeadLine(node.getCreateTime().plusHours(48));
-            }
-            // 委托待办：标记委托人姓名
-            if (delegateNodeIds.contains(node.getId())) {
-                vo.setDelegatorName(approverResolver.getEmployeeName(node.getApproverId()));
-            }
-            return vo;
-        }).collect(Collectors.toList());
-
-        // 按 bizType 筛选
+        List<PendingItemVO> records = buildPendingVOs(merged, delegateNodeIds);
         if (StringUtils.isNotBlank(query.getBizType())) {
             records = records.stream()
                     .filter(r -> query.getBizType().equals(r.getBizType()))
                     .collect(Collectors.toList());
         }
+        Page<PendingItemVO> result = new Page<>(query.getCurrent(), query.getPageSize(), total);
+        result.setRecords(records);
+        return result;
+    }
 
+    /** 全平台待办 */
+    private Page<PendingItemVO> getAllPendingList(ApprovalQuery query) {
+        Page<ApprovalNode> nodePage = approvalNodeMapper.selectPage(
+                new Page<>(query.getCurrent(), query.getPageSize()),
+                new QueryWrapper<ApprovalNode>()
+                        .eq("status", NodeStatus.PENDING.getCode())
+                        .orderByDesc("create_time"));
+
+        List<PendingItemVO> records = buildPendingVOs(nodePage.getRecords(), new HashSet<>());
+        if (StringUtils.isNotBlank(query.getBizType())) {
+            records = records.stream()
+                    .filter(r -> query.getBizType().equals(r.getBizType()))
+                    .collect(Collectors.toList());
+        }
+        Page<PendingItemVO> result = new Page<>(nodePage.getCurrent(), nodePage.getSize(), nodePage.getTotal());
+        result.setRecords(records);
+        return result;
+    }
+
+    /** 部门待办 */
+    private Page<PendingItemVO> queryDeptPendingList(Long departmentId, ApprovalQuery query) {
+        int pageSize = query.getPageSize();
+        int offset = Math.max(0, (query.getCurrent() - 1) * pageSize);
+
+        List<ApprovalNode> deptNodes = approvalNodeMapper.selectList(
+                new QueryWrapper<ApprovalNode>()
+                        .eq("status", NodeStatus.PENDING.getCode())
+                        .inSql("approver_id",
+                                "SELECT e.id FROM employee e " +
+                                "JOIN employee_work_info w ON w.employee_id = e.id " +
+                                "WHERE w.department_id = " + departmentId + " AND e.is_deleted = 0")
+                        .orderByDesc("create_time")
+                        .last("LIMIT " + pageSize + " OFFSET " + offset));
+
+        long total = approvalNodeMapper.selectCount(
+                new QueryWrapper<ApprovalNode>()
+                        .eq("status", NodeStatus.PENDING.getCode())
+                        .inSql("approver_id",
+                                "SELECT e.id FROM employee e " +
+                                "JOIN employee_work_info w ON w.employee_id = e.id " +
+                                "WHERE w.department_id = " + departmentId + " AND e.is_deleted = 0"));
+
+        List<PendingItemVO> records = buildPendingVOs(deptNodes, new HashSet<>());
+        if (StringUtils.isNotBlank(query.getBizType())) {
+            records = records.stream()
+                    .filter(r -> query.getBizType().equals(r.getBizType()))
+                    .collect(Collectors.toList());
+        }
         Page<PendingItemVO> result = new Page<>(query.getCurrent(), query.getPageSize(), total);
         result.setRecords(records);
         return result;
     }
 
     @Override
-    public Page<ProcessedItemVO> getProcessedList(Long employeeId, ApprovalQuery query) {
+    public Page<ProcessedItemVO> getProcessedList(ApprovalQuery query) {
+        Long employeeId = resolveCurrentEmployeeId();
+        String role = resolveCurrentUserRole();
+        // 角色路由：admin/hr → 全平台，dept_head → 本部门，其他 → 仅自己
+        if (isAdminOrHr(role)) {
+            return getAllProcessedList(query);
+        }
+        if (isDeptHead(role)) {
+            Long deptId = approverResolver.resolveDepartmentId(employeeId);
+            return queryDeptProcessedList(deptId, query);
+        }
+        return queryPersonalProcessedList(employeeId, query);
+    }
+
+    /** 个人已办 */
+    private Page<ProcessedItemVO> queryPersonalProcessedList(Long employeeId, ApprovalQuery query) {
         QueryWrapper<ApprovalNode> nodeQw = new QueryWrapper<>();
         nodeQw.eq("approver_id", employeeId)
-               .in("status", NodeStatus.APPROVED.getCode(), NodeStatus.REJECTED.getCode(), NodeStatus.TRANSFERRED.getCode(), NodeStatus.TIMEOUT.getCode())
+               .in("status", NodeStatus.APPROVED.getCode(), NodeStatus.REJECTED.getCode(),
+                       NodeStatus.TRANSFERRED.getCode(), NodeStatus.TIMEOUT.getCode())
                .orderByDesc("operate_time");
 
         Page<ApprovalNode> nodePage = approvalNodeMapper.selectPage(
-                new Page<>(query.getCurrent(), query.getPageSize()), nodeQw
-        );
+                new Page<>(query.getCurrent(), query.getPageSize()), nodeQw);
 
-        List<ProcessedItemVO> records = nodePage.getRecords().stream().map(node -> {
-            ApprovalInstance instance = approvalInstanceMapper.selectById(node.getInstanceId());
-            ProcessedItemVO vo = new ProcessedItemVO();
-            vo.setInstanceId(node.getInstanceId());
-            vo.setNodeId(node.getId());
-            if (instance != null) {
-                vo.setBizType(instance.getBizType());
-                ApprovalBizType bizType = ApprovalBizType.fromCode(instance.getBizType());
-                vo.setBizTypeDesc(bizType != null ? bizType.getDesc() : instance.getBizType());
-                vo.setTitle(instance.getTitle());
-                vo.setApplicantName(approverResolver.getEmployeeName(instance.getApplicantId()));
-            }
-            vo.setNodeName(node.getNodeName());
-            vo.setNodeStatus(node.getStatus());
-            NodeStatus ns = NodeStatus.fromCode(node.getStatus());
-            vo.setNodeStatusDesc(ns != null ? ns.getDesc() : "");
-            vo.setComment(node.getComment());
-            vo.setOperateTime(node.getOperateTime());
-            return vo;
-        }).collect(Collectors.toList());
-
+        List<ProcessedItemVO> records = buildProcessedVOs(nodePage.getRecords());
         if (StringUtils.isNotBlank(query.getBizType())) {
             records = records.stream()
                     .filter(r -> query.getBizType().equals(r.getBizType()))
                     .collect(Collectors.toList());
         }
-
         Page<ProcessedItemVO> result = new Page<>(nodePage.getCurrent(), nodePage.getSize(), nodePage.getTotal());
         result.setRecords(records);
         return result;
+    }
+
+    /** 全平台已办 */
+    private Page<ProcessedItemVO> getAllProcessedList(ApprovalQuery query) {
+        Page<ApprovalNode> nodePage = approvalNodeMapper.selectPage(
+                new Page<>(query.getCurrent(), query.getPageSize()),
+                new QueryWrapper<ApprovalNode>()
+                        .in("status", NodeStatus.APPROVED.getCode(), NodeStatus.REJECTED.getCode(),
+                                NodeStatus.TRANSFERRED.getCode(), NodeStatus.TIMEOUT.getCode())
+                        .orderByDesc("operate_time"));
+
+        List<ProcessedItemVO> records = buildProcessedVOs(nodePage.getRecords());
+        if (StringUtils.isNotBlank(query.getBizType())) {
+            records = records.stream()
+                    .filter(r -> query.getBizType().equals(r.getBizType()))
+                    .collect(Collectors.toList());
+        }
+        Page<ProcessedItemVO> result = new Page<>(nodePage.getCurrent(), nodePage.getSize(), nodePage.getTotal());
+        result.setRecords(records);
+        return result;
+    }
+
+    /** 部门已办 */
+    private Page<ProcessedItemVO> queryDeptProcessedList(Long departmentId, ApprovalQuery query) {
+        int pageSize = query.getPageSize();
+        int offset = Math.max(0, (query.getCurrent() - 1) * pageSize);
+
+        List<ApprovalNode> deptNodes = approvalNodeMapper.selectList(
+                new QueryWrapper<ApprovalNode>()
+                        .in("status", NodeStatus.APPROVED.getCode(), NodeStatus.REJECTED.getCode(),
+                                NodeStatus.TRANSFERRED.getCode(), NodeStatus.TIMEOUT.getCode())
+                        .inSql("approver_id",
+                                "SELECT e.id FROM employee e " +
+                                "JOIN employee_work_info w ON w.employee_id = e.id " +
+                                "WHERE w.department_id = " + departmentId + " AND e.is_deleted = 0")
+                        .orderByDesc("operate_time")
+                        .last("LIMIT " + pageSize + " OFFSET " + offset));
+
+        long total = approvalNodeMapper.selectCount(
+                new QueryWrapper<ApprovalNode>()
+                        .in("status", NodeStatus.APPROVED.getCode(), NodeStatus.REJECTED.getCode(),
+                                NodeStatus.TRANSFERRED.getCode(), NodeStatus.TIMEOUT.getCode())
+                        .inSql("approver_id",
+                                "SELECT e.id FROM employee e " +
+                                "JOIN employee_work_info w ON w.employee_id = e.id " +
+                                "WHERE w.department_id = " + departmentId + " AND e.is_deleted = 0"));
+
+        List<ProcessedItemVO> records = buildProcessedVOs(deptNodes);
+        if (StringUtils.isNotBlank(query.getBizType())) {
+            records = records.stream()
+                    .filter(r -> query.getBizType().equals(r.getBizType()))
+                    .collect(Collectors.toList());
+        }
+        Page<ProcessedItemVO> result = new Page<>(query.getCurrent(), query.getPageSize(), total);
+        result.setRecords(records);
+        return result;
+    }
+
+    // ==================== 角色判定 ====================
+
+    private boolean isAdminOrHr(String role) {
+        return "admin".equals(role) || "hr".equals(role);
+    }
+
+    private boolean isDeptHead(String role) {
+        return "dept_head".equals(role);
     }
 
     @Override
@@ -475,6 +582,54 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
         return instance;
     }
 
+    // ==================== 当前用户解析 ====================
+
+    /** 测试用：直接注入当前用户，绕过 RequestContextHolder */
+    private Long testEmployeeId;
+    /** 测试用 */
+    private String testRole;
+
+    /** 测试用：直接注入当前用户，绕过 RequestContextHolder */
+    public void setCurrentUserForTest(Long employeeId, String role) {
+        this.testEmployeeId = employeeId;
+        this.testRole = role;
+    }
+
+    private Long resolveCurrentEmployeeId() {
+        if (testEmployeeId != null) return testEmployeeId;
+        ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.currentRequestAttributes();
+        HttpServletRequest request = attrs.getRequest();
+        Long employeeId = (Long) request.getAttribute(EmployeeResolveInterceptor.CURRENT_EMPLOYEE_ID);
+        if (employeeId == null) {
+            throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR, "未登录或未关联员工档案");
+        }
+        return employeeId;
+    }
+
+    private String resolveCurrentUserRole() {
+        if (testRole != null) return testRole;
+        ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.currentRequestAttributes();
+        HttpServletRequest request = attrs.getRequest();
+        String role = (String) request.getAttribute(EmployeeResolveInterceptor.CURRENT_USER_ROLE);
+        return role != null ? role : "user";
+    }
+
+    private void evictPendingCountCache(Long employeeId) {
+        org.springframework.cache.Cache cache = cacheManager.getCache("pendingCount");
+        if (cache != null) {
+            cache.evict(employeeId);
+        }
+    }
+
+    private void evictPendingCountCacheAll() {
+        org.springframework.cache.Cache cache = cacheManager.getCache("pendingCount");
+        if (cache != null) {
+            cache.clear();
+        }
+    }
+
+    // ==================== 权限校验 ====================
+
     private void validateNodeOwner(ApprovalNode node, Long employeeId) {
         if (!node.getApproverId().equals(employeeId)) {
             // 检查当前用户是否为 node 审批人的有效委托人
@@ -496,6 +651,62 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
             log.warn("审批节点已处理, 不能重复操作: nodeId={}", node.getId());
             throw new BusinessException(ErrorCode.APPROVAL_NODE_ALREADY_HANDLED);
         }
+    }
+
+    /**
+     * 将审批节点列表组装为待办 VO
+     */
+    private List<PendingItemVO> buildPendingVOs(List<ApprovalNode> nodes, Set<Long> delegateNodeIds) {
+        return nodes.stream().map(node -> {
+            ApprovalInstance instance = approvalInstanceMapper.selectById(node.getInstanceId());
+            PendingItemVO vo = new PendingItemVO();
+            vo.setInstanceId(node.getInstanceId());
+            vo.setNodeId(node.getId());
+            if (instance != null) {
+                vo.setBizType(instance.getBizType());
+                ApprovalBizType bizType = ApprovalBizType.fromCode(instance.getBizType());
+                vo.setBizTypeDesc(bizType != null ? bizType.getDesc() : instance.getBizType());
+                vo.setTitle(instance.getTitle());
+                vo.setApplicantId(instance.getApplicantId());
+                vo.setApplicantName(approverResolver.getEmployeeName(instance.getApplicantId()));
+                vo.setCreateTime(instance.getCreateTime());
+            }
+            vo.setNodeName(node.getNodeName());
+            vo.setNodeOrder(node.getNodeOrder());
+            if (node.getCreateTime() != null) {
+                vo.setDeadLine(node.getCreateTime().plusHours(48));
+            }
+            if (delegateNodeIds.contains(node.getId())) {
+                vo.setDelegatorName(approverResolver.getEmployeeName(node.getApproverId()));
+            }
+            return vo;
+        }).collect(Collectors.toList());
+    }
+
+    /**
+     * 将审批节点列表组装为已办 VO
+     */
+    private List<ProcessedItemVO> buildProcessedVOs(List<ApprovalNode> nodes) {
+        return nodes.stream().map(node -> {
+            ApprovalInstance instance = approvalInstanceMapper.selectById(node.getInstanceId());
+            ProcessedItemVO vo = new ProcessedItemVO();
+            vo.setInstanceId(node.getInstanceId());
+            vo.setNodeId(node.getId());
+            if (instance != null) {
+                vo.setBizType(instance.getBizType());
+                ApprovalBizType bizType = ApprovalBizType.fromCode(instance.getBizType());
+                vo.setBizTypeDesc(bizType != null ? bizType.getDesc() : instance.getBizType());
+                vo.setTitle(instance.getTitle());
+                vo.setApplicantName(approverResolver.getEmployeeName(instance.getApplicantId()));
+            }
+            vo.setNodeName(node.getNodeName());
+            vo.setNodeStatus(node.getStatus());
+            NodeStatus ns = NodeStatus.fromCode(node.getStatus());
+            vo.setNodeStatusDesc(ns != null ? ns.getDesc() : "");
+            vo.setComment(node.getComment());
+            vo.setOperateTime(node.getOperateTime());
+            return vo;
+        }).collect(Collectors.toList());
     }
 
     /**

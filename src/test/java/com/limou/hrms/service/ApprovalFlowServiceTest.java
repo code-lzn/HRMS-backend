@@ -72,6 +72,9 @@ class ApprovalFlowServiceTest {
         // 操作用户
         employee = new Employee();
         employee.setId(APPROVER_ID);
+
+        // 注入当前用户，绕过 RequestContextHolder
+        service.setCurrentUserForTest(APPROVER_ID, "employee");
     }
 
     // ==================== approve ====================
@@ -86,7 +89,7 @@ class ApprovalFlowServiceTest {
         when(nodeMapper.updateById(any())).thenReturn(1);
         when(instanceMapper.updateById(any())).thenReturn(1);
 
-        assertDoesNotThrow(() -> service.approve(NODE_ID, APPROVER_ID, "同意"));
+        assertDoesNotThrow(() -> service.approve(NODE_ID, "同意"));
     }
 
     /** 节点不存在 → 40002 */
@@ -95,7 +98,7 @@ class ApprovalFlowServiceTest {
         when(nodeMapper.selectById(NODE_ID)).thenReturn(null);
 
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> service.approve(NODE_ID, APPROVER_ID, "同意"));
+                () -> service.approve(NODE_ID, "同意"));
         assertEquals(ErrorCode.APPROVAL_NODE_NOT_FOUND.getCode(), ex.getCode());
     }
 
@@ -103,9 +106,11 @@ class ApprovalFlowServiceTest {
     @Test
     void approve_notOwner_shouldThrow() {
         when(nodeMapper.selectById(NODE_ID)).thenReturn(pendingNode);
+        // 用另一个人的身份操作
+        service.setCurrentUserForTest(999L, "employee");
 
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> service.approve(NODE_ID, 999L, "越权"));
+                () -> service.approve(NODE_ID, "越权"));
         assertEquals(ErrorCode.APPROVAL_NODE_NOT_OWNER.getCode(), ex.getCode());
     }
 
@@ -116,7 +121,7 @@ class ApprovalFlowServiceTest {
         when(nodeMapper.selectById(NODE_ID)).thenReturn(pendingNode);
 
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> service.approve(NODE_ID, APPROVER_ID, "重复"));
+                () -> service.approve(NODE_ID, "重复"));
         assertEquals(ErrorCode.APPROVAL_NODE_ALREADY_HANDLED.getCode(), ex.getCode());
     }
 
@@ -127,7 +132,7 @@ class ApprovalFlowServiceTest {
         when(nodeMapper.selectById(NODE_ID)).thenReturn(pendingNode);
 
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> service.approve(NODE_ID, APPROVER_ID, "超时了"));
+                () -> service.approve(NODE_ID, "超时了"));
         assertEquals(ErrorCode.APPROVAL_NODE_TIMEOUT.getCode(), ex.getCode());
     }
 
@@ -140,7 +145,7 @@ class ApprovalFlowServiceTest {
         when(nodeMapper.updateById(any())).thenReturn(1);
         when(instanceMapper.updateById(any())).thenReturn(1);
 
-        service.approve(NODE_ID, APPROVER_ID, "同意");
+        service.approve(NODE_ID, "同意");
 
         assertEquals(ApprovalStatus.APPROVED.getCode(), pendingInstance.getStatus());
     }
@@ -151,11 +156,11 @@ class ApprovalFlowServiceTest {
     @Test
     void reject_blankComment_shouldThrow() {
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> service.reject(NODE_ID, APPROVER_ID, ""));
+                () -> service.reject(NODE_ID, ""));
         assertEquals(ErrorCode.PARAMS_ERROR.getCode(), ex.getCode());
 
         assertThrows(BusinessException.class,
-                () -> service.reject(NODE_ID, APPROVER_ID, null));
+                () -> service.reject(NODE_ID, null));
     }
 
     /** 正常拒绝 → 实例拒绝 + 节点拒绝 */
@@ -166,7 +171,7 @@ class ApprovalFlowServiceTest {
         when(nodeMapper.updateById(any())).thenReturn(1);
         when(instanceMapper.updateById(any())).thenReturn(1);
 
-        service.reject(NODE_ID, APPROVER_ID, "不合适");
+        service.reject(NODE_ID, "不合适");
 
         assertEquals(NodeStatus.REJECTED.getCode(), pendingNode.getStatus());
         assertEquals(ApprovalStatus.REJECTED.getCode(), pendingInstance.getStatus());
@@ -180,7 +185,7 @@ class ApprovalFlowServiceTest {
         when(nodeMapper.selectById(NODE_ID)).thenReturn(pendingNode);
 
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> service.transfer(NODE_ID, APPROVER_ID, APPROVER_ID));
+                () -> service.transfer(NODE_ID, APPROVER_ID));
         assertEquals(ErrorCode.PARAMS_ERROR.getCode(), ex.getCode());
     }
 
@@ -191,7 +196,7 @@ class ApprovalFlowServiceTest {
         when(employeeMapper.selectById(30L)).thenReturn(null);
 
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> service.transfer(NODE_ID, APPROVER_ID, 30L));
+                () -> service.transfer(NODE_ID, 30L));
         assertEquals(ErrorCode.PARAMS_ERROR.getCode(), ex.getCode());
     }
 
@@ -204,7 +209,7 @@ class ApprovalFlowServiceTest {
         when(employeeMapper.selectById(30L)).thenReturn(target);
         when(nodeMapper.updateById(any())).thenReturn(1);
 
-        service.transfer(NODE_ID, APPROVER_ID, 30L);
+        service.transfer(NODE_ID, 30L);
 
         assertEquals(APPROVER_ID, pendingNode.getOriginalApproverId()); // 原审批人记录
         assertEquals(30L, pendingNode.getApproverId());                  // 新审批人
@@ -216,42 +221,46 @@ class ApprovalFlowServiceTest {
     /** 非申请人不能撤回 */
     @Test
     void cancel_notApplicant_shouldThrow() {
+        service.setCurrentUserForTest(999L, "employee");
         when(instanceMapper.selectById(INSTANCE_ID)).thenReturn(pendingInstance);
 
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> service.cancel(INSTANCE_ID, 999L));
-        assertEquals(ErrorCode.APPROVAL_CANCEL_ONLY_FIRST_NODE.getCode(), ex.getCode());
+                () -> service.cancel(INSTANCE_ID));
+        assertEquals(ErrorCode.APPROVAL_NODE_NOT_OWNER.getCode(), ex.getCode());
     }
 
     /** 已通过的实例不能撤回 */
     @Test
     void cancel_alreadyApproved_shouldThrow() {
+        service.setCurrentUserForTest(APPLICANT_ID, "employee");
         pendingInstance.setStatus(ApprovalStatus.APPROVED.getCode());
         when(instanceMapper.selectById(INSTANCE_ID)).thenReturn(pendingInstance);
 
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> service.cancel(INSTANCE_ID, APPLICANT_ID));
+                () -> service.cancel(INSTANCE_ID));
         assertEquals(ErrorCode.APPROVAL_NODE_ALREADY_HANDLED.getCode(), ex.getCode());
     }
 
     /** 非第一节点不能撤回 */
     @Test
     void cancel_notFirstNode_shouldThrow() {
+        service.setCurrentUserForTest(APPLICANT_ID, "employee");
         pendingInstance.setCurrentNodeOrder(2);
         when(instanceMapper.selectById(INSTANCE_ID)).thenReturn(pendingInstance);
 
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> service.cancel(INSTANCE_ID, APPLICANT_ID));
+                () -> service.cancel(INSTANCE_ID));
         assertEquals(ErrorCode.APPROVAL_CANCEL_ONLY_FIRST_NODE.getCode(), ex.getCode());
     }
 
     /** 正常撤回 */
     @Test
     void cancel_shouldSucceed() {
+        service.setCurrentUserForTest(APPLICANT_ID, "employee");
         when(instanceMapper.selectById(INSTANCE_ID)).thenReturn(pendingInstance);
         when(instanceMapper.updateById(any())).thenReturn(1);
 
-        service.cancel(INSTANCE_ID, APPLICANT_ID);
+        service.cancel(INSTANCE_ID);
 
         assertEquals(ApprovalStatus.CANCELLED.getCode(), pendingInstance.getStatus());
     }

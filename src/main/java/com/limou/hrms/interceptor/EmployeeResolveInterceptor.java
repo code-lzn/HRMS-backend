@@ -23,6 +23,8 @@ import javax.servlet.http.HttpServletResponse;
 public class EmployeeResolveInterceptor implements HandlerInterceptor {
 
     public static final String CURRENT_EMPLOYEE_ID = "currentEmployeeId";
+    /** 当前用户角色（user.user_role） */
+    public static final String CURRENT_USER_ROLE = "currentUserRole";
 
     @Resource
     private UserService userService;
@@ -46,6 +48,7 @@ public class EmployeeResolveInterceptor implements HandlerInterceptor {
                 return false;
             }
             request.setAttribute(CURRENT_EMPLOYEE_ID, employee.getId());
+            request.setAttribute(CURRENT_USER_ROLE, loginUser.getUserRole());
         } catch (Exception e) {
             log.error("解析员工 ID 失败", e);
             // 放行，让 Controller 兜底
