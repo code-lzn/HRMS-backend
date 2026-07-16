@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.limou.hrms.common.ErrorCode;
+import com.limou.hrms.model.enums.DataScopeEnum;
 import com.limou.hrms.model.enums.EmployeeStatus;
 import com.limou.hrms.model.enums.EmploymentType;
 import com.limou.hrms.model.enums.ContractType;
@@ -22,6 +23,7 @@ import com.limou.hrms.service.DepartmentService;
 import com.limou.hrms.service.EmployeeChangeLogService;
 import com.limou.hrms.service.EmployeeService;
 import com.limou.hrms.service.EmpSalaryProfileService;
+import com.limou.hrms.service.PermissionService;
 import com.limou.hrms.service.PositionService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -31,6 +33,8 @@ import org.springframework.util.DigestUtils;
 import org.springframework.util.StringUtils;
 
 import javax.annotation.Resource;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -59,6 +63,10 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
     @Resource
     private UserMapper userMapper;
 
+    @Autowired
+    @Lazy
+    private PermissionService permissionService;
+
     private static final Set<String> EDITABLE_FIELDS = Set.of("email", "currentAddress", "emergencyContactName","emergencyContactPhone");
     private static final Set<String> LOCKED_FIELDS = Set.of("phone", "idCard", "departmentId", "positionId", "jobLevel", "directReportId", "workLocation", "employmentType", "contractType", "contractExpireDate", "probationRatio", "baseSalary", "bankAccount", "bankName");
     private static final String SALT = "hrms";
@@ -66,7 +74,14 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
     // ==================== 员工档案管理 ====================
 
     @Override
-    public Page<EmployeeVO> listEmployees(EmployeeQueryRequest request) {
+    public Page<EmployeeVO> listEmployees(EmployeeQueryRequest request, Long userId) {
+        Integer dataScope = permissionService.getUserDataScope(userId);
+
+        // SELF(5)：普通员工，列表无权限查看
+        if (dataScope == DataScopeEnum.SELF.getCode()) {
+            return new Page<>(request.getPage(), request.getSize(), 0);
+        }
+
         LambdaQueryWrapper<Employee> wrapper = new LambdaQueryWrapper<Employee>()
                 .and(StringUtils.hasText(request.getKeyword()),
                         w -> w.like(Employee::getEmployeeName, request.getKeyword())
@@ -79,6 +94,16 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
                 .ge(request.getHireDateStart() != null, Employee::getHireDate, request.getHireDateStart())
                 .le(request.getHireDateEnd() != null, Employee::getHireDate, request.getHireDateEnd())
                 .orderByDesc(Employee::getCreateTime);
+
+        // DEPARTMENT(3)：按可见部门过滤
+        if (dataScope == DataScopeEnum.DEPARTMENT.getCode()) {
+            List<Long> visibleDeptIds = departmentService.getVisibleDeptIds(userId);
+            if (visibleDeptIds.isEmpty()) {
+                return new Page<>(request.getPage(), request.getSize(), 0);
+            }
+            wrapper.in(Employee::getDepartmentId, visibleDeptIds);
+        }
+        // ALL(1,2) 和 SALARY(4)：不额外过滤
 
         Page<Employee> page = this.page(new Page<>(request.getPage(), request.getSize()), wrapper);
         Set<Long> deptIds = page.getRecords().stream().map(Employee::getDepartmentId).filter(Objects::nonNull).collect(Collectors.toSet());
@@ -98,7 +123,27 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
     }
 
     @Override
-    public EmployeeDetailVO getDetail(Long id) {
+    public EmployeeDetailVO getDetail(Long id, Long userId) {
+        Integer dataScope = permissionService.getUserDataScope(userId);
+
+        // SELF(5)：普通员工不能查看员工档案，请使用个人中心
+        if (dataScope == DataScopeEnum.SELF.getCode()) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "员工不存在");
+        }
+
+        // DEPARTMENT(3)：只能查可见部门内的员工
+        if (dataScope == DataScopeEnum.DEPARTMENT.getCode()) {
+            Employee target = this.getById(id);
+            if (target != null) {
+                List<Long> visibleDeptIds = departmentService.getVisibleDeptIds(userId);
+                if (visibleDeptIds.isEmpty() || target.getDepartmentId() == null
+                        || !visibleDeptIds.contains(target.getDepartmentId())) {
+                    throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "员工不存在");
+                }
+            }
+        }
+        // ALL(1,2) 和 SALARY(4)：全部可见，不额外校验
+
         Employee emp = this.getById(id);
         ThrowUtils.throwIf(emp == null, ErrorCode.NOT_FOUND_ERROR, "员工不存在");
         EmployeeDetail detail = getDetailByEmployeeId(id);
@@ -118,6 +163,10 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
             Employee report = this.getById(detail.getDirectReportId());
             vo.setDirectReportName(report != null ? report.getEmployeeName() : null);
         }
+
+        // 按角色字段脱敏
+        applyFieldMasking(vo, dataScope);
+
         return vo;
     }
 
@@ -290,8 +339,6 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
         vo.setLockedFields(new ArrayList<>(LOCKED_FIELDS));
         return vo;
     }
-
-    @Override
     public Page<EmployeeChangeLogVO> getChangeLogs(Long employeeId, int page, int size) {
         LambdaQueryWrapper<EmployeeChangeLog> wrapper = new LambdaQueryWrapper<EmployeeChangeLog>()
                 .eq(EmployeeChangeLog::getEmployeeId, employeeId)
@@ -492,6 +539,47 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
         if (posId == null) return null;
         Position p = positionMapper.selectById(posId);
         return p != null ? p.getName() : null;
+    }
+
+    /**
+     * 按角色 dataScope 对员工详情进行字段脱敏
+     */
+    private void applyFieldMasking(EmployeeDetailVO vo, Integer dataScope) {
+        // ALL(1) 和 ALL_EMPLOYEE(2)：已有的默认脱敏（手机号/身份证部分掩码）已够用
+        if (dataScope == DataScopeEnum.ALL.getCode() ||
+                dataScope == DataScopeEnum.ALL_EMPLOYEE.getCode()) {
+            return;
+        }
+
+        if (dataScope == DataScopeEnum.DEPARTMENT.getCode()) {
+            // 部门管理员：隐藏薪资合同、身份证等敏感信息
+            vo.setIdCard(null);
+            vo.setBirthday(null);
+            vo.setRegisteredAddress(null);
+            vo.setContractType(null);
+            vo.setContractTypeDesc(null);
+            vo.setContractExpireDate(null);
+            vo.setProbationRatio(null);
+            vo.setBaseSalary(null);
+            vo.setBankAccount(null);
+            vo.setBankName(null);
+            return;
+        }
+
+        if (dataScope == DataScopeEnum.SALARY.getCode()) {
+            // 财务专员：隐藏联系方式、住址、紧急联系人
+            vo.setPhone(null);
+            vo.setEmail(null);
+            vo.setIdCard(null);
+            vo.setBirthday(null);
+            vo.setRegisteredAddress(null);
+            vo.setCurrentAddress(null);
+            vo.setEmergencyContactName(null);
+            vo.setEmergencyContactPhone(null);
+            return;
+        }
+
+        // SELF(5) 非本人的情况已经在 getDetail 中拦截，不会走到这里
     }
 
     private String maskIdCard(String idCard) {

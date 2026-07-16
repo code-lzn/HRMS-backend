@@ -3,7 +3,9 @@ package com.limou.hrms.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.limou.hrms.common.ErrorCode;
+import com.limou.hrms.model.enums.DataScopeEnum;
 import com.limou.hrms.model.enums.OrgEnum;
+import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.exception.ThrowUtils;
 import com.limou.hrms.mapper.DepartmentMapper;
 import com.limou.hrms.mapper.EmployeeMapper;
@@ -17,11 +19,14 @@ import com.limou.hrms.model.vo.DepartmentMergeResultVO;
 import com.limou.hrms.model.vo.DepartmentTreeVO;
 import com.limou.hrms.service.DepartmentMergeLogService;
 import com.limou.hrms.service.DepartmentService;
+import com.limou.hrms.service.PermissionService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -38,8 +43,17 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
     @Resource
     private DepartmentMergeLogService departmentMergeLogService;
 
+    @Autowired
+    @Lazy
+    private PermissionService permissionService;
+
     @Override
-    public List<DepartmentTreeVO> getDepartmentTree() {
+    public List<DepartmentTreeVO> getDepartmentTree(Long userId) {
+        List<Long> visibleIds = getVisibleDeptIds(userId);
+        if (visibleIds != null && visibleIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+
         List<Department> allDepts = this.list(
                 new LambdaQueryWrapper<Department>()
                         .orderByAsc(Department::getParentId)
@@ -48,6 +62,16 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
 
         if (allDepts.isEmpty()) {
             return Collections.emptyList();
+        }
+
+        // 按数据范围过滤部门
+        if (visibleIds != null) {
+            allDepts = allDepts.stream()
+                    .filter(d -> visibleIds.contains(d.getId()))
+                    .collect(Collectors.toList());
+            if (allDepts.isEmpty()) {
+                return Collections.emptyList();
+            }
         }
 
         Map<Long, Long> deptEmployeeCountMap = buildEmployeeCountMap(allDepts);
@@ -83,7 +107,13 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
     }
 
     @Override
-    public DepartmentTreeVO getDepartmentDetail(Long id) {
+    public DepartmentTreeVO getDepartmentDetail(Long id, Long userId) {
+        // 校验可见性（统一返回"部门不存在"，避免暴露存在但无权查看的信息）
+        List<Long> visibleIds = getVisibleDeptIds(userId);
+        if (visibleIds != null && !visibleIds.contains(id)) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "部门不存在");
+        }
+
         Department dept = this.getById(id);
         ThrowUtils.throwIf(dept == null, ErrorCode.NOT_FOUND_ERROR, "部门不存在");
 
@@ -295,6 +325,50 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
             log.warn("查询员工数失败（employee表可能未初始化）: {}", e.getMessage());
             return 0;
         }
+    }
+
+    // ==================== 数据权限 ====================
+
+    @Override
+    public List<Long> getVisibleDeptIds(Long userId) {
+        Integer dataScope = permissionService.getUserDataScope(userId);
+
+        // SELF(5) 和 SALARY(4)：无权限查看组织架构
+        if (dataScope == DataScopeEnum.SELF.getCode() ||
+                dataScope == DataScopeEnum.SALARY.getCode()) {
+            return Collections.emptyList();
+        }
+
+        // ALL(1) 和 ALL_EMPLOYEE(2)：全部可见
+        if (dataScope == DataScopeEnum.ALL.getCode() ||
+                dataScope == DataScopeEnum.ALL_EMPLOYEE.getCode()) {
+            return null;
+        }
+
+        // DEPARTMENT(3)：本部门及下属
+        Employee emp = employeeMapper.selectOne(
+                new LambdaQueryWrapper<Employee>().eq(Employee::getUserId, userId));
+        if (emp == null) {
+            return Collections.emptyList();
+        }
+
+        // 先找该员工管理的部门
+        List<Department> managedDepts = this.list(
+                new LambdaQueryWrapper<Department>().eq(Department::getManagerId, emp.getId()));
+
+        Set<Long> visibleIds = new HashSet<>();
+        if (!managedDepts.isEmpty()) {
+            for (Department dept : managedDepts) {
+                visibleIds.add(dept.getId());
+                visibleIds.addAll(collectChildDeptIds(dept.getId()));
+            }
+        } else if (emp.getDepartmentId() != null) {
+            // 没有管理任何部门，则以其所属部门为根
+            visibleIds.add(emp.getDepartmentId());
+            visibleIds.addAll(collectChildDeptIds(emp.getDepartmentId()));
+        }
+
+        return new ArrayList<>(visibleIds);
     }
 
     // ==================== 私有辅助方法 ====================

@@ -18,7 +18,7 @@ public interface PositionService extends IService<Position> {
     /**
      * 职位列表查询
      */
-    List<PositionVO> listPositions(PositionQueryRequest request);
+    List<PositionVO> listPositions(PositionQueryRequest request, Long userId);
 
     /**
      * 新增职位

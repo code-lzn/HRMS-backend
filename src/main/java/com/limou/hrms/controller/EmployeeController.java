@@ -69,17 +69,19 @@ public class EmployeeController {
      * 员工列表（分页 + 高级搜索）
      */
     @GetMapping("/list")
-    public BaseResponse<Page<EmployeeVO>> listEmployees(EmployeeQueryRequest request) {
-        Page<EmployeeVO> result = employeeService.listEmployees(request);
+    public BaseResponse<Page<EmployeeVO>> listEmployees(EmployeeQueryRequest request, HttpServletRequest httpRequest) {
+        User loginUser = userService.getLoginUser(httpRequest);
+        Page<EmployeeVO> result = employeeService.listEmployees(request, loginUser.getId());
         return ResultUtils.success(result);
     }
     /**
      * 员工详情
      */
     @GetMapping("/detail")
-    public BaseResponse<EmployeeDetailVO> getDetail(Long id) {
+    public BaseResponse<EmployeeDetailVO> getDetail(Long id, HttpServletRequest httpRequest) {
         ThrowUtils.throwIf(id == null || id <= 0, ErrorCode.PARAMS_ERROR);
-        EmployeeDetailVO detail = employeeService.getDetail(id);
+        User loginUser = userService.getLoginUser(httpRequest);
+        EmployeeDetailVO detail = employeeService.getDetail(id, loginUser.getId());
         return ResultUtils.success(detail);
     }
     /**
