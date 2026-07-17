@@ -42,6 +42,14 @@ public enum ErrorCode {
     POSITION_NAME_DUPLICATE(30013, "同一部门下职位名称重复"),
     // endregion
 
+    // region 考勤管理 (31xxx)
+    ATTENDANCE_GROUP_NOT_FOUND(61000, "考勤组不存在"),
+    ATTENDANCE_GROUP_RULE_DUPLICATE(61001, "该适用规则已存在于其他考勤组中"),
+    ATTENDANCE_GROUP_RULE_DEPT_OUT_OF_SCOPE(61002, "所选部门/职位/个人不在管辖范围内"),
+    ATTENDANCE_GROUP_RULE_POSITION_NO_EMPLOYEE(61003, "该全公司通用职位在管辖范围内无对应员工"),
+    ATTENDANCE_GROUP_HAS_EMPLOYEES(61004, "该考勤组下仍有适用人员，请先调整人员归属"),
+    // endregion
+
     // region 入转调离 — 入职管理 (310xx)
     ONBOARDING_NOT_FOUND(31001, "入职申请不存在"),
     ONBOARDING_DRAFT_ONLY(31002, "仅草稿状态可操作"),
