@@ -9,9 +9,6 @@ import com.limou.hrms.model.entity.User;
 import com.limou.hrms.model.vo.salary.PayslipVO;
 import com.limou.hrms.service.UserService;
 import com.limou.hrms.service.salary.SalaryDetailService;
-import io.swagger.annotations.Api;
-import io.swagger.annotations.ApiOperation;
-import io.swagger.annotations.ApiParam;
 import java.util.List;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
@@ -26,7 +23,6 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 工资条 Controller（员工自助）
  */
-@Api(tags = "工资条（员工自助）")
 @RestController
 @RequestMapping("/payslips")
 @Slf4j
@@ -38,7 +34,6 @@ public class SalaryDetailController {
     @Resource
     private UserService userService;
 
-    @ApiOperation("获取我的工资条列表")
     @GetMapping("/my")
     public BaseResponse<List<PayslipVO>> getMyPayslips(HttpServletRequest request) {
         User loginUser = userService.getLoginUser(request);
@@ -46,10 +41,9 @@ public class SalaryDetailController {
         return ResultUtils.success(list);
     }
 
-    @ApiOperation("查看工资条详情")
     @GetMapping("/{id}")
     public BaseResponse<PayslipVO> getPayslipDetail(
-            @ApiParam("工资条ID") @PathVariable Long id,
+            @PathVariable Long id,
             HttpServletRequest request) {
         if (id == null || id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -59,10 +53,9 @@ public class SalaryDetailController {
         return ResultUtils.success(vo);
     }
 
-    @ApiOperation("二次验证")
     @PostMapping("/{id}/verify")
     public BaseResponse<Boolean> verifyPayslip(
-            @ApiParam("工资条ID") @PathVariable Long id,
+            @PathVariable Long id,
             @RequestBody PayslipVerifyRequest verifyRequest,
             HttpServletRequest request) {
         if (id == null || id <= 0 || verifyRequest == null) {

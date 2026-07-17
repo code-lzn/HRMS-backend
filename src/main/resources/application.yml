@@ -70,11 +70,6 @@ knife4j:
   openapi:
     title: "接口文档"
     version: 1.0
-    group:
-      default:
-        api-rule: package
-        api-rule-resources:
-          - com.limou.hrms.controller
 
 # 审批中心默认配置（dev/prd 环境可按需覆盖）
 approval:

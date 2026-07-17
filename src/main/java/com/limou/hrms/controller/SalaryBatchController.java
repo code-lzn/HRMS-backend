@@ -14,9 +14,6 @@ import com.limou.hrms.model.vo.salary.SalaryBatchVO;
 import com.limou.hrms.model.vo.salary.SalaryDetailVO;
 import com.limou.hrms.service.UserService;
 import com.limou.hrms.service.salary.SalaryBatchService;
-import io.swagger.annotations.Api;
-import io.swagger.annotations.ApiOperation;
-import io.swagger.annotations.ApiParam;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
@@ -31,7 +28,6 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 薪资核算批次 Controller
  */
-@Api(tags = "薪资核算批次")
 @RestController
 @RequestMapping("/salary-batches")
 @Slf4j
@@ -43,7 +39,6 @@ public class SalaryBatchController {
     @Resource
     private UserService userService;
 
-    @ApiOperation("查询批次列表")
     @GetMapping
     public BaseResponse<Page<SalaryBatchVO>> listBatches(SalaryBatchQueryRequest request) {
         if (request == null) {
@@ -53,7 +48,6 @@ public class SalaryBatchController {
         return ResultUtils.success(page);
     }
 
-    @ApiOperation("创建核算批次")
     @PostMapping
     public BaseResponse<Long> createBatch(@RequestBody SalaryBatchCreateRequest request,
                                           HttpServletRequest httpRequest) {
@@ -65,9 +59,8 @@ public class SalaryBatchController {
         return ResultUtils.success(batchId);
     }
 
-    @ApiOperation("执行异步计算")
     @PostMapping("/{id}/execute")
-    public BaseResponse<Boolean> executeCalculate(@ApiParam("批次ID") @PathVariable Long id) {
+    public BaseResponse<Boolean> executeCalculate(@PathVariable Long id) {
         if (id == null || id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
@@ -75,9 +68,8 @@ public class SalaryBatchController {
         return ResultUtils.success(true);
     }
 
-    @ApiOperation("获取批次详情")
     @GetMapping("/{id}")
-    public BaseResponse<SalaryBatchVO> getBatchDetail(@ApiParam("批次ID") @PathVariable Long id) {
+    public BaseResponse<SalaryBatchVO> getBatchDetail(@PathVariable Long id) {
         if (id == null || id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
@@ -85,10 +77,9 @@ public class SalaryBatchController {
         return ResultUtils.success(vo);
     }
 
-    @ApiOperation("查询批次下的薪资明细")
     @GetMapping("/{id}/details")
     public BaseResponse<Page<SalaryDetailVO>> listDetails(
-            @ApiParam("批次ID") @PathVariable Long id,
+            @PathVariable Long id,
             SalaryDetailQueryRequest request) {
         if (id == null || id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -100,10 +91,9 @@ public class SalaryBatchController {
         return ResultUtils.success(page);
     }
 
-    @ApiOperation("手动调整员工工资条")
     @PutMapping("/details/{detailId}/adjust")
     public BaseResponse<Boolean> adjustDetail(
-            @ApiParam("明细ID") @PathVariable Long detailId,
+            @PathVariable Long detailId,
             @RequestBody SalaryDetailAdjustRequest request) {
         if (request == null || detailId == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -112,9 +102,8 @@ public class SalaryBatchController {
         return ResultUtils.success(true);
     }
 
-    @ApiOperation("提交审批（创建审批实例，后续统一走 /api/approvals 接口）")
     @PutMapping("/{id}/submit")
-    public BaseResponse<Boolean> submitForApproval(@ApiParam("批次ID") @PathVariable Long id) {
+    public BaseResponse<Boolean> submitForApproval(@PathVariable Long id) {
         if (id == null || id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
@@ -122,9 +111,8 @@ public class SalaryBatchController {
         return ResultUtils.success(true);
     }
 
-    @ApiOperation("标记已发放")
     @PutMapping("/{id}/paid")
-    public BaseResponse<Boolean> markAsPaid(@ApiParam("批次ID") @PathVariable Long id) {
+    public BaseResponse<Boolean> markAsPaid(@PathVariable Long id) {
         if (id == null || id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }

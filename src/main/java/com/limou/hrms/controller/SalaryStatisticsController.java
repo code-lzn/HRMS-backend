@@ -2,8 +2,6 @@ package com.limou.hrms.controller;
 
 import com.limou.hrms.common.BaseResponse;
 import com.limou.hrms.common.ResultUtils;
-import io.swagger.annotations.Api;
-import io.swagger.annotations.ApiOperation;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -18,13 +16,11 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 薪资统计 Controller（AntV 可视化数据源）
  */
-@Api(tags = "薪资统计")
 @RestController
 @RequestMapping("/salary-statistics")
 @Slf4j
 public class SalaryStatisticsController {
 
-    @ApiOperation("薪资成本月度趋势（近6个月）")
     @GetMapping("/monthly-trend")
     public BaseResponse<List<Map<String, Object>>> monthlyTrend() {
         List<Map<String, Object>> data = new ArrayList<>();
@@ -41,7 +37,6 @@ public class SalaryStatisticsController {
         return ResultUtils.success(data);
     }
 
-    @ApiOperation("部门薪资分布")
     @GetMapping("/department-distribution")
     public BaseResponse<List<Map<String, Object>>> departmentDistribution() {
         List<Map<String, Object>> data = new ArrayList<>();
@@ -49,7 +44,6 @@ public class SalaryStatisticsController {
         return ResultUtils.success(data);
     }
 
-    @ApiOperation("薪资构成占比")
     @GetMapping("/composition")
     public BaseResponse<List<Map<String, Object>>> composition() {
         List<Map<String, Object>> data = new ArrayList<>();
@@ -57,7 +51,6 @@ public class SalaryStatisticsController {
         return ResultUtils.success(data);
     }
 
-    @ApiOperation("薪资变动分布")
     @GetMapping("/variation-distribution")
     public BaseResponse<List<Map<String, Object>>> variationDistribution() {
         List<Map<String, Object>> data = new ArrayList<>();

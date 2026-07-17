@@ -13,8 +13,6 @@ import com.limou.hrms.model.query.OnboardingQuery;
 import com.limou.hrms.model.vo.OnboardingDetailVO;
 import com.limou.hrms.model.vo.OnboardingListVO;
 import com.limou.hrms.service.OnboardingService;
-import io.swagger.annotations.Api;
-import io.swagger.annotations.ApiOperation;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -27,7 +25,6 @@ import java.util.Map;
 /**
  * 入职管理控制器
  */
-@Api(tags = "入职管理")
 @RestController
 @RequestMapping("/api/onboarding")
 @Slf4j
@@ -36,14 +33,12 @@ public class OnboardingController {
 
     private final OnboardingService onboardingService;
 
-    @ApiOperation("查询入职列表（分页 + 角色路由）")
     @GetMapping
     @AuthCheck
     public BaseResponse<Page<OnboardingListVO>> list(OnboardingQuery query) {
         return ResultUtils.success(onboardingService.list(query));
     }
 
-    @ApiOperation("获取入职详情（含审批进度）")
     @GetMapping("/{id}")
     @AuthCheck
     public BaseResponse<OnboardingDetailVO> getDetail(@PathVariable Long id) {
@@ -51,14 +46,12 @@ public class OnboardingController {
         return ResultUtils.success(onboardingService.getDetail(id));
     }
 
-    @ApiOperation("创建入职申请（保存草稿或直接提交审批）")
     @PostMapping
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
     public BaseResponse<Long> create(@Valid @RequestBody OnboardingCreateDTO dto) {
         return ResultUtils.success(onboardingService.createApplication(dto));
     }
 
-    @ApiOperation("更新入职草稿（仅草稿状态可编辑）")
     @PutMapping("/{id}")
     @AuthCheck
     public BaseResponse<?> updateDraft(@PathVariable Long id, @RequestBody OnboardingUpdateDTO dto) {
@@ -67,7 +60,6 @@ public class OnboardingController {
         return ResultUtils.success(null);
     }
 
-    @ApiOperation("删除入职草稿")
     @DeleteMapping("/{id}")
     @AuthCheck
     public BaseResponse<?> deleteDraft(@PathVariable Long id) {
@@ -76,7 +68,6 @@ public class OnboardingController {
         return ResultUtils.success(null);
     }
 
-    @ApiOperation("提交入职审批（草稿→审批中）")
     @PostMapping("/{id}/submit")
     @AuthCheck
     public BaseResponse<?> submitToApproval(@PathVariable Long id) {
@@ -85,7 +76,6 @@ public class OnboardingController {
         return ResultUtils.success(null);
     }
 
-    @ApiOperation("撤回入职申请（仅第一级审批节点可撤回）")
     @PostMapping("/{id}/cancel")
     @AuthCheck
     public BaseResponse<?> cancel(@PathVariable Long id) {
@@ -94,7 +84,6 @@ public class OnboardingController {
         return ResultUtils.success(null);
     }
 
-    @ApiOperation("确认入职（已批准待入职→已入职）")
     @PostMapping("/{id}/confirm-join")
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
     public BaseResponse<?> confirmJoin(@PathVariable Long id, @RequestParam LocalDate actualHireDate) {
@@ -103,7 +92,6 @@ public class OnboardingController {
         return ResultUtils.success(null);
     }
 
-    @ApiOperation("标记放弃入职")
     @PostMapping("/{id}/abandon")
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
     public BaseResponse<?> abandon(@PathVariable Long id) {
@@ -112,7 +100,6 @@ public class OnboardingController {
         return ResultUtils.success(null);
     }
 
-    @ApiOperation("预览工号（不消耗序号）")
     @PostMapping("/generate-employee-no")
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
     public BaseResponse<Map<String, String>> previewEmployeeNo(@RequestParam Long departmentId) {
@@ -122,7 +109,6 @@ public class OnboardingController {
         return ResultUtils.success(result);
     }
 
-    @ApiOperation("校验手机号唯一性")
     @GetMapping("/check-phone")
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
     public BaseResponse<Map<String, Object>> checkPhone(@RequestParam String phone,
