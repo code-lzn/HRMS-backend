@@ -352,6 +352,9 @@ CREATE TABLE IF NOT EXISTS attendance (
                                                  punchInLocation VARCHAR(256)    DEFAULT NULL             COMMENT '上班打卡位置',
                                                  punchOutLocation VARCHAR(256)   DEFAULT NULL             COMMENT '下班打卡位置',
                                                  remark          VARCHAR(512)    DEFAULT NULL             COMMENT '备注',
+                                                 lateMinutes     INT             DEFAULT 0                COMMENT '迟到时长（分钟）',
+                                                 earlyMinutes    INT             DEFAULT 0                COMMENT '早退时长（分钟）',
+                                                 overtimeHours   DOUBLE          DEFAULT 0                COMMENT '加班时长（小时）',
                                                  createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
                                                  updateTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
                                                  isDeleted       TINYINT         DEFAULT 0 NOT NULL       COMMENT '逻辑删除：0=否 1=是',
@@ -1057,3 +1060,9 @@ ALTER TABLE emp_resign
 -- emp_probation: 补充调整说明字段
 ALTER TABLE emp_probation
     ADD COLUMN adjustRemark varchar(256) DEFAULT NULL COMMENT '薪资调整说明' AFTER salaryAdjustment;
+
+-- attendance: 补充迟到/早退/加班字段
+ALTER TABLE attendance
+    ADD COLUMN lateMinutes INT DEFAULT 0 COMMENT '迟到时长（分钟）' AFTER remark,
+    ADD COLUMN earlyMinutes INT DEFAULT 0 COMMENT '早退时长（分钟）' AFTER lateMinutes,
+    ADD COLUMN overtimeHours DOUBLE DEFAULT 0 COMMENT '加班时长（小时）' AFTER earlyMinutes;

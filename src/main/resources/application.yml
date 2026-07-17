@@ -17,7 +17,7 @@ spring:
   session:
     # 使用内存存储 session（开发环境）
     # todo 生产环境需配置 Redis 并将 store-type 改为 redis
-    store-type: none
+    store-type: redis
     timeout: 2592000
 
   # 数据库配置
