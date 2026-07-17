@@ -1,9 +1,11 @@
 package com.limou.hrms.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.limou.hrms.annotation.AuthCheck;
 import com.limou.hrms.common.BaseResponse;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.common.ResultUtils;
+import com.limou.hrms.constant.UserConstant;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.model.dto.salary.SalaryBatchCreateRequest;
 import com.limou.hrms.model.dto.salary.SalaryBatchQueryRequest;
@@ -46,6 +48,7 @@ public class SalaryBatchController {
 
     @ApiOperation("查询批次列表")
     @GetMapping
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE})
     public BaseResponse<Page<SalaryBatchVO>> listBatches(SalaryBatchQueryRequest request) {
         if (request == null) {
             request = new SalaryBatchQueryRequest();
@@ -56,6 +59,7 @@ public class SalaryBatchController {
 
     @ApiOperation("创建核算批次")
     @PostMapping
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
     public BaseResponse<Long> createBatch(@RequestBody SalaryBatchCreateRequest request,
                                           HttpServletRequest httpRequest) {
         if (request == null) {
@@ -68,6 +72,7 @@ public class SalaryBatchController {
 
     @ApiOperation("执行异步计算")
     @PostMapping("/{id}/execute")
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
     public BaseResponse<Boolean> executeCalculate(@ApiParam("批次ID") @PathVariable Long id) {
         if (id == null || id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -78,6 +83,7 @@ public class SalaryBatchController {
 
     @ApiOperation("获取批次详情")
     @GetMapping("/{id}")
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE})
     public BaseResponse<SalaryBatchVO> getBatchDetail(@ApiParam("批次ID") @PathVariable Long id) {
         if (id == null || id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -88,6 +94,7 @@ public class SalaryBatchController {
 
     @ApiOperation("查询批次下的薪资明细")
     @GetMapping("/{id}/details")
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE})
     public BaseResponse<Page<SalaryDetailVO>> listDetails(
             @ApiParam("批次ID") @PathVariable Long id,
             SalaryDetailQueryRequest request) {
@@ -103,6 +110,7 @@ public class SalaryBatchController {
 
     @ApiOperation("手动调整员工工资条")
     @PutMapping("/details/{detailId}/adjust")
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
     public BaseResponse<Boolean> adjustDetail(
             @ApiParam("明细ID") @PathVariable Long detailId,
             @RequestBody SalaryDetailAdjustRequest request) {
@@ -115,6 +123,7 @@ public class SalaryBatchController {
 
     @ApiOperation("提交审批")
     @PutMapping("/{id}/submit")
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
     public BaseResponse<Boolean> submitForApproval(@ApiParam("批次ID") @PathVariable Long id) {
         if (id == null || id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -125,6 +134,7 @@ public class SalaryBatchController {
 
     @ApiOperation("审批通过")
     @PutMapping("/{id}/approve")
+    @AuthCheck(mustRole = {UserConstant.FINANCE_ROLE})
     public BaseResponse<Boolean> approve(@ApiParam("批次ID") @PathVariable Long id) {
         if (id == null || id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -135,6 +145,7 @@ public class SalaryBatchController {
 
     @ApiOperation("审批驳回")
     @PutMapping("/{id}/reject")
+    @AuthCheck(mustRole = {UserConstant.FINANCE_ROLE})
     public BaseResponse<Boolean> reject(
             @ApiParam("批次ID") @PathVariable Long id,
             @RequestBody SalaryBatchRejectRequest request) {
@@ -147,6 +158,7 @@ public class SalaryBatchController {
 
     @ApiOperation("标记已发放")
     @PutMapping("/{id}/paid")
+    @AuthCheck(mustRole = {UserConstant.FINANCE_ROLE})
     public BaseResponse<Boolean> markAsPaid(@ApiParam("批次ID") @PathVariable Long id) {
         if (id == null || id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);

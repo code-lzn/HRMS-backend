@@ -1,8 +1,10 @@
 package com.limou.hrms.controller;
 
+import com.limou.hrms.annotation.AuthCheck;
 import com.limou.hrms.common.BaseResponse;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.common.ResultUtils;
+import com.limou.hrms.constant.UserConstant;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.model.dto.salary.SalaryAccountAddRequest;
 import com.limou.hrms.model.dto.salary.SalaryAccountQueryRequest;
@@ -42,6 +44,7 @@ public class SalaryAccountController {
 
     @ApiOperation("查询账套列表")
     @GetMapping
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE})
     public BaseResponse<List<SalaryAccountVO>> listAccounts(SalaryAccountQueryRequest request) {
         if (request == null) {
             request = new SalaryAccountQueryRequest();
@@ -52,6 +55,7 @@ public class SalaryAccountController {
 
     @ApiOperation("查询账套详情（含工资项目列表）")
     @GetMapping("/{id}")
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE})
     public BaseResponse<SalaryAccountVO> getAccount(@ApiParam("账套ID") @PathVariable Long id) {
         if (id == null || id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -62,6 +66,7 @@ public class SalaryAccountController {
 
     @ApiOperation("新建账套")
     @PostMapping
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
     public BaseResponse<Long> createAccount(@RequestBody SalaryAccountAddRequest request) {
         if (request == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -72,6 +77,7 @@ public class SalaryAccountController {
 
     @ApiOperation("编辑账套")
     @PutMapping("/{id}")
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
     public BaseResponse<Boolean> updateAccount(
             @ApiParam("账套ID") @PathVariable Long id,
             @RequestBody SalaryAccountUpdateRequest request) {
@@ -85,6 +91,7 @@ public class SalaryAccountController {
 
     @ApiOperation("删除账套")
     @DeleteMapping("/{id}")
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
     public BaseResponse<Boolean> deleteAccount(@ApiParam("账套ID") @PathVariable Long id) {
         if (id == null || id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -97,6 +104,7 @@ public class SalaryAccountController {
 
     @ApiOperation("获取账套下的工资项目列表")
     @GetMapping("/{id}/items")
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE})
     public BaseResponse<List<SalaryItemVO>> listItems(@ApiParam("账套ID") @PathVariable Long id) {
         if (id == null || id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);

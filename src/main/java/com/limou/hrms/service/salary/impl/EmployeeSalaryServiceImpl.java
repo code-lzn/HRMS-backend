@@ -4,11 +4,15 @@ import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.limou.hrms.common.ErrorCode;
+import com.limou.hrms.constant.DataScopeContext;
+import com.limou.hrms.constant.DataScopeEnum;
 import com.limou.hrms.exception.BusinessException;
+import com.limou.hrms.mapper.EmployeeMapper;
 import com.limou.hrms.mapper.EmployeeSalaryMapper;
 import com.limou.hrms.mapper.SalaryAccountMapper;
 import com.limou.hrms.mapper.SalaryChangeHistoryMapper;
 import com.limou.hrms.model.dto.salary.EmployeeSalaryUpdateRequest;
+import com.limou.hrms.model.entity.Employee;
 import com.limou.hrms.model.entity.EmployeeSalary;
 import com.limou.hrms.model.entity.SalaryAccount;
 import com.limou.hrms.model.entity.SalaryChangeHistory;
@@ -38,8 +42,15 @@ public class EmployeeSalaryServiceImpl extends ServiceImpl<EmployeeSalaryMapper,
     @Resource
     private SalaryAccountMapper salaryAccountMapper;
 
+    @Resource
+    private DataScopeContext dataScopeContext;
+
+    @Resource
+    private EmployeeMapper employeeMapper;
+
     @Override
     public EmployeeSalaryVO getEmployeeSalary(Long employeeId) {
+        checkSalaryDataScope(employeeId);
         QueryWrapper<EmployeeSalary> wrapper = new QueryWrapper<>();
         wrapper.eq("employee_id", employeeId)
                 .orderByDesc("effective_date")
@@ -97,6 +108,7 @@ public class EmployeeSalaryServiceImpl extends ServiceImpl<EmployeeSalaryMapper,
 
     @Override
     public List<SalaryChangeHistoryVO> getSalaryHistory(Long employeeId) {
+        checkSalaryDataScope(employeeId);
         QueryWrapper<SalaryChangeHistory> wrapper = new QueryWrapper<>();
         wrapper.eq("employee_id", employeeId)
                 .orderByDesc("create_time");
@@ -114,6 +126,27 @@ public class EmployeeSalaryServiceImpl extends ServiceImpl<EmployeeSalaryMapper,
     }
 
     // ==================== 私有方法 ====================
+
+    /**
+     * 薪资数据范围校验：USER 角色只能查看自己的薪资
+     */
+    private void checkSalaryDataScope(Long employeeId) {
+        DataScopeEnum scope = dataScopeContext.getSalaryScope();
+        if (scope == DataScopeEnum.NONE) {
+            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "无权查看薪资数据");
+        }
+        if (scope == DataScopeEnum.SELF) {
+            Long currentUserId = dataScopeContext.getCurrentUserId();
+            if (currentUserId == null) {
+                throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
+            }
+            Employee employee = employeeMapper.selectByUserId(currentUserId);
+            if (employee == null || !employee.getId().equals(employeeId)) {
+                throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "无权查看他人薪资数据");
+            }
+        }
+        // ALL — 放行
+    }
 
     /**
      * 判断变更类型

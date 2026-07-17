@@ -1,10 +1,14 @@
 package com.limou.hrms.controller;
 
+import com.limou.hrms.annotation.AuthCheck;
 import com.limou.hrms.common.BaseResponse;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.common.ResultUtils;
+import com.limou.hrms.constant.UserConstant;
 import com.limou.hrms.exception.BusinessException;
+import com.limou.hrms.mapper.EmployeeMapper;
 import com.limou.hrms.model.dto.salary.PayslipVerifyRequest;
+import com.limou.hrms.model.entity.Employee;
 import com.limou.hrms.model.entity.User;
 import com.limou.hrms.model.vo.salary.PayslipVO;
 import com.limou.hrms.service.UserService;
@@ -38,16 +42,22 @@ public class SalaryDetailController {
     @Resource
     private UserService userService;
 
+    @Resource
+    private EmployeeMapper employeeMapper;
+
     @ApiOperation("获取我的工资条列表")
     @GetMapping("/my")
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE, UserConstant.DEFAULT_ROLE})
     public BaseResponse<List<PayslipVO>> getMyPayslips(HttpServletRequest request) {
         User loginUser = userService.getLoginUser(request);
-        List<PayslipVO> list = salaryDetailService.getMyPayslips(loginUser.getId());
+        Long employeeId = getEmployeeId(loginUser);
+        List<PayslipVO> list = salaryDetailService.getMyPayslips(employeeId);
         return ResultUtils.success(list);
     }
 
     @ApiOperation("查看工资条详情")
     @GetMapping("/{id}")
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE, UserConstant.DEFAULT_ROLE})
     public BaseResponse<PayslipVO> getPayslipDetail(
             @ApiParam("工资条ID") @PathVariable Long id,
             HttpServletRequest request) {
@@ -55,12 +65,14 @@ public class SalaryDetailController {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         User loginUser = userService.getLoginUser(request);
-        PayslipVO vo = salaryDetailService.getPayslipDetail(loginUser.getId(), id);
+        Long employeeId = getEmployeeId(loginUser);
+        PayslipVO vo = salaryDetailService.getPayslipDetail(employeeId, id);
         return ResultUtils.success(vo);
     }
 
     @ApiOperation("二次验证")
     @PostMapping("/{id}/verify")
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE, UserConstant.DEFAULT_ROLE})
     public BaseResponse<Boolean> verifyPayslip(
             @ApiParam("工资条ID") @PathVariable Long id,
             @RequestBody PayslipVerifyRequest verifyRequest,
@@ -69,7 +81,19 @@ public class SalaryDetailController {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         User loginUser = userService.getLoginUser(request);
-        boolean result = salaryDetailService.verifyPayslip(loginUser.getId(), id, verifyRequest);
+        Long employeeId = getEmployeeId(loginUser);
+        boolean result = salaryDetailService.verifyPayslip(employeeId, id, verifyRequest);
         return ResultUtils.success(result);
+    }
+
+    /**
+     * 根据登录用户获取对应的员工 ID
+     */
+    private Long getEmployeeId(User loginUser) {
+        Employee employee = employeeMapper.selectByUserId(loginUser.getId());
+        if (employee == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "未找到关联的员工档案");
+        }
+        return employee.getId();
     }
 }

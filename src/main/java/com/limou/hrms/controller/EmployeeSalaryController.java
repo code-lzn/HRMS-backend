@@ -1,8 +1,10 @@
 package com.limou.hrms.controller;
 
+import com.limou.hrms.annotation.AuthCheck;
 import com.limou.hrms.common.BaseResponse;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.common.ResultUtils;
+import com.limou.hrms.constant.UserConstant;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.model.dto.salary.EmployeeSalaryUpdateRequest;
 import com.limou.hrms.model.entity.User;
@@ -41,6 +43,7 @@ public class EmployeeSalaryController {
 
     @ApiOperation("获取员工当前有效薪资档案")
     @GetMapping("/{employeeId}")
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE, UserConstant.DEFAULT_ROLE})
     public BaseResponse<EmployeeSalaryVO> getEmployeeSalary(
             @ApiParam("员工ID") @PathVariable Long employeeId) {
         if (employeeId == null || employeeId <= 0) {
@@ -52,6 +55,7 @@ public class EmployeeSalaryController {
 
     @ApiOperation("更新员工薪资档案（自动记录调薪历史）")
     @PutMapping("/{employeeId}")
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
     public BaseResponse<Boolean> updateEmployeeSalary(
             @ApiParam("员工ID") @PathVariable Long employeeId,
             @RequestBody EmployeeSalaryUpdateRequest request,
@@ -66,6 +70,7 @@ public class EmployeeSalaryController {
 
     @ApiOperation("获取员工调薪历史")
     @GetMapping("/{employeeId}/history")
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE, UserConstant.DEFAULT_ROLE})
     public BaseResponse<List<SalaryChangeHistoryVO>> getSalaryHistory(
             @ApiParam("员工ID") @PathVariable Long employeeId) {
         if (employeeId == null || employeeId <= 0) {

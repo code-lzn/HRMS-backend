@@ -1,7 +1,9 @@
 package com.limou.hrms.controller;
 
+import com.limou.hrms.annotation.AuthCheck;
 import com.limou.hrms.common.BaseResponse;
 import com.limou.hrms.common.ResultUtils;
+import com.limou.hrms.constant.UserConstant;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import java.math.BigDecimal;
@@ -26,6 +28,7 @@ public class SalaryStatisticsController {
 
     @ApiOperation("薪资成本月度趋势（近6个月）")
     @GetMapping("/monthly-trend")
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE})
     public BaseResponse<List<Map<String, Object>>> monthlyTrend() {
         List<Map<String, Object>> data = new ArrayList<>();
         // TODO: 从 salary_batch 表查询近6个月数据，按月份分组汇总
@@ -43,6 +46,7 @@ public class SalaryStatisticsController {
 
     @ApiOperation("部门薪资分布")
     @GetMapping("/department-distribution")
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE, UserConstant.DEPT_HEAD_ROLE})
     public BaseResponse<List<Map<String, Object>>> departmentDistribution() {
         List<Map<String, Object>> data = new ArrayList<>();
         // TODO: 关联 department 和 salary_detail 统计各部门薪资分布
@@ -51,6 +55,7 @@ public class SalaryStatisticsController {
 
     @ApiOperation("薪资构成占比")
     @GetMapping("/composition")
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE})
     public BaseResponse<List<Map<String, Object>>> composition() {
         List<Map<String, Object>> data = new ArrayList<>();
         // TODO: 统计当月工资条各项目类型金额占比
@@ -59,6 +64,7 @@ public class SalaryStatisticsController {
 
     @ApiOperation("薪资变动分布")
     @GetMapping("/variation-distribution")
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE})
     public BaseResponse<List<Map<String, Object>>> variationDistribution() {
         List<Map<String, Object>> data = new ArrayList<>();
         // TODO: 统计员工薪资变动区间分布
