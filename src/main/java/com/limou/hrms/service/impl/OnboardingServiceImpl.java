@@ -317,7 +317,7 @@ public class OnboardingServiceImpl
         String initialPassword = generateRandomPassword();
         User user = new User();
         user.setUserAccount(app.getPhone());
-        user.setUserPassword(DigestUtils.md5DigestAsHex(("limou" + initialPassword).getBytes()));
+        user.setUserPassword(DigestUtils.md5DigestAsHex(("user" + initialPassword).getBytes()));
         user.setUserName(app.getName());
         user.setUserRole(UserRoleEnum.USER.getValue());
         userMapper.insert(user);
