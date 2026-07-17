@@ -21,7 +21,7 @@ import java.time.LocalDate;
  * 请假管理控制器 — 请假申请 / 假期余额
  */
 @RestController
-@RequestMapping("/api/v1/leave")
+@RequestMapping("/api/leave")
 @Slf4j
 @RequiredArgsConstructor
 public class LeaveController {
@@ -29,7 +29,7 @@ public class LeaveController {
     private final LeaveService leaveService;
 
     /**
-     * GET /api/v1/leave/requests — 查询请假申请列表（分页 + 数据权限）
+     * GET /api/leave/requests — 查询请假申请列表（分页 + 数据权限）
      */
     @GetMapping("/requests")
     @AuthCheck
@@ -48,7 +48,7 @@ public class LeaveController {
     }
 
     /**
-     * GET /api/v1/leave/requests/{id} — 查询请假申请详情（含权限校验）
+     * GET /api/leave/requests/{id} — 查询请假申请详情（含权限校验）
      */
     @GetMapping("/requests/{id}")
     @AuthCheck
@@ -59,7 +59,7 @@ public class LeaveController {
     }
 
     /**
-     * GET /api/v1/leave/balances — 查询假期余额（年假/调休）
+     * GET /api/leave/balances — 查询假期余额（年假/调休）
      */
     @GetMapping("/balances")
     @AuthCheck
@@ -72,7 +72,7 @@ public class LeaveController {
     }
 
     /**
-     * POST /api/v1/leave/requests — 提交请假申请（计算天数 + 余额校验 + 附件校验）
+     * POST /api/leave/requests — 提交请假申请（计算天数 + 余额校验 + 附件校验）
      */
     @PostMapping("/requests")
     @AuthCheck

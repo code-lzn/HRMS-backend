@@ -23,7 +23,7 @@ import java.time.LocalDate;
  * 加班记录控制器 — CRUD（仅HR可操作）
  */
 @RestController
-@RequestMapping("/api/v1/overtime-records")
+@RequestMapping("/api/overtime-records")
 @Slf4j
 @RequiredArgsConstructor
 public class OvertimeRecordController {
@@ -31,7 +31,7 @@ public class OvertimeRecordController {
     private final OvertimeRecordService overtimeRecordService;
 
     /**
-     * GET /api/v1/overtime-records — 查询加班记录列表（分页，仅HR）
+     * GET /api/overtime-records — 查询加班记录列表（分页，仅HR）
      */
     @GetMapping
     @AuthCheck(mustRole = {UserConstant.HR_ROLE})
@@ -49,7 +49,7 @@ public class OvertimeRecordController {
     }
 
     /**
-     * POST /api/v1/overtime-records — 创建加班记录（自动 1:1 转入调休余额）
+     * POST /api/overtime-records — 创建加班记录（自动 1:1 转入调休余额）
      */
     @PostMapping
     @AuthCheck(mustRole = {UserConstant.HR_ROLE})
@@ -60,7 +60,7 @@ public class OvertimeRecordController {
     }
 
     /**
-     * PUT /api/v1/overtime-records/{id} — 编辑加班记录（差额调整调休余额）
+     * PUT /api/overtime-records/{id} — 编辑加班记录（差额调整调休余额）
      */
     @PutMapping("/{id}")
     @AuthCheck(mustRole = {UserConstant.HR_ROLE})
@@ -72,7 +72,7 @@ public class OvertimeRecordController {
     }
 
     /**
-     * DELETE /api/v1/overtime-records/{id} — 删除加班记录（扣减对应调休余额，已使用则拒绝）
+     * DELETE /api/overtime-records/{id} — 删除加班记录（扣减对应调休余额，已使用则拒绝）
      */
     @DeleteMapping("/{id}")
     @AuthCheck(mustRole = {UserConstant.HR_ROLE})

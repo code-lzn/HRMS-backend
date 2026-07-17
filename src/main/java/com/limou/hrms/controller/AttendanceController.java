@@ -22,7 +22,7 @@ import java.time.LocalDate;
  * 考勤控制器 — 打卡 / 打卡记录 / 补卡
  */
 @RestController
-@RequestMapping("/api/v1/attendance")
+@RequestMapping("/api/attendance")
 @Slf4j
 @RequiredArgsConstructor
 public class AttendanceController {
@@ -30,7 +30,7 @@ public class AttendanceController {
     private final AttendanceService attendanceService;
 
     /**
-     * GET /api/v1/attendance/records — 查询打卡记录列表（分页 + 数据权限）
+     * GET /api/attendance/records — 查询打卡记录列表（分页 + 数据权限）
      */
     @GetMapping("/records")
     @AuthCheck
@@ -41,7 +41,7 @@ public class AttendanceController {
     }
 
     /**
-     * GET /api/v1/attendance/records/calendar — 考勤日历视图（月度汇总 + 每日状态）
+     * GET /api/attendance/records/calendar — 考勤日历视图（月度汇总 + 每日状态）
      */
     @GetMapping("/records/calendar")
     @AuthCheck
@@ -55,7 +55,7 @@ public class AttendanceController {
     }
 
     /**
-     * POST /api/v1/attendance/clock — 上班/下班打卡
+     * POST /api/attendance/clock — 上班/下班打卡
      */
     @PostMapping("/clock")
     @AuthCheck
@@ -66,7 +66,7 @@ public class AttendanceController {
     }
 
     /**
-     * GET /api/v1/attendance/supplement-cards — 查询补卡申请列表（分页 + 数据权限）
+     * GET /api/attendance/supplement-cards — 查询补卡申请列表（分页 + 数据权限）
      */
     @GetMapping("/supplement-cards")
     @AuthCheck
@@ -84,7 +84,7 @@ public class AttendanceController {
     }
 
     /**
-     * POST /api/v1/attendance/supplement-cards — 提交补卡申请（缺卡日期 + 每月≤2次）
+     * POST /api/attendance/supplement-cards — 提交补卡申请（缺卡日期 + 每月≤2次）
      */
     @PostMapping("/supplement-cards")
     @AuthCheck

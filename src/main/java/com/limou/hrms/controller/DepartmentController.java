@@ -25,7 +25,7 @@ import java.util.List;
  * 部门管理控制器 — 组织架构 CRUD
  */
 @RestController
-@RequestMapping("/api/v1/departments")
+@RequestMapping("/api/departments")
 @Slf4j
 @RequiredArgsConstructor
 public class DepartmentController {
@@ -33,7 +33,7 @@ public class DepartmentController {
     private final DepartmentService departmentService;
 
     /**
-     * GET /api/v1/departments?keyword= — 查询部门（平铺返回，前端按 parentId 自行组装树）
+     * GET /api/departments?keyword= — 查询部门（平铺返回，前端按 parentId 自行组装树）
      */
     @GetMapping("tree")
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.DEPT_HEAD_ROLE})
@@ -44,7 +44,7 @@ public class DepartmentController {
     }
 
     /**
-     * GET /api/v1/departments/{id} — 查询部门详情（含子部门简要信息）
+     * GET /api/departments/{id} — 查询部门详情（含子部门简要信息）
      */
     @GetMapping("/{id}")
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.DEPT_HEAD_ROLE})
@@ -58,7 +58,7 @@ public class DepartmentController {
     }
 
     /**
-     * POST /api/v1/departments — 创建部门
+     * POST /api/departments — 创建部门
      */
     @PostMapping
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
@@ -70,7 +70,7 @@ public class DepartmentController {
     }
 
     /**
-     * PUT /api/v1/departments/{id} — 更新部门（部分更新）
+     * PUT /api/departments/{id} — 更新部门（部分更新）
      */
     @PutMapping("/{id}")
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
@@ -86,7 +86,7 @@ public class DepartmentController {
     }
 
     /**
-     * DELETE /api/v1/departments/{id} — 删除部门（逻辑删除，需先清空子部门和员工）
+     * DELETE /api/departments/{id} — 删除部门（逻辑删除，需先清空子部门和员工）
      */
     @DeleteMapping("/{id}")
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})

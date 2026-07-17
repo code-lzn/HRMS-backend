@@ -29,7 +29,7 @@ import java.util.Map;
  */
 @Api(tags = "入职管理")
 @RestController
-@RequestMapping("/api/v1/onboarding")
+@RequestMapping("/api/onboarding")
 @Slf4j
 @RequiredArgsConstructor
 public class OnboardingController {
