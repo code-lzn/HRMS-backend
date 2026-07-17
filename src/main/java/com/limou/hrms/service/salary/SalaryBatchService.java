@@ -4,7 +4,6 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.limou.hrms.model.dto.salary.SalaryBatchCreateRequest;
 import com.limou.hrms.model.dto.salary.SalaryBatchQueryRequest;
-import com.limou.hrms.model.dto.salary.SalaryBatchRejectRequest;
 import com.limou.hrms.model.dto.salary.SalaryDetailAdjustRequest;
 import com.limou.hrms.model.dto.salary.SalaryDetailQueryRequest;
 import com.limou.hrms.model.entity.SalaryBatch;
@@ -47,19 +46,9 @@ public interface SalaryBatchService extends IService<SalaryBatch> {
     void adjustDetail(Long detailId, SalaryDetailAdjustRequest request);
 
     /**
-     * 提交审批
+     * 提交审批（创建审批实例，由 SalaryBatchNodeBuilder 构建节点链）
      */
     void submitForApproval(Long batchId);
-
-    /**
-     * 审批通过
-     */
-    void approve(Long batchId);
-
-    /**
-     * 审批驳回
-     */
-    void reject(Long batchId, SalaryBatchRejectRequest request);
 
     /**
      * 标记已发放

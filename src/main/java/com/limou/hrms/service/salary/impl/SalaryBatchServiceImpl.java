@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.limou.hrms.common.ErrorCode;
+import com.limou.hrms.constant.DataScopeContext;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.mapper.EmployeeSalaryMapper;
 import com.limou.hrms.mapper.IncomeTaxCumulativeMapper;
@@ -13,7 +14,6 @@ import com.limou.hrms.mapper.SalaryDetailMapper;
 import com.limou.hrms.mapper.SalaryItemMapper;
 import com.limou.hrms.model.dto.salary.SalaryBatchCreateRequest;
 import com.limou.hrms.model.dto.salary.SalaryBatchQueryRequest;
-import com.limou.hrms.model.dto.salary.SalaryBatchRejectRequest;
 import com.limou.hrms.model.dto.salary.SalaryDetailAdjustRequest;
 import com.limou.hrms.model.dto.salary.SalaryDetailQueryRequest;
 import com.limou.hrms.model.entity.EmployeeSalary;
@@ -22,10 +22,13 @@ import com.limou.hrms.model.entity.SalaryBatch;
 import com.limou.hrms.model.entity.SalaryDetail;
 import com.limou.hrms.model.entity.SalaryItem;
 import com.limou.hrms.model.enums.AbnormalLevelEnum;
+import com.limou.hrms.model.enums.ApprovalBizType;
 import com.limou.hrms.model.enums.BatchStatusEnum;
 import com.limou.hrms.model.vo.salary.SalaryBatchVO;
 import com.limou.hrms.model.vo.salary.SalaryDetailVO;
 import com.limou.hrms.model.vo.salary.SalaryItemDetailVO;
+import com.limou.hrms.service.ApprovalCallback;
+import com.limou.hrms.service.ApprovalFlowService;
 import com.limou.hrms.service.salary.SalaryBatchService;
 import com.limou.hrms.service.salary.calculator.SalaryCalculationContext;
 import com.limou.hrms.service.salary.calculator.SalaryCalculatorEngine;
@@ -49,22 +52,22 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Slf4j
 public class SalaryBatchServiceImpl extends ServiceImpl<SalaryBatchMapper, SalaryBatch>
-        implements SalaryBatchService {
+        implements SalaryBatchService, ApprovalCallback {
 
     @Resource
     private SalaryDetailMapper salaryDetailMapper;
-
     @Resource
     private EmployeeSalaryMapper employeeSalaryMapper;
-
     @Resource
     private SalaryItemMapper salaryItemMapper;
-
     @Resource
     private IncomeTaxCumulativeMapper incomeTaxCumulativeMapper;
-
     @Resource
     private SalaryCalculatorEngine calculatorEngine;
+    @Resource
+    private ApprovalFlowService approvalFlowService;
+    @Resource
+    private DataScopeContext dataScopeContext;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -294,36 +297,42 @@ public class SalaryBatchServiceImpl extends ServiceImpl<SalaryBatchMapper, Salar
         if (batch.getStatus() != BatchStatusEnum.CONFIRMING.getValue()) {
             throw new BusinessException(ErrorCode.OPERATION_ERROR, "仅待确认状态的批次可以提交审批");
         }
+
+        // 创建审批实例（由 SalaryBatchNodeBuilder 构建节点链：财务专员→老板）
+        Long applicantId = dataScopeContext.getCurrentEmployeeId();
+        approvalFlowService.createInstance(ApprovalBizType.SALARY_BATCH, batchId, applicantId);
+
         batch.setStatus(BatchStatusEnum.APPROVING.getValue());
         this.updateById(batch);
+
+        log.info("薪资批次已提交审批: batchId={}, applicantId={}", batchId, applicantId);
     }
+
+    // ==================== 审批回调 ====================
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void approve(Long batchId) {
-        SalaryBatch batch = this.getById(batchId);
+    public void onApproved(ApprovalBizType bizType, Long bizId) {
+        if (bizType != ApprovalBizType.SALARY_BATCH) return;
+        SalaryBatch batch = this.getById(bizId);
         if (batch == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "批次不存在");
-        }
-        if (batch.getStatus() != BatchStatusEnum.APPROVING.getValue()) {
-            throw new BusinessException(ErrorCode.OPERATION_ERROR, "仅审批中状态的批次可以审批通过");
         }
         batch.setStatus(BatchStatusEnum.APPROVED.getValue());
         this.updateById(batch);
+        log.info("薪资批次审批通过: batchId={}", bizId);
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
-    public void reject(Long batchId, SalaryBatchRejectRequest request) {
-        SalaryBatch batch = this.getById(batchId);
+    public void onRejected(ApprovalBizType bizType, Long bizId) {
+        if (bizType != ApprovalBizType.SALARY_BATCH) return;
+        SalaryBatch batch = this.getById(bizId);
         if (batch == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "批次不存在");
         }
-        if (batch.getStatus() != BatchStatusEnum.APPROVING.getValue()) {
-            throw new BusinessException(ErrorCode.OPERATION_ERROR, "仅审批中状态的批次可以驳回");
-        }
         batch.setStatus(BatchStatusEnum.REJECTED.getValue());
         this.updateById(batch);
+        log.info("薪资批次审批驳回: batchId={}", bizId);
     }
 
     @Override
