@@ -60,7 +60,10 @@ public class ResignationServiceImpl
     @Transactional(rollbackFor = Exception.class)
     public Long createApplication(ResignationCreateDTO dto) {
         Employee employee = employeeMapper.selectById(dto.getEmployeeId());
-        if (employee == null) throw new BusinessException(ErrorCode.PARAMS_ERROR, "员工不存在");
+        if (employee == null) {
+            log.warn("离职申请创建失败: id为{}的员工不存在", dto.getEmployeeId());
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "员工不存在");
+        }
         Integer empStatus = employee.getStatus();
         if (empStatus == null
                 || (empStatus != EmployeeStatus.PROBATION.getValue()
@@ -93,54 +96,76 @@ public class ResignationServiceImpl
     @Override
     public void updateDraft(Long id, ResignationUpdateDTO dto) {
         ResignationApplication app = getAppOrThrow(id);
-        if (app.getStatus() != ResignationStatus.DRAFT.getCode()) throw new BusinessException(ErrorCode.RESIGNATION_DRAFT_ONLY);
-        if (!app.getApplicantId().equals(dataScopeContext.getCurrentEmployeeId()))
+        if (app.getStatus() != ResignationStatus.DRAFT.getCode()) {
+            log.warn("离职草稿更新失败: 表单id={}, 当前状态为{}, 仅草稿可编辑", id, ResignationStatus.fromCode(app.getStatus()).getDesc());
+            throw new BusinessException(ErrorCode.RESIGNATION_DRAFT_ONLY);
+        }
+        if (!app.getApplicantId().equals(dataScopeContext.getCurrentEmployeeId())) {
+            log.warn("离职草稿更新失败: 表单id={}, 仅申请人可编辑", id);
             throw new BusinessException(ErrorCode.RESIGNATION_DRAFT_ONLY, "仅申请人可编辑草稿");
-
+        }
         if (dto.getResignationDate() != null) app.setResignationDate(dto.getResignationDate());
         if (dto.getResignationType() != null) app.setResignationType(dto.getResignationType());
         if (dto.getReason() != null) app.setReason(dto.getReason());
         if (dto.getHandoverToId() != null) app.setHandoverToId(dto.getHandoverToId());
         if (dto.getRemark() != null) app.setRemark(dto.getRemark());
         resignationMapper.updateById(app);
+        log.info("离职草稿更新成功: 表单id={}", id);
     }
 
     @Override
     public void deleteDraft(Long id) {
         ResignationApplication app = getAppOrThrow(id);
-        if (app.getStatus() != ResignationStatus.DRAFT.getCode()) throw new BusinessException(ErrorCode.RESIGNATION_DRAFT_ONLY);
-        if (!app.getApplicantId().equals(dataScopeContext.getCurrentEmployeeId()))
+        if (app.getStatus() != ResignationStatus.DRAFT.getCode()) {
+            log.warn("离职草稿删除失败: 表单id={}, 当前状态为{}, 仅草稿可删除", id, ResignationStatus.fromCode(app.getStatus()).getDesc());
+            throw new BusinessException(ErrorCode.RESIGNATION_DRAFT_ONLY);
+        }
+        if (!app.getApplicantId().equals(dataScopeContext.getCurrentEmployeeId())) {
+            log.warn("离职草稿删除失败: 表单id={}, 仅申请人可删除", id);
             throw new BusinessException(ErrorCode.RESIGNATION_DRAFT_ONLY, "仅申请人可删除草稿");
+        }
         resignationMapper.deleteById(id);
+        log.info("离职草稿删除成功: 表单id={}", id);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void submitToApproval(Long id) {
         ResignationApplication app = getAppOrThrow(id);
-        if (app.getStatus() != ResignationStatus.DRAFT.getCode()) throw new BusinessException(ErrorCode.RESIGNATION_SUBMIT_DRAFT_ONLY);
-        if (StringUtils.isBlank(app.getReason()) || app.getResignationDate() == null || app.getHandoverToId() == null)
+        if (app.getStatus() != ResignationStatus.DRAFT.getCode()) {
+            log.warn("离职申请提交审批失败: 表单id={}, 当前状态为{}, 仅草稿可提交", id, ResignationStatus.fromCode(app.getStatus()).getDesc());
+            throw new BusinessException(ErrorCode.RESIGNATION_SUBMIT_DRAFT_ONLY);
+        }
+        if (StringUtils.isBlank(app.getReason()) || app.getResignationDate() == null || app.getHandoverToId() == null) {
+            log.warn("离职申请提交审批失败: 表单id={}, 必填字段不完整", id);
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "必填字段不完整");
+        }
 
         ApprovalInstance instance = approvalFlowService.createInstance(
                 ApprovalBizType.RESIGNATION, app.getId(), app.getApplicantId());
         app.setStatus(ResignationStatus.PENDING.getCode());
         app.setApprovalInstanceId(instance.getId());
         resignationMapper.updateById(app);
-        log.info("离职申请已提交审批: id={}", id);
+        log.info("离职申请已提交审批: 表单id={}, instanceId={}", id, instance.getId());
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void cancel(Long id) {
         ResignationApplication app = getAppOrThrow(id);
-        if (app.getStatus() != ResignationStatus.PENDING.getCode()) throw new BusinessException(ErrorCode.RESIGNATION_CANCEL_FIRST_NODE_ONLY);
-        if (!app.getApplicantId().equals(dataScopeContext.getCurrentEmployeeId()))
+        if (app.getStatus() != ResignationStatus.PENDING.getCode()) {
+            log.warn("离职申请撤回失败: 表单id={}, 当前状态为{}, 仅审批中可撤回", id, ResignationStatus.fromCode(app.getStatus()).getDesc());
+            throw new BusinessException(ErrorCode.RESIGNATION_CANCEL_FIRST_NODE_ONLY);
+        }
+        if (!app.getApplicantId().equals(dataScopeContext.getCurrentEmployeeId())) {
+            log.warn("离职申请撤回失败: 表单id={}, 仅申请人可撤回", id);
             throw new BusinessException(ErrorCode.RESIGNATION_CANCEL_FIRST_NODE_ONLY, "仅申请人可撤回");
+        }
         approvalFlowService.cancel(app.getApprovalInstanceId());
         app.setStatus(ResignationStatus.DRAFT.getCode());
         app.setApprovalInstanceId(null);
         resignationMapper.updateById(app);
+        log.info("离职申请已撤回: 表单id={}", id);
     }
 
     @Override

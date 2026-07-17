@@ -116,10 +116,12 @@ public class TransferServiceImpl
     public void updateDraft(Long id, TransferUpdateDTO dto) {
         TransferApplication app = getAppOrThrow(id);
         if (app.getStatus() != TransferStatus.DRAFT.getCode()) {
+            log.warn("调岗草稿更新失败: 表单id={}, 当前状态为{}, 仅草稿可编辑", id, TransferStatus.fromCode(app.getStatus()).getDesc());
             throw new BusinessException(ErrorCode.TRANSFER_DRAFT_ONLY);
         }
         Long currentEmployeeId = dataScopeContext.getCurrentEmployeeId();
         if (!app.getApplicantId().equals(currentEmployeeId)) {
+            log.warn("调岗草稿更新失败: 表单id={}, 仅申请人可编辑", id);
             throw new BusinessException(ErrorCode.TRANSFER_DRAFT_ONLY, "仅申请人可编辑草稿");
         }
 
@@ -138,10 +140,12 @@ public class TransferServiceImpl
     public void deleteDraft(Long id) {
         TransferApplication app = getAppOrThrow(id);
         if (app.getStatus() != TransferStatus.DRAFT.getCode()) {
+            log.warn("调岗草稿删除失败: 表单id={}, 当前状态为{}, 仅草稿可删除", id, TransferStatus.fromCode(app.getStatus()).getDesc());
             throw new BusinessException(ErrorCode.TRANSFER_DRAFT_ONLY);
         }
         Long currentEmployeeId = dataScopeContext.getCurrentEmployeeId();
         if (!app.getApplicantId().equals(currentEmployeeId)) {
+            log.warn("调岗草稿删除失败: 表单id={}, 仅申请人可删除", id);
             throw new BusinessException(ErrorCode.TRANSFER_DRAFT_ONLY, "仅申请人可删除草稿");
         }
         transferMapper.deleteById(id);
@@ -153,9 +157,11 @@ public class TransferServiceImpl
     public void submitToApproval(Long id) {
         TransferApplication app = getAppOrThrow(id);
         if (app.getStatus() != TransferStatus.DRAFT.getCode()) {
+            log.warn("调岗申请提交审批失败: 表单id={}, 当前状态为{}, 仅草稿可提交", id, TransferStatus.fromCode(app.getStatus()).getDesc());
             throw new BusinessException(ErrorCode.TRANSFER_SUBMIT_DRAFT_ONLY);
         }
         if (StringUtils.isBlank(app.getReason())) {
+            log.warn("调岗申请提交审批失败: 表单id={}, 调岗原因不能为空", id);
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "调岗原因不能为空");
         }
 
