@@ -20,12 +20,13 @@ spring:
     store-type: redis
     timeout: 2592000
 
-  # 数据库配置（密码等敏感信息在 application-dev.yml 中，不提交到仓库）
+  # 数据库配置
+  # todo 需替换配置
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: ${DB_URL:jdbc:mysql://localhost:3306/hrms}
-    username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:root}
+    url: xxx
+    username: xxx
+    password: xxx
   # Redis 配置
   redis:
     database: 1
@@ -40,12 +41,11 @@ spring:
 
 cos:
   client:
-    bucket: ai-code-mother-1367496754
-    region: ap-guangzhou
-    secretId: your-secret-id
-    secretKey: your-secret-key
-    host: https://ai-code-mother-1367496754.cos.ap-guangzhou.myqcloud.com
-
+    bucket: xxx
+    region: xxx
+    secretId: xxx
+    secretKey: xxx
+    host: xxx
 server:
   address: 0.0.0.0
   port: 8123
@@ -55,8 +55,6 @@ server:
     session:
       cookie:
         max-age: 2592000
-        same-site: none
-        secure: false
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: false

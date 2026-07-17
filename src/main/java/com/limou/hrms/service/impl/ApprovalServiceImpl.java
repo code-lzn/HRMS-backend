@@ -433,10 +433,16 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
         ThrowUtils.throwIf(detail == null, ErrorCode.APPROVAL_NOT_FOUND);
         ThrowUtils.throwIf(!ApprovalActionEnum.PENDING.getValue().equals(detail.getAction()), ErrorCode.APPROVAL_NOT_PENDING);
 
+        // 检查审批记录是否仍在审批中
+        ApprovalRecord record = this.getById(detail.getRecordId());
+        ThrowUtils.throwIf(record == null, ErrorCode.APPROVAL_NOT_FOUND);
+        ThrowUtils.throwIf(!ApprovalRecordStatusEnum.APPROVING.getValue().equals(record.getStatus()),
+                ErrorCode.APPROVAL_NOT_PENDING);
+
         boolean hasPermission = Objects.equals(detail.getApproverId(), employeeId);
         if (!hasPermission) {
             hasPermission = approvalDelegationService.isActiveDelegate(detail.getApproverId(), employeeId,
-                    this.getById(detail.getRecordId()).getBusinessType());
+                    record.getBusinessType());
         }
         ThrowUtils.throwIf(!hasPermission, ErrorCode.APPROVAL_NO_PERMISSION);
 

@@ -179,10 +179,9 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
         Employee emp = employeeService.lambdaQuery().eq(Employee::getId, request.getEmployeeId()).one();
         LeaveVO leaveVO = convertToVO(request, emp);
 
-        // 构建审批进度节点
         List<LeaveProgressVO.ProgressNode> nodes = new ArrayList<>();
 
-        // 节点1: 提交申请
+        // 节点0: 提交申请
         LeaveProgressVO.ProgressNode submitNode = new LeaveProgressVO.ProgressNode();
         submitNode.setNodeName("提交申请");
         submitNode.setStatus(ProgressNodeStatusEnum.COMPLETED.getValue());
@@ -191,30 +190,60 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
         submitNode.setComment(request.getReason());
         nodes.add(submitNode);
 
-        // 节点2: 审批结果
-        LeaveProgressVO.ProgressNode approveNode = new LeaveProgressVO.ProgressNode();
-        approveNode.setNodeName("审批");
-        if (Objects.equals(request.getStatus(), ApprovalStatusEnum.PENDING.getValue())) {
-            approveNode.setStatus(ProgressNodeStatusEnum.IN_PROGRESS.getValue());
-            approveNode.setOperatorName(null);
-            approveNode.setOperateTime(null);
-            approveNode.setComment(null);
-        } else if (Objects.equals(request.getStatus(), ApprovalStatusEnum.CANCELLED.getValue())) {
-            approveNode.setStatus(ProgressNodeStatusEnum.NOT_STARTED.getValue());
-            approveNode.setNodeName("审批（已撤销）");
-            approveNode.setOperatorName(null);
-            approveNode.setOperateTime(null);
-            approveNode.setComment("申请人已撤销此申请");
+        // 查询审批实例
+        ApprovalRecord record = approvalService.lambdaQuery()
+                .eq(ApprovalRecord::getBusinessType, BusinessTypeEnum.LEAVE.getValue())
+                .eq(ApprovalRecord::getBusinessId, requestId)
+                .orderByDesc(ApprovalRecord::getCreateTime)
+                .last("LIMIT 1")
+                .one();
+
+        if (record != null) {
+            List<ApprovalDetail> details = approvalDetailService.lambdaQuery()
+                    .eq(ApprovalDetail::getRecordId, record.getId())
+                    .orderByAsc(ApprovalDetail::getStepOrder, ApprovalDetail::getCreateTime)
+                    .list();
+
+            for (ApprovalDetail detail : details) {
+                LeaveProgressVO.ProgressNode node = new LeaveProgressVO.ProgressNode();
+                node.setNodeName(detail.getNodeName());
+                node.setOperatorName(detail.getApproverName());
+                node.setOperateTime(detail.getOperateTime());
+                node.setComment(detail.getComment());
+
+                String action = detail.getAction();
+                if (ApprovalActionEnum.PENDING.getValue().equals(action)) {
+                    boolean isCurrentStep = Objects.equals(detail.getStepOrder(), record.getCurrentStep())
+                            && ApprovalRecordStatusEnum.APPROVING.getValue().equals(record.getStatus());
+                    node.setStatus(isCurrentStep
+                            ? ProgressNodeStatusEnum.IN_PROGRESS.getValue()
+                            : ProgressNodeStatusEnum.NOT_STARTED.getValue());
+                } else if (ApprovalActionEnum.APPROVE.getValue().equals(action)) {
+                    node.setStatus(ProgressNodeStatusEnum.COMPLETED.getValue());
+                } else if (ApprovalActionEnum.REJECT.getValue().equals(action)) {
+                    node.setStatus(ProgressNodeStatusEnum.COMPLETED.getValue());
+                    node.setNodeName(detail.getNodeName() + "（已拒绝）");
+                } else if (ApprovalActionEnum.TRANSFER.getValue().equals(action)) {
+                    node.setStatus(ProgressNodeStatusEnum.COMPLETED.getValue());
+                    node.setNodeName(detail.getNodeName() + "（已转交）");
+                } else if (ApprovalActionEnum.WITHDRAWN.getValue().equals(action)) {
+                    node.setStatus(ProgressNodeStatusEnum.NOT_STARTED.getValue());
+                } else {
+                    node.setStatus(ProgressNodeStatusEnum.NOT_STARTED.getValue());
+                }
+
+                nodes.add(node);
+            }
         } else {
-            approveNode.setStatus(ProgressNodeStatusEnum.COMPLETED.getValue());
-            Employee approver = request.getApproverId() != null
-                    ? employeeService.lambdaQuery().eq(Employee::getId, request.getApproverId()).one()
-                    : null;
-            approveNode.setOperatorName(approver != null ? approver.getEmployeeName() : null);
-            approveNode.setOperateTime(request.getApproveTime());
-            approveNode.setComment(request.getApproveComment());
+            // 无审批记录时回退
+            LeaveProgressVO.ProgressNode fallbackNode = new LeaveProgressVO.ProgressNode();
+            fallbackNode.setNodeName("审批");
+            fallbackNode.setStatus(ProgressNodeStatusEnum.NOT_STARTED.getValue());
+            fallbackNode.setOperatorName(null);
+            fallbackNode.setOperateTime(null);
+            fallbackNode.setComment("审批流未初始化");
+            nodes.add(fallbackNode);
         }
-        nodes.add(approveNode);
 
         LeaveProgressVO vo = new LeaveProgressVO();
         vo.setLeave(leaveVO);

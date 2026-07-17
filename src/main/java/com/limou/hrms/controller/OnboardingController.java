@@ -165,6 +165,7 @@ public class OnboardingController {
         return ResultUtils.success(true);
     }
 
+    //拿到可以进行转交的人
     @GetMapping("/transferable-users")
     public BaseResponse<List<UserVO>> getTransferableUsers() {
         List<UserVO> users = onboardingService.getTransferableUsers();
