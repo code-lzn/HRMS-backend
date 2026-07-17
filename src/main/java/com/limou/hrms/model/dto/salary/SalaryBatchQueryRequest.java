@@ -9,7 +9,7 @@ import lombok.EqualsAndHashCode;
 /**
  * 薪资批次查询请求
  */
-@ApiModel("批次查询请求")
+@ApiModel("SalaryBatchQueryRequest")
 @EqualsAndHashCode(callSuper = true)
 @Data
 public class SalaryBatchQueryRequest extends PageRequest {

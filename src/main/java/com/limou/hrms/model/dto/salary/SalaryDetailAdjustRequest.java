@@ -9,7 +9,7 @@ import lombok.Data;
 /**
  * 工资条手动调整请求
  */
-@ApiModel("手动调整薪资请求")
+@ApiModel("SalaryDetailAdjustRequest")
 @Data
 public class SalaryDetailAdjustRequest implements Serializable {
 

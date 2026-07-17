@@ -8,7 +8,7 @@ import lombok.Data;
 /**
  * 审批驳回请求
  */
-@ApiModel("审批驳回请求")
+@ApiModel("SalaryBatchRejectRequest")
 @Data
 public class SalaryBatchRejectRequest implements Serializable {
 

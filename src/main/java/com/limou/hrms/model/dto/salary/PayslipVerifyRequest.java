@@ -8,7 +8,7 @@ import lombok.Data;
 /**
  * 工资条二次验证请求
  */
-@ApiModel("工资条二次验证请求")
+@ApiModel("PayslipVerifyRequest")
 @Data
 public class PayslipVerifyRequest implements Serializable {
 

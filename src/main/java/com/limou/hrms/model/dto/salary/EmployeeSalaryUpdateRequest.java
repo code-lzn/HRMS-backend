@@ -11,7 +11,7 @@ import lombok.Data;
 /**
  * 员工薪资档案更新请求
  */
-@ApiModel("更新员工薪资档案请求")
+@ApiModel("EmployeeSalaryUpdateRequest")
 @Data
 public class EmployeeSalaryUpdateRequest implements Serializable {
 
