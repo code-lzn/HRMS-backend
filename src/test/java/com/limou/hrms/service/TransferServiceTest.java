@@ -11,8 +11,11 @@ import com.limou.hrms.model.dto.transfer.TransferUpdateDTO;
 import com.limou.hrms.model.entity.*;
 import com.limou.hrms.model.enums.ApprovalBizType;
 import com.limou.hrms.model.enums.EmployeeStatus;
+import com.limou.hrms.common.PageRequest;
 import com.limou.hrms.model.vo.TransferDetailVO;
+import com.limou.hrms.model.vo.TransferHistoryVO;
 import com.limou.hrms.service.impl.TransferServiceImpl;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -219,5 +222,49 @@ class TransferServiceTest {
 
         assertEquals(1, app.getStatus());
         verify(approvalFlowService, times(1)).cancel(300L);
+    }
+
+    // ==================== 更新草稿 ====================
+
+    /** 草稿状态可编辑 */
+    @Test
+    void updateDraft_shouldSucceed() {
+        TransferApplication app = mockApp();
+        when(transferMapper.selectById(APP_ID)).thenReturn(app);
+        when(transferMapper.updateById(any())).thenReturn(1);
+
+        TransferUpdateDTO dto = new TransferUpdateDTO();
+        dto.setReason("新原因");
+
+        assertDoesNotThrow(() -> service.updateDraft(APP_ID, dto));
+        assertEquals("新原因", app.getReason());
+    }
+
+    // ==================== 删除草稿 ====================
+
+    /** 草稿状态可删除 */
+    @Test
+    void deleteDraft_shouldSucceed() {
+        TransferApplication app = mockApp();
+        when(transferMapper.selectById(APP_ID)).thenReturn(app);
+        when(transferMapper.deleteById(APP_ID)).thenReturn(1);
+
+        assertDoesNotThrow(() -> service.deleteDraft(APP_ID));
+    }
+
+    // ==================== 调岗历史 ====================
+
+    /** 查询员工调岗历史 */
+    @Test
+    void getHistory_shouldReturnPage() {
+        when(transferHistoryMapper.selectPage(any(), any())).thenReturn(
+                new Page<TransferHistory>(1, 20));
+
+        com.limou.hrms.common.PageRequest page = new com.limou.hrms.common.PageRequest();
+        page.setCurrent(1); page.setPageSize(20);
+        Page<TransferHistoryVO> result = service.getHistory(EMPLOYEE_ID, page);
+
+        assertNotNull(result);
+        assertTrue(result.getRecords().isEmpty());
     }
 }

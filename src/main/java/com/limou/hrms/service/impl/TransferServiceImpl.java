@@ -178,6 +178,7 @@ public class TransferServiceImpl
         }
         Long currentEmployeeId = dataScopeContext.getCurrentEmployeeId();
         if (!app.getApplicantId().equals(currentEmployeeId)) {
+            log.warn("调岗申请{}不是申请人{}，无法撤回", id, currentEmployeeId);
             throw new BusinessException(ErrorCode.TRANSFER_CANCEL_FIRST_NODE_ONLY, "仅申请人可撤回");
         }
 
@@ -186,7 +187,7 @@ public class TransferServiceImpl
         app.setStatus(TransferStatus.DRAFT.getCode());
         app.setApprovalInstanceId(null);
         transferMapper.updateById(app);
-        log.info("调岗申请已撤回: id={}", id);
+        log.info("调岗申请已撤回: 表单id={}，状态->{}", id, TransferStatus.fromCode(app.getStatus()).getDesc());
     }
 
     @Override
@@ -289,7 +290,7 @@ public class TransferServiceImpl
         TransferApplication app = getAppOrThrow(bizId);
         app.setStatus(TransferStatus.REJECTED.getCode());
         transferMapper.updateById(app);
-        log.info("调岗审批已拒绝: 表单id={}，状态->{}", bizId, app.getStatus());
+        log.info("调岗审批已拒绝: 表单id={}，状态->{}", bizId, TransferStatus.fromCode(app.getStatus()).getDesc());
     }
 
     // ==================== 私有方法 ====================

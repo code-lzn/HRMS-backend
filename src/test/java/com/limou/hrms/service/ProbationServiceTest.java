@@ -309,4 +309,31 @@ class ProbationServiceTest {
         assertDoesNotThrow(() -> service.updateDraft(APP_ID, dto));
         assertEquals("更新评价", app.getPerformanceReview());
     }
+
+    // ==================== 删除草稿 ====================
+
+    /** 草稿状态可删除 */
+    @Test
+    void deleteDraft_shouldSucceed() {
+        ProbationApplication app = mockApp();
+        when(probationMapper.selectById(APP_ID)).thenReturn(app);
+        when(probationMapper.deleteById(APP_ID)).thenReturn(1);
+
+        assertDoesNotThrow(() -> service.deleteDraft(APP_ID));
+    }
+
+    // ==================== 待转正员工查询 ====================
+
+    /** 查询试用期即将到期员工 */
+    @Test
+    void getPendingEmployees_shouldReturnList() {
+        Employee e = mockEmployee();
+        e.setHireDate(java.time.LocalDate.now().minusMonths(3));
+        when(employeeMapper.selectList(any())).thenReturn(java.util.Collections.singletonList(e));
+        when(probationMapper.selectCount(any())).thenReturn(0L);
+
+        java.util.List<PendingEmployeeVO> list = service.getPendingEmployees(7);
+
+        assertNotNull(list);
+    }
 }

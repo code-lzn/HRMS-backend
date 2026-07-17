@@ -7,6 +7,7 @@ import com.limou.hrms.constant.DataScopeEnum;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.mapper.*;
 import com.limou.hrms.model.dto.resignation.ResignationCreateDTO;
+import com.limou.hrms.model.dto.resignation.ResignationUpdateDTO;
 import com.limou.hrms.model.entity.*;
 import com.limou.hrms.model.enums.ApprovalBizType;
 import com.limou.hrms.model.enums.EmployeeStatus;
@@ -126,5 +127,70 @@ class ResignationServiceTest {
 
         ResignationDetailVO vo = service.getDetail(APP_ID);
         assertNotNull(vo);
+    }
+
+    // ==================== 更新草稿 ====================
+
+    /** 草稿状态可编辑 */
+    @Test void updateDraft_shouldSucceed() {
+        ResignationApplication app = new ResignationApplication();
+        app.setId(APP_ID); app.setApplicantId(APPLICANT_ID); app.setStatus(1);
+        when(resignationMapper.selectById(APP_ID)).thenReturn(app);
+        when(resignationMapper.updateById(any())).thenReturn(1);
+
+        ResignationUpdateDTO dto = new ResignationUpdateDTO();
+        dto.setReason("新原因");
+
+        assertDoesNotThrow(() -> service.updateDraft(APP_ID, dto));
+        assertEquals("新原因", app.getReason());
+    }
+
+    // ==================== 删除草稿 ====================
+
+    /** 草稿状态可删除 */
+    @Test void deleteDraft_shouldSucceed() {
+        ResignationApplication app = new ResignationApplication();
+        app.setId(APP_ID); app.setApplicantId(APPLICANT_ID); app.setStatus(1);
+        when(resignationMapper.selectById(APP_ID)).thenReturn(app);
+        when(resignationMapper.deleteById(APP_ID)).thenReturn(1);
+
+        assertDoesNotThrow(() -> service.deleteDraft(APP_ID));
+    }
+
+    // ==================== 提交审批 ====================
+
+    /** 提交审批：状态→审批中 */
+    @Test void submitToApproval_shouldSucceed() {
+        ResignationApplication app = new ResignationApplication();
+        app.setId(APP_ID); app.setApplicantId(APPLICANT_ID); app.setStatus(1);
+        app.setResignationDate(LocalDate.now().plusDays(30));
+        app.setHandoverToId(50L); app.setReason("个人原因");
+        when(resignationMapper.selectById(APP_ID)).thenReturn(app);
+        ApprovalInstance instance = new ApprovalInstance();
+        instance.setId(400L);
+        when(approvalFlowService.createInstance(any(), anyLong(), anyLong())).thenReturn(instance);
+        when(resignationMapper.updateById(any())).thenReturn(1);
+
+        service.submitToApproval(APP_ID);
+
+        assertEquals(2, app.getStatus());
+        assertEquals(400L, app.getApprovalInstanceId());
+    }
+
+    // ==================== 撤回 ====================
+
+    /** 撤回：状态回退草稿 */
+    @Test void cancel_shouldSucceed() {
+        ResignationApplication app = new ResignationApplication();
+        app.setId(APP_ID); app.setApplicantId(APPLICANT_ID); app.setStatus(2);
+        app.setApprovalInstanceId(400L);
+        when(resignationMapper.selectById(APP_ID)).thenReturn(app);
+        when(resignationMapper.updateById(any())).thenReturn(1);
+
+        service.cancel(APP_ID);
+
+        assertEquals(1, app.getStatus());
+        assertNull(app.getApprovalInstanceId());
+        verify(approvalFlowService, times(1)).cancel(400L);
     }
 }

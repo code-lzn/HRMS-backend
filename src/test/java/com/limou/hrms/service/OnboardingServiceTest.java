@@ -364,4 +364,43 @@ class OnboardingServiceTest {
         when(onboardingMapper.selectById(APP_ID)).thenReturn(null);
         assertThrows(BusinessException.class, () -> service.getDetail(APP_ID));
     }
+
+    // ==================== 预览工号 ====================
+
+    /** 预览工号：查询序列返回下一个工号 */
+    @Test
+    void previewEmployeeNo_shouldReturnFormattedNo() {
+        Department dept = new Department();
+        dept.setCode("01");
+        when(departmentMapper.selectById(1L)).thenReturn(dept);
+        EmployeeNoSequence seq = new EmployeeNoSequence();
+        seq.setCurrentSeq(5);
+        when(noSequenceMapper.selectOne(any())).thenReturn(seq);
+
+        String no = service.previewEmployeeNo(1L);
+
+        assertNotNull(no);
+        assertTrue(no.length() == 9);
+    }
+
+    // ==================== 手机号查重 ====================
+
+    /** 手机号未被占用 */
+    @Test
+    void isPhoneAvailable_shouldReturnTrue() {
+        when(employeeMapper.selectCount(any())).thenReturn(0L);
+        when(personalInfoMapper.selectCount(any())).thenReturn(0L);
+        when(onboardingMapper.selectCount(any())).thenReturn(0L);
+
+        assertTrue(service.isPhoneAvailable("13800009999", null));
+    }
+
+    /** 手机号已被占用 */
+    @Test
+    void isPhoneAvailable_shouldReturnFalse() {
+        when(employeeMapper.selectCount(any())).thenReturn(1L);
+        when(personalInfoMapper.selectCount(any())).thenReturn(0L);
+
+        assertFalse(service.isPhoneAvailable("13800001234", null));
+    }
 }
