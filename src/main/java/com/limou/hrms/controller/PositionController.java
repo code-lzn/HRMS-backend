@@ -26,7 +26,7 @@ import java.util.Map;
  * 职位管理控制器 — CRUD + 序列枚举
  */
 @RestController
-@RequestMapping("/api/positions")
+@RequestMapping("/positions")
 @Slf4j
 @RequiredArgsConstructor
 public class PositionController {

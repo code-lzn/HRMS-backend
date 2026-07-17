@@ -25,7 +25,7 @@ import javax.validation.Valid;
  * 调岗管理控制器
  */
 @RestController
-@RequestMapping("/api/transfers")
+@RequestMapping("/transfers")
 @Slf4j
 @RequiredArgsConstructor
 public class TransferController {

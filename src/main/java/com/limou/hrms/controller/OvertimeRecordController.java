@@ -23,7 +23,7 @@ import java.time.LocalDate;
  * 加班记录控制器 — CRUD（仅HR可操作）
  */
 @RestController
-@RequestMapping("/api/overtime-records")
+@RequestMapping("/overtime-records")
 @Slf4j
 @RequiredArgsConstructor
 public class OvertimeRecordController {

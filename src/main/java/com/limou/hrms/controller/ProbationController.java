@@ -26,7 +26,7 @@ import java.util.List;
  * 转正管理控制器
  */
 @RestController
-@RequestMapping("/api/probation")
+@RequestMapping("/probation")
 @Slf4j
 @RequiredArgsConstructor
 public class ProbationController {

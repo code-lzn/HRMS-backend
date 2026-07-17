@@ -21,7 +21,7 @@ import javax.validation.Valid;
  * 考勤组管理控制器 — CRUD
  */
 @RestController
-@RequestMapping("/api/attendance/groups")
+@RequestMapping("/attendance/groups")
 @Slf4j
 @RequiredArgsConstructor
 public class AttendanceGroupController {

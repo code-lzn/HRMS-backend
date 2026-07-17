@@ -23,7 +23,7 @@ import javax.validation.Valid;
  * 离职管理控制器
  */
 @RestController
-@RequestMapping("/api/resignations")
+@RequestMapping("/resignations")
 @Slf4j
 @RequiredArgsConstructor
 public class ResignationController {

@@ -22,7 +22,7 @@ import java.time.LocalDate;
  * 考勤控制器 — 打卡 / 打卡记录 / 补卡
  */
 @RestController
-@RequestMapping("/api/attendance")
+@RequestMapping("/attendance")
 @Slf4j
 @RequiredArgsConstructor
 public class AttendanceController {

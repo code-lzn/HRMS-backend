@@ -21,7 +21,7 @@ import java.time.LocalDate;
  * 请假管理控制器 — 请假申请 / 假期余额
  */
 @RestController
-@RequestMapping("/api/leave")
+@RequestMapping("/leave")
 @Slf4j
 @RequiredArgsConstructor
 public class LeaveController {

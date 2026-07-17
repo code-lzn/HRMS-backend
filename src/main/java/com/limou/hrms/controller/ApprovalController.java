@@ -11,6 +11,7 @@ import com.limou.hrms.model.dto.approval.DelegateSettingDTO;
 import com.limou.hrms.model.entity.ApprovalDelegate;
 import com.limou.hrms.model.query.ApprovalQuery;
 import com.limou.hrms.model.vo.ApprovalInstanceVO;
+import com.limou.hrms.model.vo.MyDelegatesVO;
 import com.limou.hrms.model.vo.PendingItemVO;
 import com.limou.hrms.model.vo.ProcessedItemVO;
 import com.limou.hrms.service.ApprovalDelegateService;
@@ -20,14 +21,13 @@ import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
  * 审批中心 — 通用审批接口
  */
 @RestController
-@RequestMapping("/api/approvals")
+@RequestMapping("/approvals")
 @Slf4j
 public class ApprovalController {
 
@@ -66,7 +66,7 @@ public class ApprovalController {
 
     @PostMapping("/{nodeId}/approve")
     @AuthCheck
-    public BaseResponse<?> approve(@PathVariable Long nodeId, @RequestBody ApprovalActionDTO dto) {
+    public BaseResponse<String> approve(@PathVariable Long nodeId, @RequestBody ApprovalActionDTO dto) {
         ThrowUtils.throwIf(nodeId == null || nodeId <= 0, ErrorCode.PARAMS_ERROR);
         approvalFlowService.approve(nodeId, dto.getComment());
         return ResultUtils.success("ok");
@@ -74,7 +74,7 @@ public class ApprovalController {
 
     @PostMapping("/{nodeId}/reject")
     @AuthCheck
-    public BaseResponse<?> reject(@PathVariable Long nodeId, @RequestBody ApprovalActionDTO dto) {
+    public BaseResponse<String> reject(@PathVariable Long nodeId, @RequestBody ApprovalActionDTO dto) {
         ThrowUtils.throwIf(nodeId == null || nodeId <= 0, ErrorCode.PARAMS_ERROR);
         approvalFlowService.reject(nodeId, dto.getComment());
         return ResultUtils.success("ok");
@@ -82,7 +82,7 @@ public class ApprovalController {
 
     @PostMapping("/{nodeId}/transfer")
     @AuthCheck
-    public BaseResponse<?> transfer(@PathVariable Long nodeId, @RequestBody ApprovalActionDTO dto) {
+    public BaseResponse<String> transfer(@PathVariable Long nodeId, @RequestBody ApprovalActionDTO dto) {
         ThrowUtils.throwIf(nodeId == null || nodeId <= 0, ErrorCode.PARAMS_ERROR);
         approvalFlowService.transfer(nodeId, dto.getToApproverId());
         return ResultUtils.success("ok");
@@ -90,7 +90,7 @@ public class ApprovalController {
 
     @PostMapping("/{instanceId}/cancel")
     @AuthCheck
-    public BaseResponse<?> cancel(@PathVariable Long instanceId) {
+    public BaseResponse<String> cancel(@PathVariable Long instanceId) {
         ThrowUtils.throwIf(instanceId == null || instanceId <= 0, ErrorCode.PARAMS_ERROR);
         approvalFlowService.cancel(instanceId);
         return ResultUtils.success("ok");
@@ -104,14 +104,14 @@ public class ApprovalController {
 
     @DeleteMapping("/delegates/{id}")
     @AuthCheck
-    public BaseResponse<?> cancelDelegate(@PathVariable Long id) {
+    public BaseResponse<String> cancelDelegate(@PathVariable Long id) {
         approvalDelegateService.cancelDelegate(id);
-        return ResultUtils.success(null);
+        return ResultUtils.success("ok");
     }
 
     @GetMapping("/delegates/my")
     @AuthCheck
-    public BaseResponse<Map<String, List<ApprovalDelegate>>> getMyDelegates() {
+    public BaseResponse<MyDelegatesVO> getMyDelegates() {
         return ResultUtils.success(approvalDelegateService.getMyDelegates());
     }
 }

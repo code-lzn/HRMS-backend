@@ -18,7 +18,7 @@ import java.util.List;
  * 考勤统计控制器 — 图表可视化数据
  */
 @RestController
-@RequestMapping("/api/attendance/statistics")
+@RequestMapping("/attendance/statistics")
 @Slf4j
 @RequiredArgsConstructor
 public class AttendanceStatisticsController {

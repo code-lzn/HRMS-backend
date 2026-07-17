@@ -28,7 +28,7 @@ import java.util.Map;
  * 员工档案管理控制器
  */
 @RestController
-@RequestMapping("/api/employees")
+@RequestMapping("/employees")
 @Slf4j
 @RequiredArgsConstructor
 public class EmployeeController {

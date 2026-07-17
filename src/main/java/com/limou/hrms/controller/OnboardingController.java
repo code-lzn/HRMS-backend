@@ -26,7 +26,7 @@ import java.util.Map;
  * 入职管理控制器
  */
 @RestController
-@RequestMapping("/api/onboarding")
+@RequestMapping("/onboarding")
 @Slf4j
 @RequiredArgsConstructor
 public class OnboardingController {
