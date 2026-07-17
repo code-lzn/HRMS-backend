@@ -84,12 +84,7 @@ public enum ErrorCode {
     RESIGNATION_SUBMIT_DRAFT_ONLY(34003, "仅草稿状态可提交审批"),
     RESIGNATION_CANCEL_FIRST_NODE_ONLY(34004, "仅第一级审批节点可撤回申请"),
     RESIGNATION_EMPLOYEE_NOT_ACTIVE(34005, "仅试用期或正式员工可离职"),
-    RESIGNATION_DATE_BEFORE_TODAY(34006, "离职日期不能早于今天");
-    ATTENDANCE_GROUP_NOT_FOUND(61000, "考勤组不存在"),
-    ATTENDANCE_GROUP_RULE_DUPLICATE(61001, "该适用规则已存在于其他考勤组中"),
-    ATTENDANCE_GROUP_RULE_DEPT_OUT_OF_SCOPE(61002, "所选部门/职位/个人不在管辖范围内"),
-    ATTENDANCE_GROUP_RULE_POSITION_NO_EMPLOYEE(61003, "该全公司通用职位在管辖范围内无对应员工"),
-    ATTENDANCE_GROUP_HAS_EMPLOYEES(61004, "该考勤组下仍有适用人员，请先调整人员归属"),
+    RESIGNATION_DATE_BEFORE_TODAY(34006, "离职日期不能早于今天"),
     // endregion
 
     // region 请假管理 (32xxx)
