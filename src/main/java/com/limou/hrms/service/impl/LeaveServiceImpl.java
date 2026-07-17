@@ -5,24 +5,30 @@ import cn.hutool.core.date.DateUtil;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.constant.AttendanceConstant;
+import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.exception.ThrowUtils;
 import com.limou.hrms.mapper.EmployeeDetailMapper;
 import com.limou.hrms.mapper.LeaveMapper;
 import com.limou.hrms.model.entity.*;
+import com.limou.hrms.model.enums.ApprovalActionEnum;
 import com.limou.hrms.model.enums.ApprovalRecordStatusEnum;
 import com.limou.hrms.model.enums.ApprovalStatusEnum;
 import com.limou.hrms.model.enums.AttendanceStatusEnum;
 import com.limou.hrms.model.enums.BusinessTypeEnum;
+import com.limou.hrms.model.enums.LeaveFlowEnum;
 import com.limou.hrms.model.enums.LeaveTypeEnum;
 import com.limou.hrms.model.enums.ProgressNodeStatusEnum;
+import com.limou.hrms.model.entity.ApprovalFlow;
 import com.limou.hrms.model.vo.LeaveBalanceVO;
 import com.limou.hrms.model.vo.LeaveProgressVO;
 import com.limou.hrms.model.vo.LeaveVO;
+import com.limou.hrms.service.ApprovalDetailService;
+import com.limou.hrms.service.ApprovalFlowService;
+import com.limou.hrms.service.ApprovalService;
 import com.limou.hrms.service.AttendanceService;
 import com.limou.hrms.service.EmployeeLeaveBalanceService;
 import com.limou.hrms.service.EmployeeService;
 import com.limou.hrms.service.LeaveService;
-import com.limou.hrms.service.ApprovalService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
@@ -58,7 +64,13 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
     private ApprovalService approvalService;
 
     @Resource
+    private ApprovalFlowService approvalFlowService;
+
+    @Resource
     private EmployeeLeaveBalanceService employeeLeaveBalanceService;
+
+    @Resource
+    private ApprovalDetailService approvalDetailService;
 
 
     @Override
@@ -102,8 +114,19 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
         boolean saved = this.save(request);
         ThrowUtils.throwIf(!saved, ErrorCode.OPERATION_ERROR, "请假申请失败");
 
-        // 同步到审批中心
-        approvalService.startApproval(BusinessTypeEnum.LEAVE.getValue(), request.getId(), emp.getId(), emp.getEmployeeName());
+        // 同步到审批中心 — 按请假类型+天数选择审批流
+        LeaveFlowEnum flowEnum = selectLeaveFlow(LeaveTypeEnum.getEnumByValue(leaveType), days);
+        //找到对应的审批流
+        ApprovalFlow flow = approvalFlowService.lambdaQuery()
+                .eq(ApprovalFlow::getBusinessType, BusinessTypeEnum.LEAVE.getValue())
+                .eq(ApprovalFlow::getFlowName, flowEnum.getFlowName())
+                .eq(ApprovalFlow::getStatus, 1)
+                .one();
+        if (flow == null) {
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "审批流未配置: " + flowEnum.getFlowName());
+        }
+        approvalService.startApprovalByFlowId(flow.getId(), BusinessTypeEnum.LEAVE.getValue(),
+                request.getId(), emp.getId(), emp.getEmployeeName());
 
         // 同步更新考勤记录状态为"请假"
         updateAttendanceForLeave(emp.getId(), start, end);
@@ -220,6 +243,17 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
             approvaRecord.setStatus(ApprovalRecordStatusEnum.WITHDRAWN.getValue());
             approvaRecord.setFinishedAt(new Date());
             approvalService.updateById(approvaRecord);
+            // 将所有待审批的明细标记为已撤销，防止审批人继续操作
+            List<ApprovalDetail> details = approvalDetailService.lambdaQuery()
+                    .eq(ApprovalDetail::getRecordId, approvaRecord.getId())
+                    .eq(ApprovalDetail::getAction, ApprovalActionEnum.PENDING.getValue())
+                    .list();
+            for (ApprovalDetail detail : details) {
+                detail.setAction(ApprovalActionEnum.WITHDRAWN.getValue());
+                detail.setComment("申请人已撤销");
+                detail.setOperateTime(new Date());
+                approvalDetailService.updateById(detail);
+            }
         }
 
         // 还原考勤状态
@@ -259,6 +293,27 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
 
         ThrowUtils.throwIf(remaining.compareTo(days) < 0,
                 ErrorCode.PARAMS_ERROR, label + "余额不足，剩余 " + remaining + " 天，申请 " + days + " 天");
+    }
+
+    /**
+     * 根据请假类型和天数选择审批流
+     */
+    private LeaveFlowEnum selectLeaveFlow(LeaveTypeEnum leaveType, double days) {
+        if (leaveType == null) return LeaveFlowEnum.SIMPLE;
+        switch (leaveType) {
+            case ANNUAL:
+            case COMPENSATORY:
+                return days <= 3 ? LeaveFlowEnum.SIMPLE : LeaveFlowEnum.DEPT;
+            case PERSONAL:
+            case SICK:
+                return days <= 1 ? LeaveFlowEnum.SIMPLE : LeaveFlowEnum.DEPT;
+            case MARRIAGE:
+            case MATERNITY:
+            case FUNERAL:
+                return LeaveFlowEnum.HR;
+            default:
+                return LeaveFlowEnum.SIMPLE;
+        }
     }
 
     /**

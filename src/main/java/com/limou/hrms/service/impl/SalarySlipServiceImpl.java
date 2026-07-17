@@ -32,7 +32,7 @@ import java.util.Objects;
 public class SalarySlipServiceImpl extends ServiceImpl<SalarySlipMapper, SalarySlip>
         implements SalarySlipService {
 
-    private static final String SALT = "limou";
+    private static final String SALT = "hrms";
 
     @Resource
     private EmployeeService employeeService;

@@ -240,8 +240,8 @@ CREATE TABLE IF NOT EXISTS `leave_record`(
     employeeId      BIGINT          NOT NULL                 COMMENT '员工ID',
     userId          BIGINT          NOT NULL                 COMMENT '用户ID',
     leaveType       TINYINT         NOT NULL                 COMMENT '请假类型：0=事假 1=病假 2=年假 3=婚假 4=产假 5=丧假 6=调休',
-    startDate       DATE            NOT NULL                 COMMENT '开始日期',
-    endDate         DATE            NOT NULL                 COMMENT '结束日期',
+    startDate       DATETIME        NOT NULL                 COMMENT '开始日期',
+    endDate         DATETIME        NOT NULL                 COMMENT '结束日期',
     totalDays       DECIMAL(4,1)    NOT NULL                 COMMENT '请假总天数',
     reason          VARCHAR(512)    NOT NULL                 COMMENT '请假原因',
     status          TINYINT         NOT NULL DEFAULT 0       COMMENT '状态：0=待审批 1=已通过 2=已拒绝 3=已撤销',
@@ -366,29 +366,29 @@ CREATE TABLE IF NOT EXISTS attendance (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='考勤打卡记录表';
 
 
--- 请假申请表
-CREATE TABLE IF NOT EXISTS leave_request (
-                                             id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
-                                             employeeId      BIGINT          NOT NULL                 COMMENT '员工ID',
-                                             userId          BIGINT          NOT NULL                 COMMENT '用户ID',
-                                             leaveType       TINYINT         NOT NULL                 COMMENT '请假类型：0=事假 1=病假 2=年假 3=婚假 4=产假 5=丧假 6=调休',
-                                             startDate       DATE            NOT NULL                 COMMENT '开始日期',
-                                             endDate         DATE            NOT NULL                 COMMENT '结束日期',
-                                             totalDays       DECIMAL(4,1)    NOT NULL                 COMMENT '请假总天数',
-                                             reason          VARCHAR(512)    NOT NULL                 COMMENT '请假原因',
-                                             status          TINYINT         NOT NULL DEFAULT 0       COMMENT '状态：0=待审批 1=已通过 2=已拒绝 3=已撤销',
-                                             approverId      BIGINT          DEFAULT NULL             COMMENT '审批人ID',
-                                             approveTime     DATETIME        DEFAULT NULL             COMMENT '审批时间',
-                                             approveComment  VARCHAR(512)    DEFAULT NULL             COMMENT '审批意见',
-                                             createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-                                             updateTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-                                             isDeleted       TINYINT         DEFAULT 0 NOT NULL       COMMENT '逻辑删除：0=否 1=是',
-                                             PRIMARY KEY (id),
-                                             KEY idx_employee_id (employeeId),
-                                             KEY idx_user_id (userId),
-                                             KEY idx_status (status),
-                                             KEY idx_start_date (startDate)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='请假申请表';
+# -- 请假申请表
+# CREATE TABLE IF NOT EXISTS leave_request (
+#                                              id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+#                                              employeeId      BIGINT          NOT NULL                 COMMENT '员工ID',
+#                                              userId          BIGINT          NOT NULL                 COMMENT '用户ID',
+#                                              leaveType       TINYINT         NOT NULL                 COMMENT '请假类型：0=事假 1=病假 2=年假 3=婚假 4=产假 5=丧假 6=调休',
+#                                              startDate       DATE            NOT NULL                 COMMENT '开始日期',
+#                                              endDate         DATE            NOT NULL                 COMMENT '结束日期',
+#                                              totalDays       DECIMAL(4,1)    NOT NULL                 COMMENT '请假总天数',
+#                                              reason          VARCHAR(512)    NOT NULL                 COMMENT '请假原因',
+#                                              status          TINYINT         NOT NULL DEFAULT 0       COMMENT '状态：0=待审批 1=已通过 2=已拒绝 3=已撤销',
+#                                              approverId      BIGINT          DEFAULT NULL             COMMENT '审批人ID',
+#                                              approveTime     DATETIME        DEFAULT NULL             COMMENT '审批时间',
+#                                              approveComment  VARCHAR(512)    DEFAULT NULL             COMMENT '审批意见',
+#                                              createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+#                                              updateTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+#                                              isDeleted       TINYINT         DEFAULT 0 NOT NULL       COMMENT '逻辑删除：0=否 1=是',
+#                                              PRIMARY KEY (id),
+#                                              KEY idx_employee_id (employeeId),
+#                                              KEY idx_user_id (userId),
+#                                              KEY idx_status (status),
+#                                              KEY idx_start_date (startDate)
+# ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='请假申请表';
 
 
 
@@ -398,7 +398,7 @@ CREATE TABLE IF NOT EXISTS makeup_punch (
                                             id              BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
                                             employeeId      BIGINT          NOT NULL                 COMMENT '员工ID',
                                             userId          BIGINT          NOT NULL                 COMMENT '用户ID',
-                                            punchDate       DATE            NOT NULL                 COMMENT '补卡日期',
+                                            punchDate       DATETIME            NOT NULL                 COMMENT '补卡日期',
                                             punchType       TINYINT         NOT NULL                 COMMENT '补卡类型：0=上班补卡 1=下班补卡',
                                             punchTime       DATETIME        NOT NULL                 COMMENT '实际到岗/离岗时间',
                                             reason          VARCHAR(512)    NOT NULL                 COMMENT '缺卡原因',
@@ -648,8 +648,8 @@ CREATE TABLE IF NOT EXISTS approval_delegation (
     delegateId      BIGINT          NOT NULL                 COMMENT '被委托人ID（employeeId）',
     delegateName    VARCHAR(64)     NOT NULL                 COMMENT '被委托人姓名（冗余）',
     businessTypes   VARCHAR(256)    DEFAULT NULL             COMMENT '委托业务类型（逗号分隔，NULL=全部）',
-    startDate       DATE            NOT NULL                 COMMENT '委托开始日期',
-    endDate         DATE            NOT NULL                 COMMENT '委托结束日期',
+    startDate       DATETIME            NOT NULL                 COMMENT '委托开始日期',
+    endDate         DATETIME            NOT NULL                 COMMENT '委托结束日期',
     status          TINYINT         NOT NULL DEFAULT 1       COMMENT '状态: 1=有效, 0=已取消',
     createTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updateTime      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -664,13 +664,15 @@ CREATE TABLE IF NOT EXISTS approval_delegation (
 
 -- 7种审批流定义
 INSERT INTO approval_flow (id, businessType, flowName, description) VALUES
-(1, 'ONBOARDING',    '入职审批',   'HR发起 → 部门负责人 → HR负责人'),
-(2, 'REGULARIZATION','转正审批',   'HR发起 → 部门负责人 → HR负责人'),
-(3, 'TRANSFER',      '调岗审批',   'HR发起 → 原部门负责人 → 新部门负责人 → HR负责人'),
-(4, 'RESIGNATION',   '离职审批',   'HR发起 → 部门负责人 → HR负责人'),
-(5, 'LEAVE',         '请假审批',   '员工发起 → 直接上级'),
-(6, 'PATCH_CLOCK',   '补卡审批',   '员工发起 → 直接上级'),
-(7, 'SALARY_BATCH',  '薪资批次审批','HR发起 → 财务专员 → 老板');
+(1, 'ONBOARDING',    '入职审批',        'HR发起 → 部门负责人 → HR负责人'),
+(2, 'REGULARIZATION','转正审批',        'HR发起 → 部门负责人 → HR负责人'),
+(3, 'TRANSFER',      '调岗审批',        'HR发起 → 原部门负责人 → 新部门负责人 → HR负责人'),
+(4, 'RESIGNATION',   '离职审批',        'HR发起 → 部门负责人 → HR负责人'),
+(5, 'LEAVE',         '请假-单节点',     '直接上级'),
+(6, 'PATCH_CLOCK',   '补卡审批',        '员工发起 → 直接上级'),
+(7, 'SALARY_BATCH',  '薪资批次审批',    'HR发起 → 财务专员 → 老板'),
+(8, 'LEAVE',         '请假-双节点-部门','直接上级 → 部门负责人'),
+(9, 'LEAVE',         '请假-HR备案',     '直接上级 → HR备案');
 
 -- 各审批流节点定义
 -- 入职审批: 部门负责人 → HR负责人
@@ -694,9 +696,19 @@ INSERT INTO approval_flow_node (flowId, nodeName, nodeOrder, approverType, isOpt
 (4, '部门负责人', 1, 'DEPT_MANAGER', 0),
 (4, 'HR负责人',   2, 'HR_MANAGER',   0);
 
--- 请假审批: 直接上级
+-- 请假-单节点 (flow 5): 直接上级
 INSERT INTO approval_flow_node (flowId, nodeName, nodeOrder, approverType, isOptional) VALUES
 (5, '直接上级', 1, 'DIRECT_SUPERIOR', 0);
+
+-- 请假-双节点-部门 (flow 8): 直接上级 → 部门负责人
+INSERT INTO approval_flow_node (flowId, nodeName, nodeOrder, approverType, isOptional) VALUES
+(8, '直接上级',   1, 'DIRECT_SUPERIOR', 0),
+(8, '部门负责人', 2, 'DEPT_MANAGER',    0);
+
+-- 请假-HR备案 (flow 9): 直接上级 → HR备案
+INSERT INTO approval_flow_node (flowId, nodeName, nodeOrder, approverType, isOptional) VALUES
+(9, '直接上级', 1, 'DIRECT_SUPERIOR', 0),
+(9, 'HR备案',   2, 'HR_MANAGER',     0);
 
 -- 补卡审批: 直接上级
 INSERT INTO approval_flow_node (flowId, nodeName, nodeOrder, approverType, isOptional) VALUES
@@ -755,7 +767,7 @@ INSERT INTO approval_delegation (delegatorId, delegatorName, delegateId, delegat
 
 --   *****************8                     入转调离模块         ********************               --
 
---1. empOnboarding 入职申请表
+--  1. empOnboarding 入职申请表
 CREATE TABLE `emp_onboarding` (
                                   `id` BIGINT(20) NOT NULL AUTO_INCREMENT COMMENT '主键ID',
                                   `businessNo` VARCHAR(32) NOT NULL COMMENT '入职单号，ON+年月日+流水号',
@@ -794,7 +806,7 @@ CREATE TABLE `emp_onboarding` (
 
 
 
---empProbation 转正申请表
+-- empProbation 转正申请表
 CREATE TABLE `emp_probation` (
                                  `id` BIGINT(20) NOT NULL AUTO_INCREMENT COMMENT '主键ID',
                                  `businessNo` VARCHAR(32) NOT NULL COMMENT '转正单号，ZB+年月日+流水号',

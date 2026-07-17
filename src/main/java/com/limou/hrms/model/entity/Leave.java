@@ -12,7 +12,7 @@ import lombok.Data;
  * 请假申请表
  * @TableName leave_request
  */
-@TableName(value ="leave_request")
+@TableName(value ="leave_record")
 @Data
 public class Leave implements Serializable {
 

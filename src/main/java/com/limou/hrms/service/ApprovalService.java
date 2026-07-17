@@ -32,6 +32,10 @@ public interface ApprovalService extends IService<ApprovalRecord> {
                                   String applicantName, Long targetDepartmentId,
                                   java.util.Map<Integer, Long> nodeApproverOverrides);
 
+    /** 按 flowId 发起审批（动态选择审批流） 请假专用*/
+    ApprovalRecord startApprovalByFlowId(Long flowId, String businessType, Long businessId,
+                                          Long applicantEmployeeId, String applicantName);
+
     /** 获取审批记录的所有审批明细 */
     List<ApprovalDetail> getApprovalDetails(Long recordId);
 }

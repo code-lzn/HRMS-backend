@@ -15,7 +15,8 @@ public enum ApprovalActionEnum {
     PENDING("PENDING", "待审批"),
     APPROVE("APPROVE", "通过"),
     REJECT("REJECT", "拒绝"),
-    TRANSFER("TRANSFER", "转交");
+    TRANSFER("TRANSFER", "转交"),
+    WITHDRAWN("WITHDRAWN", "已撤销");
 
     private final String value;
 

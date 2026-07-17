@@ -378,6 +378,54 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
         return record;
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ApprovalRecord startApprovalByFlowId(Long flowId, String businessType, Long businessId,
+                                                 Long applicantEmployeeId, String applicantName) {
+        ApprovalFlow flow = approvalFlowService.getById(flowId);
+        ThrowUtils.throwIf(flow == null || flow.getStatus() == null || flow.getStatus() != 1,
+                ErrorCode.NOT_FOUND_ERROR, "审批流未定义或已禁用");
+
+        List<ApprovalFlowNode> nodes = approvalFlowNodeService.lambdaQuery()
+                .eq(ApprovalFlowNode::getFlowId, flow.getId())
+                .orderByAsc(ApprovalFlowNode::getNodeOrder)
+                .list();
+        ThrowUtils.throwIf(nodes.isEmpty(), ErrorCode.SYSTEM_ERROR, "审批流节点未配置");
+
+        ApprovalRecord record = new ApprovalRecord();
+        record.setFlowId(flow.getId());
+        record.setBusinessType(businessType);
+        record.setBusinessId(businessId);
+        record.setApplicantId(applicantEmployeeId);
+        record.setApplicantName(applicantName);
+        record.setCurrentStep(1);
+        record.setTotalSteps(nodes.size());
+        record.setStatus(ApprovalRecordStatusEnum.APPROVING.getValue());
+        this.save(record);
+
+        Employee applicant = employeeService.getById(applicantEmployeeId);
+        for (ApprovalFlowNode node : nodes) {
+            Long approverId = resolveApprover(node, applicant);
+            String approverName = null;
+            if (approverId != null) {
+                Employee approver = employeeService.getById(approverId);
+                approverName = approver != null ? approver.getEmployeeName() : null;
+            }
+            ApprovalDetail detail = new ApprovalDetail();
+            detail.setRecordId(record.getId());
+            detail.setNodeId(node.getId());
+            detail.setNodeName(node.getNodeName());
+            detail.setStepOrder(node.getNodeOrder());
+            detail.setApproverId(approverId);
+            detail.setApproverName(approverName);
+            detail.setAction(ApprovalActionEnum.PENDING.getValue());
+            detail.setIsDelegated(0);
+            approvalDetailService.save(detail);
+        }
+
+        return record;
+    }
+
     // ========== 私有方法 ==========
 
     private ApprovalDetail validateAndGetDetail(Long detailId, Long employeeId) {
