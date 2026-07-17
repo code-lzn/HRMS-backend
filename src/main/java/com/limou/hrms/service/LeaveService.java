@@ -32,4 +32,9 @@ public interface LeaveService {
      * 查询请假申请详情
      */
     LeaveRequestVO getRequestDetail(Long id);
+
+    /**
+     * 取消请假申请（仅审批中状态可取消）
+     */
+    void cancelLeaveRequest(Long id, Long employeeId);
 }

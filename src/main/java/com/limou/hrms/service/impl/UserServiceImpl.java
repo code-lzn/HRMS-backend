@@ -10,21 +10,28 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.constant.CommonConstant;
 import com.limou.hrms.exception.BusinessException;
+import com.limou.hrms.mapper.LoginLogMapper;
 import com.limou.hrms.mapper.UserMapper;
 import com.limou.hrms.model.dto.user.UserQueryRequest;
+import com.limou.hrms.model.entity.LoginLog;
 import com.limou.hrms.model.entity.User;
 import com.limou.hrms.model.enums.UserRoleEnum;
 import com.limou.hrms.model.vo.LoginUserVO;
 import com.limou.hrms.model.vo.UserVO;
 import com.limou.hrms.service.UserService;
 import com.limou.hrms.utils.SqlUtils;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
+import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpSession;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.DigestUtils;
 
@@ -40,6 +47,17 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
      * 盐值，混淆密码
      */
     public static final String SALT = "limou";
+
+    @Resource
+    private LoginLogMapper loginLogMapper;
+
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
+
+    /** 密码版本号 Redis Key */
+    public static final String PWD_VERSION_KEY = "pwd:version:%d";
+    /** 密码版本号 session 属性名 */
+    public static final String PWD_VERSION_ATTR = "PASSWORD_VERSION";
 
     @Override
     public long userRegister(String userAccount, String userPassword, String checkPassword) {
@@ -102,10 +120,24 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         // 用户不存在
         if (user == null) {
             log.info("user login failed, userAccount cannot match userPassword");
+            // 记录登录失败日志（通过 userAccount 查找 userId）
+            recordLoginLog(userAccount, request, 0);
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户不存在或密码错误");
         }
         // 3. 记录用户的登录态
-        request.getSession().setAttribute(USER_LOGIN_STATE, user);
+        HttpSession session = request.getSession();
+        session.setAttribute(USER_LOGIN_STATE, user);
+        // 写入密码版本号（用于密码修改后强制下线）
+        String versionKey = String.format(PWD_VERSION_KEY, user.getId());
+        String version = stringRedisTemplate.opsForValue().get(versionKey);
+        if (version == null) {
+            version = "1";
+            stringRedisTemplate.opsForValue().set(versionKey, version,
+                    Duration.ofSeconds(session.getMaxInactiveInterval()));
+        }
+        session.setAttribute(PWD_VERSION_ATTR, version);
+        // 记录登录成功日志
+        recordLoginLog(user.getId(), request, 1);
         return this.getLoginUserVO(user);
     }
 
@@ -268,5 +300,39 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         queryWrapper.orderBy(SqlUtils.validSortField(sortField), sortOrder.equals(CommonConstant.SORT_ORDER_ASC),
                 sortField);
         return queryWrapper;
+    }
+
+    /**
+     * 记录登录日志
+     */
+    private void recordLoginLog(Object userIdOrAccount, HttpServletRequest request, int result) {
+        try {
+            LoginLog loginLog = new LoginLog();
+            if (userIdOrAccount instanceof Long) {
+                loginLog.setUserId((Long) userIdOrAccount);
+            }
+            loginLog.setLoginTime(LocalDateTime.now());
+            loginLog.setIpAddress(getClientIp(request));
+            loginLog.setDevice(request.getHeader("User-Agent"));
+            loginLog.setResult(result);
+            loginLogMapper.insert(loginLog);
+        } catch (Exception e) {
+            // 日志记录失败不影响登录流程
+            log.warn("记录登录日志失败: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 获取客户端真实 IP
+     */
+    private String getClientIp(HttpServletRequest request) {
+        String ip = request.getHeader("X-Forwarded-For");
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("X-Real-IP");
+        }
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getRemoteAddr();
+        }
+        return ip;
     }
 }

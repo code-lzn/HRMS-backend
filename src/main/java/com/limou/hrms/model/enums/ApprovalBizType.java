@@ -11,7 +11,8 @@ public enum ApprovalBizType {
     RESIGNATION("RESIGNATION", "离职审批"),
     LEAVE("LEAVE", "请假审批"),
     CARD_REPLENISH("CARD_REPLENISH", "补卡审批"),
-    SALARY_BATCH("SALARY_BATCH", "薪资批次审批");
+    SALARY_BATCH("SALARY_BATCH", "薪资批次审批"),
+    PHONE_CHANGE("PHONE_CHANGE", "手机号变更审批");
 
     private final String code;
     private final String desc;
