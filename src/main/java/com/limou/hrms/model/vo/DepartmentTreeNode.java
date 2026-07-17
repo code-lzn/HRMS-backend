@@ -27,6 +27,11 @@ public class DepartmentTreeNode implements Serializable {
     private Integer sortOrder;
 
     /**
+     * 层级深度（0=根部门）
+     */
+    private Integer level;
+
+    /**
      * 含下属部门的在职员工总数
      */
     private Integer employeeCount;

@@ -10,6 +10,7 @@ import com.limou.hrms.model.entity.Employee;
 import com.limou.hrms.model.entity.EmployeeWorkInfo;
 import com.limou.hrms.model.entity.User;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
@@ -35,6 +36,7 @@ public class ApproverResolver {
      * 查找 HR 负责人。查 user 表 user_role='hr' → 映射到 employee 表。
      * @return HR 负责人的 employee.id，若无则返回 null
      */
+    @Cacheable(value = "hrApprover", key = "'list'")
     public Long resolveHrApprover() {
         List<Employee> hrEmployees = employeeMapper.selectList(
                 new QueryWrapper<Employee>()
@@ -89,6 +91,7 @@ public class ApproverResolver {
      * @return 部门负责人的 employee.id
      * @throws IllegalArgumentException 部门或部门负责人不存在
      */
+    @Cacheable(value = "deptManager", key = "#departmentId")
     public Long resolveDeptManager(Long departmentId) {
         Department dept = departmentMapper.selectById(departmentId);
         if (dept == null || dept.getManagerId() == null) {

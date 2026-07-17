@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.limou.hrms.annotation.AuthCheck;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.constant.DataScopeContext;
+import com.limou.hrms.context.UserContext;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.mapper.DepartmentMapper;
 import com.limou.hrms.mapper.EmployeeMapper;
@@ -49,17 +50,17 @@ public class AuthInterceptor {
     @Around("@annotation(authCheck)")
     public Object doInterceptor(ProceedingJoinPoint joinPoint, AuthCheck authCheck) throws Throwable {
         String[] mustRole = authCheck.mustRole();
-        RequestAttributes requestAttributes = RequestContextHolder.currentRequestAttributes();
-        HttpServletRequest request = ((ServletRequestAttributes) requestAttributes).getRequest();
 
         // 当前登录用户
-        User loginUser = userService.getLoginUser(request);
-
-        // 注入数据权限上下文（无论是否需要权限，只要登录就注入）
-        populateDataScope(loginUser);
+        User loginUser = UserContext.getCurrentUser();
+        if (loginUser == null) {
+            throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
+        }
 
         // 不需要权限（空数组或仅含空字符串），放行
         if (mustRole.length == 0 || (mustRole.length == 1 && mustRole[0].isEmpty())) {
+            // 注入数据权限上下文（无论是否需要权限，只要登录就注入）
+            populateDataScope(loginUser);
             return joinPoint.proceed();
         }
         // 必须有该权限才通过
@@ -78,6 +79,8 @@ public class AuthInterceptor {
                 continue;
             }
             if (mustRoleEnum.equals(userRoleEnum)) {
+                // 注入数据权限上下文（无论是否需要权限，只要登录就注入）
+                populateDataScope(loginUser);
                 return joinPoint.proceed();
             }
         }
@@ -93,14 +96,16 @@ public class AuthInterceptor {
 
         // 查找当前用户对应的员工档案
         Employee employee = employeeMapper.selectByUserId(user.getId());
-        if (employee != null) {
-            dataScopeContext.setCurrentEmployeeId(employee.getId());
-        }
+
+        if(employee==null) throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
+
+        dataScopeContext.setCurrentEmployeeId(employee.getId());
 
         // 部门主管：查找管理的部门及下属部门
         if ("dept_head".equals(user.getUserRole())) {
+
             QueryWrapper<Department> wrapper = new QueryWrapper<>();
-            wrapper.eq("manager_id", user.getId());
+            wrapper.eq("manager_id", employee.getId());//查找部门主管所在的部门
             wrapper.eq("is_deleted", 0);
             Department managedDept = departmentMapper.selectOne(wrapper);
             if (managedDept != null) {
@@ -118,11 +123,11 @@ public class AuthInterceptor {
      * 递归收集所有子部门 ID
      */
     private void collectChildDeptIds(Long parentId, Set<Long> result) {
-        result.add(parentId);
+        result.add(parentId);//将当前部门ID以及子部门ID添加到结果集合中
         QueryWrapper<Department> wrapper = new QueryWrapper<>();
         wrapper.eq("parent_id", parentId);
         wrapper.eq("is_deleted", 0);
-        List<Department> children = departmentMapper.selectList(wrapper);
+        List<Department> children = departmentMapper.selectList(wrapper);//查找当前部门下的所有子部门
         for (Department child : children) {
             collectChildDeptIds(child.getId(), result);
         }

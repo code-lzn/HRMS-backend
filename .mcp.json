@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "mysql": {
+      "command": "npx",
+      "args": ["-y", "@fhuang/mcp-mysql-server"],
+      "env": {
+        "MYSQL_HOST": "120.26.212.131",
+        "MYSQL_PORT": "3306",
+        "MYSQL_USER": "szml",
+        "MYSQL_PASSWORD": "5539d601c3e3f931",
+        "MYSQL_DATABASE": "szml"
+      }
+    }
+  }
+}

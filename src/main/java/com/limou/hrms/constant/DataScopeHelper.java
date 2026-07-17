@@ -58,11 +58,11 @@ public class DataScopeHelper {
     // ======================== 考勤 ========================
 
     /**
-     * 考勤记录数据过滤 — attendance_record 表通过 employee_id 关联 user.id
+     * 考勤记录数据过滤 — attendance_record 表通过 employee_id 关联 employee.id
      */
     public void applyAttendanceScope(QueryWrapper<?> wrapper) {
         DataScopeEnum scope = dataScopeContext.getAttendanceScope();
-        Long currentUserId = dataScopeContext.getCurrentUserId();
+        Long currentEmployeeId = dataScopeContext.getCurrentEmployeeId();
 
         switch (scope) {
             case ALL:
@@ -70,11 +70,10 @@ public class DataScopeHelper {
             case DEPT: {
                 Set<Long> deptIds = dataScopeContext.getManagedDepartmentIds();
                 if (CollUtil.isEmpty(deptIds)) {
-                    wrapper.eq("employee_id", currentUserId);
+                    wrapper.eq("employee_id", currentEmployeeId);
                 } else {
-                    // attendance_record.employee_id 直接存 user.id
                     wrapper.inSql("employee_id",
-                            "SELECT e.user_id FROM employee e " +
+                            "SELECT e.id FROM employee e " +
                             "INNER JOIN employee_work_info ewi ON e.id = ewi.employee_id " +
                             "WHERE ewi.department_id IN (" + joinIds(deptIds) + ")");
                 }
@@ -82,7 +81,7 @@ public class DataScopeHelper {
             }
             case SELF:
             default:
-                wrapper.eq("employee_id", currentUserId);
+                wrapper.eq("employee_id", currentEmployeeId);
         }
     }
 
