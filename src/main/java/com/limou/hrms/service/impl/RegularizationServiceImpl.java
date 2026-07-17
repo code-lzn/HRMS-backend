@@ -82,6 +82,16 @@ public class RegularizationServiceImpl extends ServiceImpl<HrRegularizationMappe
         entity.setConfirmDate(probationEnd);
         entity.setFlowId(resolveFlowId(request.getFlowId()));
         entity.setStatus("DRAFT");
+
+        EmpSalaryProfile profile = empSalaryProfileMapper.selectOne(
+                new LambdaQueryWrapper<EmpSalaryProfile>()
+                        .eq(EmpSalaryProfile::getEmployeeId, request.getEmployeeId()));
+        if (profile != null && profile.getBaseSalary() != null) {
+            entity.setConfirmBaseSalary(profile.getBaseSalary());
+        } else {
+            entity.setConfirmBaseSalary(BigDecimal.ZERO);
+        }
+
         save(entity);
 
         if (submitNow) {

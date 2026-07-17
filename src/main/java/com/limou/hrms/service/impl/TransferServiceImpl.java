@@ -48,6 +48,8 @@ public class TransferServiceImpl extends ServiceImpl<HrTransferMapper, HrTransfe
     private EmpSalaryProfileMapper empSalaryProfileMapper;
     @Resource
     private SalChangeLogMapper salChangeLogMapper;
+    @Resource
+    private ApprovalFlowMapper approvalFlowMapper;
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -67,18 +69,18 @@ public class TransferServiceImpl extends ServiceImpl<HrTransferMapper, HrTransfe
         HrTransfer entity = new HrTransfer();
         entity.setEmployeeId(request.getEmployeeId());
         entity.setTargetDeptId(request.getToDeptId());
-        entity.setTargetPositionId(request.getToPositionId());
+        entity.setTargetPositionId(request.getToPositionId() != null ? request.getToPositionId() : 0);
         entity.setToRankCode(request.getToRankCode());
         entity.setToReporterId(request.getToReporterId());
         entity.setNewBaseSalary(request.getSalaryAdjustment());
         entity.setTransferReason(request.getReason());
-        entity.setTransferDate(request.getEffectiveDate());
-        entity.setFlowId(request.getFlowId());
+        entity.setTransferDate(request.getEffectiveDate() != null ? request.getEffectiveDate() : new Date());
+        entity.setFlowId(resolveFlowId(request.getFlowId()));
         entity.setRemark(request.getRemark());
         entity.setOperatorId(hrEmployeeId);
         entity.setBusinessNo(generateBusinessNo());
-        entity.setSourceDeptId(emp.getDepartmentId());
-        entity.setSourcePositionId(emp.getPositionId());
+        entity.setSourceDeptId(emp.getDepartmentId() != null ? emp.getDepartmentId() : 0);
+        entity.setSourcePositionId(emp.getPositionId() != null ? emp.getPositionId() : 0);
         entity.setStatus("DRAFT");
         save(entity);
 
@@ -341,6 +343,19 @@ public class TransferServiceImpl extends ServiceImpl<HrTransferMapper, HrTransfe
         if (deptId == null) return null;
         Department dept = departmentMapper.selectById(deptId);
         return dept != null ? dept.getManagerId() : null;
+    }
+
+    private Long resolveFlowId(Long requestFlowId) {
+        if (requestFlowId != null) return requestFlowId;
+        try {
+            ApprovalFlow flow = approvalFlowMapper.selectOne(
+                    new LambdaQueryWrapper<ApprovalFlow>()
+                            .eq(ApprovalFlow::getBusinessType, "TRANSFER")
+                            .eq(ApprovalFlow::getStatus, 1)
+                            .last("LIMIT 1"));
+            if (flow != null) return flow.getId();
+        } catch (Exception ignored) {}
+        return 3L;
     }
 
     private String getDeptName(Long deptId) {

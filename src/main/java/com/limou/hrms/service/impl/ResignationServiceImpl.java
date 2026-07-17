@@ -12,6 +12,8 @@ import com.limou.hrms.model.enums.EmployeeStatus;
 import com.limou.hrms.model.vo.ResignationVO;
 import com.limou.hrms.service.ApprovalService;
 import com.limou.hrms.service.ResignationService;
+
+import javax.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,6 +43,8 @@ public class ResignationServiceImpl extends ServiceImpl<HrResignationMapper, HrR
     private EmployeeChangeLogMapper employeeChangeLogMapper;
     @Resource
     private UserMapper userMapper;
+    @Resource
+    private ApprovalFlowMapper approvalFlowMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -63,7 +67,7 @@ public class ResignationServiceImpl extends ServiceImpl<HrResignationMapper, HrR
         entity.setResignType(convertResignType(request.getResignType()));
         entity.setResignReason(request.getDetailReason());
         entity.setHandoverPersonId(request.getHandoverPersonId());
-        entity.setFlowId(request.getFlowId());
+        entity.setFlowId(resolveFlowId(request.getFlowId()));
         entity.setRemark(request.getRemark());
         entity.setOperatorId(hrEmployeeId);
         entity.setBusinessNo(generateBusinessNo());
@@ -320,6 +324,19 @@ public class ResignationServiceImpl extends ServiceImpl<HrResignationMapper, HrR
         if (deptId == null) return null;
         Department dept = departmentMapper.selectById(deptId);
         return dept != null ? dept.getManagerId() : null;
+    }
+
+    private Long resolveFlowId(Long requestFlowId) {
+        if (requestFlowId != null) return requestFlowId;
+        try {
+            ApprovalFlow flow = approvalFlowMapper.selectOne(
+                    new LambdaQueryWrapper<ApprovalFlow>()
+                            .eq(ApprovalFlow::getBusinessType, "RESIGNATION")
+                            .eq(ApprovalFlow::getStatus, 1)
+                            .last("LIMIT 1"));
+            if (flow != null) return flow.getId();
+        } catch (Exception ignored) {}
+        return 4L;
     }
 
     private String getDeptName(Long deptId) {
