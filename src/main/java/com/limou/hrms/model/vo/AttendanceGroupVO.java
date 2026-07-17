@@ -4,7 +4,6 @@ import com.limou.hrms.model.dto.attendance.AttendanceGroupCreateRequest;
 import lombok.Data;
 
 import java.io.Serializable;
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -39,12 +38,6 @@ public class AttendanceGroupVO implements Serializable {
     private Integer earlyLeaveThreshold;
 
     private String ipWhitelist;
-
-    private BigDecimal gpsLatitude;
-
-    private BigDecimal gpsLongitude;
-
-    private Integer gpsRadius;
 
     private String coreStartTime;
 

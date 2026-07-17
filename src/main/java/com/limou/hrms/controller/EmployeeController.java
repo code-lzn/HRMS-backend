@@ -43,6 +43,7 @@ public class EmployeeController {
     @GetMapping("/statuses")
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.DEPT_HEAD_ROLE})
     public BaseResponse<List<Map<String, Object>>> getStatuses() {
+        log.info("{} 获取在职状态枚举", UserContext.getCurrentUser());
         List<Map<String, Object>> statuses = employeeService.getStatuses();
         return ResultUtils.success(statuses);
     }
@@ -52,6 +53,7 @@ public class EmployeeController {
      */
     @GetMapping("/field-permissions")
     public BaseResponse<FieldPermissionsVO> getFieldPermissions() {
+        log.info("{} 获取字段权限配置", UserContext.getCurrentUser());
         FieldPermissionsVO vo = employeeService.getFieldPermissions(UserContext.getCurrentUser());
         return ResultUtils.success(vo);
     }
@@ -65,6 +67,7 @@ public class EmployeeController {
     @PostMapping
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
     public BaseResponse<EmployeeCreateVO> createEmployee(@Valid @RequestBody EmployeeCreateRequest dto) {
+        log.info("{} 创建员工档案, name={}", UserContext.getCurrentUser(), dto.getName());
         EmployeeCreateVO vo = employeeService.createEmployee(dto, UserContext.getCurrentUser());
         return ResultUtils.success(vo);
     }
@@ -82,6 +85,7 @@ public class EmployeeController {
         if (id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
+        log.info("{} 更新员工档案, id={}", UserContext.getCurrentUser(), id);
         EmployeeUpdateVO vo = employeeService.updateEmployee(id, fields, UserContext.getCurrentUser());
         return ResultUtils.success(vo);
     }
@@ -91,6 +95,7 @@ public class EmployeeController {
      */
     @GetMapping
     public BaseResponse<Page<EmployeeListVO>> getEmployeeList(EmployeeQueryRequest query) {
+        log.info("{} 查询员工列表, keyword={}", UserContext.getCurrentUser(), query.getKeyword());
         Page<EmployeeListVO> page = employeeService.listEmployees(query, UserContext.getCurrentUser());
         return ResultUtils.success(page);
     }
@@ -105,6 +110,7 @@ public class EmployeeController {
         if (id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
+        log.info("{} 查询员工详情, id={}", UserContext.getCurrentUser(), id);
         EmployeeDetailVO vo = employeeService.getEmployeeDetail(id, UserContext.getCurrentUser());
         return ResultUtils.success(vo);
     }

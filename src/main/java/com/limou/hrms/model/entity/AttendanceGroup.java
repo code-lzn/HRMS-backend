@@ -4,7 +4,6 @@ import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;
 
 import java.io.Serializable;
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 
@@ -72,21 +71,6 @@ public class AttendanceGroup implements Serializable {
      * IP白名单，逗号分隔
      */
     private String ipWhitelist;
-
-    /**
-     * GPS定位纬度
-     */
-    private BigDecimal gpsLatitude;
-
-    /**
-     * GPS定位经度
-     */
-    private BigDecimal gpsLongitude;
-
-    /**
-     * GPS有效半径（米）
-     */
-    private Integer gpsRadius;
 
     /**
      * 核心工作开始时间（弹性班适用）
