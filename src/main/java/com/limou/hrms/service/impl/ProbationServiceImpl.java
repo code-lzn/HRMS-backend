@@ -16,10 +16,12 @@ import com.limou.hrms.model.entity.*;
 import com.limou.hrms.model.enums.ApprovalBizType;
 import com.limou.hrms.model.enums.EmployeeStatus;
 import com.limou.hrms.model.enums.ProbationResult;
+import com.limou.hrms.model.enums.ProbationStatus;
 import com.limou.hrms.model.query.ProbationQuery;
 import com.limou.hrms.model.vo.*;
 import com.limou.hrms.model.entity.OnboardingApplication;
 import com.limou.hrms.model.entity.ResignationApplication;
+import com.limou.hrms.model.enums.ResignationStatus;
 
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
@@ -93,7 +95,7 @@ public class ProbationServiceImpl
             app.setProbationStartDate(employee.getHireDate());
         }
         app.setApplicantId(dataScopeContext.getCurrentEmployeeId());
-        app.setStatus(1); // 草稿
+        app.setStatus(ProbationStatus.DRAFT.getCode());// 草稿
         probationMapper.insert(app);
 
         // 直接提交审批
@@ -108,7 +110,7 @@ public class ProbationServiceImpl
     @Override
     public void updateDraft(Long id, ProbationUpdateDTO dto) {
         ProbationApplication app = getAppOrThrow(id);
-        if (app.getStatus() != 1) { // 仅草稿
+        if (app.getStatus() != ProbationStatus.DRAFT.getCode()) { // 仅草稿
             throw new BusinessException(ErrorCode.PROBATION_DRAFT_ONLY);
         }
         Long currentEmployeeId = dataScopeContext.getCurrentEmployeeId();
@@ -127,7 +129,7 @@ public class ProbationServiceImpl
     @Override
     public void deleteDraft(Long id) {
         ProbationApplication app = getAppOrThrow(id);
-        if (app.getStatus() != 1) {
+        if (app.getStatus() != ProbationStatus.DRAFT.getCode()) {
             throw new BusinessException(ErrorCode.PROBATION_DRAFT_ONLY);
         }
         Long currentEmployeeId = dataScopeContext.getCurrentEmployeeId();
@@ -142,7 +144,7 @@ public class ProbationServiceImpl
     @Transactional(rollbackFor = Exception.class)
     public void submitToApproval(Long id) {
         ProbationApplication app = getAppOrThrow(id);
-        if (app.getStatus() != 1) {
+        if (app.getStatus() != ProbationStatus.DRAFT.getCode()) {
             log.warn("转正申请状态为{}，仅草稿状态可提交审批", app.getStatus());
             throw new BusinessException(ErrorCode.PROBATION_SUBMIT_DRAFT_ONLY);
         }
@@ -155,7 +157,7 @@ public class ProbationServiceImpl
         ApprovalInstance instance = approvalFlowService.createInstance(
                 ApprovalBizType.PROBATION, app.getId(), app.getApplicantId());
 
-        app.setStatus(2); // 审批中
+        app.setStatus(ProbationStatus.PENDING.getCode());
         app.setApprovalInstanceId(instance.getId());
         probationMapper.updateById(app);
 
@@ -166,7 +168,7 @@ public class ProbationServiceImpl
     @Transactional(rollbackFor = Exception.class)
     public void cancel(Long id) {
         ProbationApplication app = getAppOrThrow(id);
-        if (app.getStatus() != 2) {
+        if (app.getStatus() != ProbationStatus.PENDING.getCode()) {
             log.warn("转正申请状态为{}，仅审批中状态可撤回", app.getStatus());
             throw new BusinessException(ErrorCode.PROBATION_CANCEL_FIRST_NODE_ONLY);
         }
@@ -178,7 +180,7 @@ public class ProbationServiceImpl
 
         approvalFlowService.cancel(app.getApprovalInstanceId());
 
-        app.setStatus(1); // 回退草稿
+        app.setStatus(ProbationStatus.DRAFT.getCode());// 回退草稿
         app.setApprovalInstanceId(null);
         probationMapper.updateById(app);
 
@@ -189,7 +191,7 @@ public class ProbationServiceImpl
     @Transactional(rollbackFor = Exception.class)
     public void handleResult(Long id, ProbationHandleResultDTO dto) {
         ProbationApplication app = getAppOrThrow(id);
-        if (app.getStatus() != 4) { // 仅已拒绝状态
+        if (app.getStatus() != ProbationStatus.REJECTED.getCode()) { // 仅已拒绝状态
             log.warn("转正申请id为{},状态为{}，仅已拒绝状态可处理", id, app.getStatus());
             throw new BusinessException(ErrorCode.PROBATION_HANDLE_REJECTED_ONLY);
         }
@@ -209,7 +211,7 @@ public class ProbationServiceImpl
                     employeeMapper.updateById(emp);
                 }
                 app.setResult(ProbationResult.PASS.getCode());
-                app.setStatus(3); // 已完成
+                app.setStatus(ProbationStatus.COMPLETED.getCode()); // 已完成
                 break;
             case EXTEND:
                 if (dto.getExtendedEndDate() == null) {
@@ -218,17 +220,17 @@ public class ProbationServiceImpl
                 }
                 app.setExtendedEndDate(dto.getExtendedEndDate());
                 app.setResult(ProbationResult.EXTEND.getCode());
-                app.setStatus(3); // 已完成（延长试用也是终态）
+                app.setStatus(ProbationStatus.COMPLETED.getCode()); // 已完成（延长试用也是终态）
                 break;
             case FAIL:
                 app.setResult(ProbationResult.FAIL.getCode());
-                app.setStatus(3); // 已完成
+                app.setStatus(ProbationStatus.COMPLETED.getCode()); // 已完成
                 // 自动创建离职草稿
                 ResignationApplication resignation = new ResignationApplication();
                 resignation.setEmployeeId(app.getEmployeeId());
                 resignation.setResignationType(2); // 辞退
                 resignation.setReason("转正不通过，予以辞退");
-                resignation.setStatus(1); // 草稿
+                resignation.setStatus(ResignationStatus.DRAFT.getCode());
                 resignation.setApplicantId(dataScopeContext.getCurrentEmployeeId());
                 resignationMapper.insert(resignation);
                 log.info("转正不通过，已自动创建离职草稿: employeeId={}, resignationId={}",
@@ -307,7 +309,7 @@ public class ProbationServiceImpl
                 Long pendingCount = probationMapper.selectCount(
                         new QueryWrapper<ProbationApplication>()
                                 .eq("employee_id", emp.getId())
-                                .in("status", 2, 3)); // 审批中或已完成
+                                .in("status", ProbationStatus.PENDING.getCode(), ProbationStatus.COMPLETED.getCode())); // 审批中或已完成
                 vo.setHasPendingApplication(pendingCount > 0);
                 result.add(vo);
             }
@@ -332,7 +334,7 @@ public class ProbationServiceImpl
         }
 
         app.setResult(ProbationResult.PASS.getCode());
-        app.setStatus(3); // 已完成
+        app.setStatus(ProbationStatus.COMPLETED.getCode()); // 已完成
         probationMapper.updateById(app);
 
         log.info("转正审批通过: 表单id={}, employeeId={}", bizId, app.getEmployeeId());
@@ -342,7 +344,7 @@ public class ProbationServiceImpl
     public void onRejected(ApprovalBizType bizType, Long bizId) {
         if (bizType != ApprovalBizType.PROBATION) return;
         ProbationApplication app = getAppOrThrow(bizId);
-        app.setStatus(4); // 已拒绝
+        app.setStatus(ProbationStatus.REJECTED.getCode()); // 已拒绝
         probationMapper.updateById(app);
         log.info("转正审批已拒绝: 表单id={}", bizId);
     }
@@ -452,14 +454,8 @@ public class ProbationServiceImpl
     }
 
     private String getStatusDesc(Integer status) {
-        if (status == null) return "";
-        switch (status) {
-            case 1: return "草稿";
-            case 2: return "审批中";
-            case 3: return "已完成";
-            case 4: return "已拒绝";
-            default: return "";
-        }
+        ProbationStatus ps = ProbationStatus.fromCode(status);
+        return ps != null ? ps.getDesc() : "";
     }
 
     private String getEmployeeNo(Long employeeId) {
