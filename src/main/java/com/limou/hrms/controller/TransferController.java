@@ -28,7 +28,7 @@ import javax.validation.Valid;
  */
 @Api(tags = "调岗管理")
 @RestController
-@RequestMapping("/api/v1/transfers")
+@RequestMapping("/api/transfers")
 @Slf4j
 @RequiredArgsConstructor
 public class TransferController {

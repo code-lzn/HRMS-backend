@@ -30,7 +30,7 @@ import java.util.Map;
  */
 @Api(tags = "审批中心")
 @RestController
-@RequestMapping("/api/v1/approvals")
+@RequestMapping("/api/approvals")
 @Slf4j
 public class ApprovalController {
 

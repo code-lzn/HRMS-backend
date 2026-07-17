@@ -29,7 +29,7 @@ import java.util.List;
  */
 @Api(tags = "转正管理")
 @RestController
-@RequestMapping("/api/v1/probation")
+@RequestMapping("/api/probation")
 @Slf4j
 @RequiredArgsConstructor
 public class ProbationController {

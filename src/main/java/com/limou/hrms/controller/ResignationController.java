@@ -26,7 +26,7 @@ import javax.validation.Valid;
  */
 @Api(tags = "离职管理")
 @RestController
-@RequestMapping("/api/v1/resignations")
+@RequestMapping("/api/resignations")
 @Slf4j
 @RequiredArgsConstructor
 public class ResignationController {

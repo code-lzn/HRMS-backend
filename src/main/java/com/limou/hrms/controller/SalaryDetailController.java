@@ -28,7 +28,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @Api(tags = "工资条（员工自助）")
 @RestController
-@RequestMapping("/v1/payslips")
+@RequestMapping("/payslips")
 @Slf4j
 public class SalaryDetailController {
 

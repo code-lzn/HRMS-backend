@@ -33,7 +33,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @Api(tags = "薪资核算批次")
 @RestController
-@RequestMapping("/v1/salary-batches")
+@RequestMapping("/salary-batches")
 @Slf4j
 public class SalaryBatchController {
 
@@ -112,7 +112,7 @@ public class SalaryBatchController {
         return ResultUtils.success(true);
     }
 
-    @ApiOperation("提交审批（创建审批实例，后续统一走 /api/v1/approvals 接口）")
+    @ApiOperation("提交审批（创建审批实例，后续统一走 /api/approvals 接口）")
     @PutMapping("/{id}/submit")
     public BaseResponse<Boolean> submitForApproval(@ApiParam("批次ID") @PathVariable Long id) {
         if (id == null || id <= 0) {

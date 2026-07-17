@@ -18,7 +18,7 @@ import java.util.List;
  * 考勤统计控制器 — 图表可视化数据
  */
 @RestController
-@RequestMapping("/api/v1/attendance/statistics")
+@RequestMapping("/api/attendance/statistics")
 @Slf4j
 @RequiredArgsConstructor
 public class AttendanceStatisticsController {
@@ -26,7 +26,7 @@ public class AttendanceStatisticsController {
     private final AttendanceStatisticsService statisticsService;
 
     /**
-     * GET /api/v1/attendance/statistics/charts/attendance-rate — 部门出勤率趋势（折线图）
+     * GET /api/attendance/statistics/charts/attendance-rate — 部门出勤率趋势（折线图）
      */
     @GetMapping("/charts/attendance-rate")
     @AuthCheck
@@ -39,7 +39,7 @@ public class AttendanceStatisticsController {
     }
 
     /**
-     * GET /api/v1/attendance/statistics/charts/leave-distribution — 请假类型分布（饼图/环形图）
+     * GET /api/attendance/statistics/charts/leave-distribution — 请假类型分布（饼图/环形图）
      */
     @GetMapping("/charts/leave-distribution")
     @AuthCheck
@@ -52,7 +52,7 @@ public class AttendanceStatisticsController {
     }
 
     /**
-     * GET /api/v1/attendance/statistics/charts/late-early-ranking — 迟到早退排行榜（柱状图）
+     * GET /api/attendance/statistics/charts/late-early-ranking — 迟到早退排行榜（柱状图）
      */
     @GetMapping("/charts/late-early-ranking")
     @AuthCheck

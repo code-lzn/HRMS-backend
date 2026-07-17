@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @Api(tags = "薪资统计")
 @RestController
-@RequestMapping("/v1/salary-statistics")
+@RequestMapping("/salary-statistics")
 @Slf4j
 public class SalaryStatisticsController {
 

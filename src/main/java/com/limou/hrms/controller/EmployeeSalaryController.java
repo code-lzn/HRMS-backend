@@ -29,7 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @Api(tags = "员工薪资档案")
 @RestController
-@RequestMapping("/v1/employee-salaries")
+@RequestMapping("/employee-salaries")
 @Slf4j
 public class EmployeeSalaryController {
 

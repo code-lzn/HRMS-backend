@@ -33,7 +33,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @Api(tags = "薪资账套管理")
 @RestController
-@RequestMapping("/v1/salary-accounts")
+@RequestMapping("/salary-accounts")
 @Slf4j
 public class SalaryAccountController {
 
