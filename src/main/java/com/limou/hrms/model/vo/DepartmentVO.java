@@ -14,18 +14,39 @@ public class DepartmentVO implements Serializable {
 
     private Long id;
 
+    /**
+     * 部门名称
+     */
     private String name;
 
+    /**
+     *
+     */
     private String code;
 
+    /**
+     * 父部门 ID
+     */
     private Long parentId;
 
+    /**
+     * 父部门名称
+     */
     private String parentName;
 
+    /**
+     * 部门负责人 ID
+     */
     private Long managerId;
 
+    /**
+     * 部门负责人名称
+     */
     private String managerName;
 
+    /**
+     * 排序
+     */
     private Integer sortOrder;
 
     /**

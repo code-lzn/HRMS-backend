@@ -84,7 +84,18 @@ public enum ErrorCode {
     RESIGNATION_SUBMIT_DRAFT_ONLY(34003, "仅草稿状态可提交审批"),
     RESIGNATION_CANCEL_FIRST_NODE_ONLY(34004, "仅第一级审批节点可撤回申请"),
     RESIGNATION_EMPLOYEE_NOT_ACTIVE(34005, "仅试用期或正式员工可离职"),
-    RESIGNATION_DATE_BEFORE_TODAY(34006, "离职日期不能早于今天");
+    RESIGNATION_DATE_BEFORE_TODAY(34006, "离职日期不能早于今天"),
+    // endregion
+
+    // region 请假管理 (32xxx)
+    LEAVE_BALANCE_INSUFFICIENT(62001, "假期余额不足"),
+    LEAVE_NOT_FOUND(62002, "请假申请不存在"),
+    LEAVE_STATUS_CANNOT_MODIFY(62003, "当前状态不允许此操作"),
+    // endregion
+
+    // region 补卡管理 (33xxx)
+    SUPPLEMENT_CARD_DUPLICATE(63001, "该日期已存在补卡申请，请勿重复提交"),
+    SUPPLEMENT_CARD_LIMIT_EXCEEDED(63002, "当月补卡次数已达上限（2次）");
     // endregion
 
 

@@ -7,33 +7,30 @@ import java.io.Serializable;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
-@TableName("supplement_card_request")
+/**
+ * 工作日历实体
+ */
+@TableName("work_calendar")
 @Data
-public class SupplementCardRequest implements Serializable {
+public class WorkCalendar implements Serializable {
 
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    private Long employeeId;
+    private LocalDate calendarDate;
 
-    private LocalDate attendanceDate;
+    /**
+     * 日期类型：1=工作日 2=休息日 3=节假日
+     */
+    private Integer dayType;
 
-    private Integer cardType;
-
-    private String reason;
-
-    private Integer status;
-
-    private Long approvalInstanceId;
+    private String holidayName;
 
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updateTime;
-
-    @TableLogic
-    private Integer isDeleted;
 
     @TableField(exist = false)
     private static final long serialVersionUID = 1L;
