@@ -53,7 +53,12 @@ public enum ErrorCode {
     // region 请假管理 (32xxx)
     LEAVE_BALANCE_INSUFFICIENT(32001, "假期余额不足"),
     LEAVE_NOT_FOUND(32002, "请假申请不存在"),
-    LEAVE_STATUS_CANNOT_MODIFY(32003, "当前状态不允许此操作");
+    LEAVE_STATUS_CANNOT_MODIFY(32003, "当前状态不允许此操作"),
+    // endregion
+
+    // region 补卡管理 (33xxx)
+    SUPPLEMENT_CARD_DUPLICATE(33001, "该日期已存在补卡申请，请勿重复提交"),
+    SUPPLEMENT_CARD_LIMIT_EXCEEDED(33002, "当月补卡次数已达上限（2次）");
     // endregion
 
 

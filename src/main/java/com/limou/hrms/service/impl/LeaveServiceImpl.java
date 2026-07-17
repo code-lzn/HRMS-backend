@@ -2,15 +2,22 @@ package com.limou.hrms.service.impl;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.limou.hrms.common.ErrorCode;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.limou.hrms.constant.DataScopeContext;
+import com.limou.hrms.constant.DataScopeEnum;
 import com.limou.hrms.exception.BusinessException;
-import com.limou.hrms.mapper.EmployeeLeaveBalanceMapper;
-import com.limou.hrms.mapper.LeaveRequestMapper;
-import com.limou.hrms.mapper.WorkCalendarMapper;
+import com.limou.hrms.mapper.*;
+import com.limou.hrms.service.DepartmentService;
 import com.limou.hrms.model.dto.leave.LeaveRequestSubmitDTO;
 import com.limou.hrms.model.entity.EmployeeLeaveBalance;
+import com.limou.hrms.model.entity.EmployeePersonalInfo;
+import com.limou.hrms.model.entity.EmployeeWorkInfo;
 import com.limou.hrms.model.entity.LeaveRequest;
+import com.limou.hrms.model.entity.Department;
 import com.limou.hrms.model.entity.WorkCalendar;
+import com.limou.hrms.model.vo.LeaveBalanceVO;
+import com.limou.hrms.model.vo.LeaveBalanceVO.BalanceItem;
 import com.limou.hrms.model.vo.LeaveRequestVO;
 import com.limou.hrms.service.LeaveService;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +44,9 @@ public class LeaveServiceImpl implements LeaveService {
 
     private final LeaveRequestMapper leaveRequestMapper;
     private final EmployeeLeaveBalanceMapper leaveBalanceMapper;
+    private final EmployeeWorkInfoMapper employeeWorkInfoMapper;
+    private final EmployeePersonalInfoMapper employeePersonalInfoMapper;
+    private final DepartmentService departmentService;
     private final WorkCalendarMapper workCalendarMapper;
     private final DataScopeContext dataScopeContext;
 
@@ -100,6 +110,200 @@ public class LeaveServiceImpl implements LeaveService {
         vo.setLeaveTypeDesc(getLeaveTypeDesc(entity.getLeaveType()));
         vo.setStatusDesc("审批中");
         return vo;
+    }
+
+    // ==================== 查询列表 ====================
+
+    @Override
+    public Page<LeaveRequestVO> queryRequests(Long employeeId, Integer leaveType, Integer status,
+                                               LocalDate startDate, LocalDate endDate, int page, int size) {
+        QueryWrapper<LeaveRequest> wrapper = new QueryWrapper<>();
+        wrapper.orderByDesc("create_time");
+
+        // 数据权限
+        DataScopeEnum scope = dataScopeContext.getAttendanceScope();
+        switch (scope) {
+            case DEPT: {
+                Set<Long> deptIds = dataScopeContext.getManagedDepartmentIds();
+                if (deptIds == null || deptIds.isEmpty()) {
+                    wrapper.eq("employee_id", dataScopeContext.getCurrentEmployeeId());
+                } else {
+                    wrapper.inSql("employee_id",
+                            "SELECT e.id FROM employee e " +
+                            "INNER JOIN employee_work_info ewi ON e.id = ewi.employee_id " +
+                            "WHERE ewi.department_id IN (" + joinIds(deptIds) + ")");
+                }
+                break;
+            }
+            case SELF:
+                wrapper.eq("employee_id", dataScopeContext.getCurrentEmployeeId());
+                break;
+        }
+
+        if (employeeId != null) wrapper.eq("employee_id", employeeId);
+        if (leaveType != null) wrapper.eq("leave_type", leaveType);
+        if (status != null) wrapper.eq("status", status);
+        if (startDate != null) wrapper.ge("start_time", startDate.atStartOfDay());
+        if (endDate != null) wrapper.le("start_time", endDate.atTime(LocalTime.of(23, 59, 59)));
+
+        Page<LeaveRequest> resultPage = leaveRequestMapper.selectPage(new Page<>(page, size), wrapper);
+
+        Set<Long> empIds = resultPage.getRecords().stream()
+                .map(LeaveRequest::getEmployeeId).collect(Collectors.toSet());
+        Map<Long, String> empNameMap = loadEmpNames(empIds);
+        Map<Long, String> deptNameMap = loadDeptNames(empIds);
+
+        List<LeaveRequestVO> voList = resultPage.getRecords().stream().map(r -> {
+            LeaveRequestVO vo = new LeaveRequestVO();
+            BeanUtils.copyProperties(r, vo);
+            vo.setEmployeeName(empNameMap.getOrDefault(r.getEmployeeId(), ""));
+            vo.setDepartmentName(deptNameMap.getOrDefault(r.getEmployeeId(), ""));
+            vo.setLeaveTypeDesc(getLeaveTypeDesc(r.getLeaveType()));
+            vo.setStatusDesc(getLeaveStatusDesc(r.getStatus()));
+            return vo;
+        }).collect(Collectors.toList());
+
+        Page<LeaveRequestVO> result = new Page<>(page, size, resultPage.getTotal());
+        result.setRecords(voList);
+        return result;
+    }
+
+    private Map<Long, String> loadEmpNames(Set<Long> empIds) {
+        if (empIds.isEmpty()) return Collections.emptyMap();
+        return employeePersonalInfoMapper.selectList(
+                        Wrappers.<EmployeePersonalInfo>lambdaQuery()
+                                .in(EmployeePersonalInfo::getEmployeeId, empIds))
+                .stream()
+                .collect(Collectors.toMap(EmployeePersonalInfo::getEmployeeId, EmployeePersonalInfo::getName));
+    }
+
+    private Map<Long, String> loadDeptNames(Set<Long> empIds) {
+        if (empIds.isEmpty()) return Collections.emptyMap();
+        List<EmployeeWorkInfo> workInfos = employeeWorkInfoMapper.selectList(
+                Wrappers.<EmployeeWorkInfo>lambdaQuery()
+                        .in(EmployeeWorkInfo::getEmployeeId, empIds));
+        Set<Long> deptIds = workInfos.stream()
+                .map(EmployeeWorkInfo::getDepartmentId).collect(Collectors.toSet());
+        Map<Long, String> deptNameMap = departmentService.listByIds(new ArrayList<>(deptIds)).stream()
+                .collect(Collectors.toMap(Department::getId, Department::getName));
+        Map<Long, Long> empDeptMap = workInfos.stream()
+                .collect(Collectors.toMap(EmployeeWorkInfo::getEmployeeId, EmployeeWorkInfo::getDepartmentId, (a, b) -> a));
+        return empIds.stream()
+                .collect(Collectors.toMap(id -> id, id -> deptNameMap.getOrDefault(empDeptMap.get(id), "")));
+    }
+
+    private String getLeaveStatusDesc(Integer status) {
+        if (status == null) return "";
+        switch (status) {
+            case 1: return "草稿";
+            case 2: return "审批中";
+            case 3: return "已通过";
+            case 4: return "已拒绝";
+            case 5: return "已取消";
+            default: return "未知";
+        }
+    }
+
+    private String joinIds(Set<Long> ids) {
+        StringBuilder sb = new StringBuilder();
+        int i = 0;
+        for (Long id : ids) {
+            if (i > 0) sb.append(",");
+            sb.append(id);
+            i++;
+        }
+        return sb.toString();
+    }
+
+    // ==================== 查询详情 ====================
+
+    @Override
+    public LeaveRequestVO getRequestDetail(Long id) {
+        LeaveRequest request = leaveRequestMapper.selectById(id);
+        if (request == null) {
+            throw new BusinessException(ErrorCode.LEAVE_NOT_FOUND);
+        }
+
+        Long currentEmployeeId = dataScopeContext.getCurrentEmployeeId();
+        DataScopeEnum scope = dataScopeContext.getAttendanceScope();
+
+        // 权限校验
+        if (scope == DataScopeEnum.SELF && !request.getEmployeeId().equals(currentEmployeeId)) {
+            throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
+        }
+        if (scope == DataScopeEnum.DEPT) {
+            Set<Long> deptIds = dataScopeContext.getManagedDepartmentIds();
+            if (deptIds == null || deptIds.isEmpty()
+                    || !isEmployeeInDepts(request.getEmployeeId(), deptIds)) {
+                throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
+            }
+        }
+
+        // 查员工名和部门名
+        Map<Long, String> empNameMap = loadEmpNames(Collections.singleton(request.getEmployeeId()));
+        Map<Long, String> deptNameMap = loadDeptNames(Collections.singleton(request.getEmployeeId()));
+
+        LeaveRequestVO vo = new LeaveRequestVO();
+        BeanUtils.copyProperties(request, vo);
+        vo.setEmployeeName(empNameMap.getOrDefault(request.getEmployeeId(), ""));
+        vo.setDepartmentName(deptNameMap.getOrDefault(request.getEmployeeId(), ""));
+        vo.setLeaveTypeDesc(getLeaveTypeDesc(request.getLeaveType()));
+        vo.setStatusDesc(getLeaveStatusDesc(request.getStatus()));
+        return vo;
+    }
+
+    // ==================== 查询余额 ====================
+
+    @Override
+    public LeaveBalanceVO getBalances(Long employeeId, Integer year) {
+        if (year == null) {
+            year = LocalDate.now().getYear();
+        }
+        if (employeeId == null) {
+            employeeId = dataScopeContext.getCurrentEmployeeId();
+        }
+
+        DataScopeEnum scope = dataScopeContext.getAttendanceScope();
+
+        // dept_head：只能查管辖部门员工
+        if (scope == DataScopeEnum.DEPT) {
+            Set<Long> managedDeptIds = dataScopeContext.getManagedDepartmentIds();
+            if (managedDeptIds == null || managedDeptIds.isEmpty()
+                    || !isEmployeeInDepts(employeeId, managedDeptIds)) {
+                throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
+            }
+        }
+        // user：只能查自己
+        if (scope == DataScopeEnum.SELF && !employeeId.equals(dataScopeContext.getCurrentEmployeeId())) {
+            throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
+        }
+
+        List<EmployeeLeaveBalance> balances = leaveBalanceMapper.selectList(
+                Wrappers.<EmployeeLeaveBalance>lambdaQuery()
+                        .eq(EmployeeLeaveBalance::getEmployeeId, employeeId)
+                        .eq(EmployeeLeaveBalance::getYear, year));
+
+        List<BalanceItem> items = balances.stream().map(b -> {
+            BalanceItem item = new BalanceItem();
+            item.setLeaveType(b.getLeaveType());
+            item.setLeaveTypeDesc(getLeaveTypeDesc(b.getLeaveType()));
+            item.setTotalDays(b.getTotalDays());
+            item.setUsedDays(b.getUsedDays());
+            item.setRemainingDays(b.getRemainingDays());
+            return item;
+        }).collect(Collectors.toList());
+
+        LeaveBalanceVO vo = new LeaveBalanceVO();
+        vo.setEmployeeId(employeeId);
+        vo.setBalances(items);
+        return vo;
+    }
+
+    private boolean isEmployeeInDepts(Long employeeId, Set<Long> deptIds) {
+        EmployeeWorkInfo workInfo = employeeWorkInfoMapper.selectOne(
+                Wrappers.<EmployeeWorkInfo>lambdaQuery()
+                        .eq(EmployeeWorkInfo::getEmployeeId, employeeId));
+        return workInfo != null && deptIds.contains(workInfo.getDepartmentId());
     }
 
     // ==================== 天数计算 ====================

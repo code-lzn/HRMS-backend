@@ -4,36 +4,36 @@ import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;
 
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
-@TableName("supplement_card_request")
+@TableName("overtime_record")
 @Data
-public class SupplementCardRequest implements Serializable {
+public class OvertimeRecord implements Serializable {
 
     @TableId(type = IdType.AUTO)
     private Long id;
 
     private Long employeeId;
 
-    private LocalDate attendanceDate;
+    private LocalDate overtimeDate;
 
-    private Integer cardType;
+    private LocalDateTime startTime;
 
-    private String reason;
+    private LocalDateTime endTime;
 
-    private Integer status;
+    private BigDecimal hours;
 
-    private Long approvalInstanceId;
+    private Integer isUsed;
+
+    private LocalDate expireDate;
 
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updateTime;
-
-    @TableLogic
-    private Integer isDeleted;
 
     @TableField(exist = false)
     private static final long serialVersionUID = 1L;

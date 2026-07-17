@@ -22,7 +22,7 @@ import javax.validation.Valid;
 import java.util.List;
 
 /**
- * 部门管理控制器
+ * 部门管理控制器 — 组织架构 CRUD
  */
 @RestController
 @RequestMapping("/api/v1/departments")
@@ -32,20 +32,19 @@ public class DepartmentController {
 
     private final DepartmentService departmentService;
 
-
     /**
-     * 查询部门（平铺，前端按 parentId 自行组装树）
-     * keyword 为空返回全量，传值则按名称或编码模糊搜索
+     * GET /api/v1/departments?keyword= — 查询部门（平铺返回，前端按 parentId 自行组装树）
      */
-    @GetMapping("/tree")
+    @GetMapping("tree")
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.DEPT_HEAD_ROLE})
     public BaseResponse<List<DepartmentTreeNode>> getDepartmentList(@RequestParam(required = false) String keyword) {
+        log.info("{} 查询部门列表, keyword={}", UserContext.getCurrentUser(), keyword);
         List<DepartmentTreeNode> list = departmentService.queryDepartments(keyword);
         return ResultUtils.success(list);
     }
 
     /**
-     * 查询部门详情
+     * GET /api/v1/departments/{id} — 查询部门详情（含子部门简要信息）
      */
     @GetMapping("/{id}")
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.DEPT_HEAD_ROLE})
@@ -53,23 +52,25 @@ public class DepartmentController {
         if (id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
+        log.info("{} 查询部门详情, id={}", UserContext.getCurrentUser(), id);
         DepartmentVO vo = departmentService.getDepartmentDetail(id);
         return ResultUtils.success(vo);
     }
 
     /**
-     * 创建部门
+     * POST /api/v1/departments — 创建部门
      */
     @PostMapping
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
     public BaseResponse<Department> createDepartment(@Valid @RequestBody DepartmentCreateRequest dto) {
         User loginUser = UserContext.getCurrentUser();
+        log.info("{} 创建部门, name={}", loginUser, dto.getName());
         Department department = departmentService.createDepartment(dto, loginUser);
         return ResultUtils.success(department);
     }
 
     /**
-     * 更新部门
+     * PUT /api/v1/departments/{id} — 更新部门（部分更新）
      */
     @PutMapping("/{id}")
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
@@ -79,12 +80,13 @@ public class DepartmentController {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         User loginUser = UserContext.getCurrentUser();
+        log.info("{} 更新部门, id={}", loginUser, id);
         Department department = departmentService.updateDepartment(id, dto, loginUser);
         return ResultUtils.success(department);
     }
 
     /**
-     * 删除部门（逻辑删除）
+     * DELETE /api/v1/departments/{id} — 删除部门（逻辑删除，需先清空子部门和员工）
      */
     @DeleteMapping("/{id}")
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
@@ -93,6 +95,7 @@ public class DepartmentController {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         User loginUser = UserContext.getCurrentUser();
+        log.info("{} 删除部门, id={}", loginUser, id);
         departmentService.deleteDepartment(id, loginUser);
         return ResultUtils.success(null);
     }

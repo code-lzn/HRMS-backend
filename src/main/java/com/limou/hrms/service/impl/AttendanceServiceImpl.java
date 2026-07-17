@@ -5,17 +5,21 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.constant.DataScopeContext;
+import com.limou.hrms.constant.DataScopeEnum;
 import com.limou.hrms.constant.DataScopeHelper;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.mapper.*;
 import com.limou.hrms.model.dto.attendance.AttendanceRecordQueryRequest;
 import com.limou.hrms.model.dto.attendance.ClockRequest;
+import com.limou.hrms.model.dto.attendance.SupplementCardSubmitDTO;
 import com.limou.hrms.model.entity.*;
 import com.limou.hrms.model.vo.AttendanceCalendarVO;
 import com.limou.hrms.model.vo.AttendanceCalendarVO.DayItem;
 import com.limou.hrms.model.vo.AttendanceCalendarVO.Summary;
 import com.limou.hrms.model.vo.AttendanceRecordVO;
 import com.limou.hrms.model.vo.ClockResultVO;
+import com.limou.hrms.model.vo.SupplementCardListVO;
+import com.limou.hrms.model.vo.SupplementCardVO;
 import com.limou.hrms.service.AttendanceService;
 import com.limou.hrms.service.DepartmentService;
 import lombok.RequiredArgsConstructor;
@@ -48,6 +52,7 @@ public class AttendanceServiceImpl implements AttendanceService {
     private final DataScopeHelper dataScopeHelper;
     private final DepartmentService departmentService;
     private final WorkCalendarMapper workCalendarMapper;
+    private final SupplementCardRequestMapper supplementCardRequestMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -321,6 +326,163 @@ public class AttendanceServiceImpl implements AttendanceService {
         }
     }
 
+    // ==================== 补卡申请 ====================
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public SupplementCardVO submitSupplementCard(SupplementCardSubmitDTO dto) {
+        Long employeeId = dataScopeContext.getCurrentEmployeeId();
+        if (employeeId == null) {
+            throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
+        }
+
+        LocalDate attendanceDate = dto.getAttendanceDate();
+        int cardType = dto.getCardType();
+        if (cardType != 1 && cardType != 2) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "无效的补卡类型");
+        }
+
+        // ① 缺卡校验：当天必须有对应的缺卡记录
+        AttendanceRecord record = attendanceRecordMapper.selectOne(
+                Wrappers.<AttendanceRecord>lambdaQuery()
+                        .eq(AttendanceRecord::getEmployeeId, employeeId)
+                        .eq(AttendanceRecord::getAttendanceDate, attendanceDate));
+        if (record == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "该日期无打卡记录");
+        }
+        boolean isMissing = (cardType == 1 && (record.getStartStatus() == null || record.getStartStatus() == 4))
+                         || (cardType == 2 && (record.getEndStatus() == null || record.getEndStatus() == 4));
+        if (!isMissing) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "该日期无对应缺卡记录，无需补卡");
+        }
+
+        // ② 重复校验：同日期+同卡类型是否已提交
+        Long dupCount = supplementCardRequestMapper.selectCount(
+                Wrappers.<SupplementCardRequest>lambdaQuery()
+                        .eq(SupplementCardRequest::getEmployeeId, employeeId)
+                        .eq(SupplementCardRequest::getAttendanceDate, attendanceDate)
+                        .eq(SupplementCardRequest::getCardType, cardType)
+                        .in(SupplementCardRequest::getStatus, 2, 3));
+        if (dupCount != null && dupCount > 0) {
+            throw new BusinessException(ErrorCode.SUPPLEMENT_CARD_DUPLICATE);
+        }
+
+        // ③ 当月次数限制（≤2次，统计审批中+已通过）
+        LocalDate firstOfMonth = attendanceDate.withDayOfMonth(1);
+        LocalDate firstOfNextMonth = firstOfMonth.plusMonths(1);
+        Long monthlyCount = supplementCardRequestMapper.selectCount(
+                Wrappers.<SupplementCardRequest>lambdaQuery()
+                        .eq(SupplementCardRequest::getEmployeeId, employeeId)
+                        .in(SupplementCardRequest::getStatus, 2, 3)
+                        .between(SupplementCardRequest::getCreateTime,
+                                firstOfMonth.atStartOfDay(), firstOfNextMonth.atStartOfDay()));
+        if (monthlyCount != null && monthlyCount >= 2) {
+            throw new BusinessException(ErrorCode.SUPPLEMENT_CARD_LIMIT_EXCEEDED);
+        }
+
+        // ④ 保存
+        SupplementCardRequest entity = new SupplementCardRequest();
+        entity.setEmployeeId(employeeId);
+        entity.setAttendanceDate(attendanceDate);
+        entity.setCardType(cardType);
+        entity.setReason(dto.getReason());
+        entity.setStatus(2); // 审批中
+        boolean saved = supplementCardRequestMapper.insert(entity) > 0;
+        if (!saved) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "提交补卡申请失败");
+        }
+
+        log.info("员工 {} 提交了补卡申请 (id={}), 日期={}, 类型={}",
+                employeeId, entity.getId(), attendanceDate, cardType == 1 ? "上班卡" : "下班卡");
+
+        SupplementCardVO vo = new SupplementCardVO();
+        vo.setId(entity.getId());
+        vo.setEmployeeId(employeeId);
+        vo.setAttendanceDate(attendanceDate);
+        vo.setCardType(cardType);
+        vo.setCardTypeDesc(cardType == 1 ? "上班卡" : "下班卡");
+        vo.setReason(dto.getReason());
+        vo.setStatus(2);
+        vo.setStatusDesc("审批中");
+        vo.setMonthlyCount((int) (monthlyCount == null ? 1 : monthlyCount + 1));
+        vo.setMonthlyLimit(2);
+        vo.setCreateTime(entity.getCreateTime());
+        return vo;
+    }
+
+    // ==================== 补卡列表 ====================
+
+    @Override
+    public Page<SupplementCardListVO> querySupplementCards(Long employeeId, Integer status,
+                                                            LocalDate startDate, LocalDate endDate,
+                                                            int page, int size) {
+        QueryWrapper<SupplementCardRequest> wrapper = new QueryWrapper<>();
+        wrapper.orderByDesc("create_time");
+
+        // 数据权限
+        DataScopeEnum scope = dataScopeContext.getAttendanceScope();
+        switch (scope) {
+            case DEPT: {
+                Set<Long> deptIds = dataScopeContext.getManagedDepartmentIds();
+                if (deptIds == null || deptIds.isEmpty()) {
+                    wrapper.eq("employee_id", dataScopeContext.getCurrentEmployeeId());
+                } else {
+                    wrapper.inSql("employee_id",
+                            "SELECT e.id FROM employee e " +
+                            "INNER JOIN employee_work_info ewi ON e.id = ewi.employee_id " +
+                            "WHERE ewi.department_id IN (" + joinIds(deptIds) + ")");
+                }
+                break;
+            }
+            case SELF:
+                wrapper.eq("employee_id", dataScopeContext.getCurrentEmployeeId());
+                break;
+            // ALL: no filter
+        }
+
+        if (employeeId != null) {
+            wrapper.eq("employee_id", employeeId);
+        }
+        if (status != null) {
+            wrapper.eq("status", status);
+        }
+        if (startDate != null) {
+            wrapper.ge("attendance_date", startDate);
+        }
+        if (endDate != null) {
+            wrapper.le("attendance_date", endDate);
+        }
+
+        Page<SupplementCardRequest> resultPage = supplementCardRequestMapper
+                .selectPage(new Page<>(page, size), wrapper);
+
+        // 批量查名称
+        Set<Long> empIds = resultPage.getRecords().stream()
+                .map(SupplementCardRequest::getEmployeeId).collect(Collectors.toSet());
+        Map<Long, String> empNameMap = loadEmpNameMap(empIds);
+        Map<Long, String> deptNameMap = loadDeptNameMap(empIds);
+
+        List<SupplementCardListVO> voList = resultPage.getRecords().stream().map(r -> {
+            SupplementCardListVO vo = new SupplementCardListVO();
+            vo.setId(r.getId());
+            vo.setEmployeeId(r.getEmployeeId());
+            vo.setEmployeeName(empNameMap.getOrDefault(r.getEmployeeId(), ""));
+            vo.setDepartmentName(deptNameMap.getOrDefault(r.getEmployeeId(), ""));
+            vo.setAttendanceDate(r.getAttendanceDate());
+            vo.setCardType(r.getCardType());
+            vo.setCardTypeDesc(r.getCardType() == 1 ? "上班卡" : "下班卡");
+            vo.setReason(r.getReason());
+            vo.setStatus(r.getStatus());
+            vo.setStatusDesc(getSupplementStatusDesc(r.getStatus()));
+            vo.setCreateTime(r.getCreateTime());
+            return vo;
+        }).collect(Collectors.toList());
+
+        Page<SupplementCardListVO> result = new Page<>(page, size, resultPage.getTotal());
+        result.setRecords(voList);
+        return result;
+    }
+
     // ==================== 考勤组匹配 ====================
 
     /**
@@ -473,5 +635,27 @@ public class AttendanceServiceImpl implements AttendanceService {
             case 4: return "缺卡";
             default: return "未知";
         }
+    }
+
+    private String getSupplementStatusDesc(Integer status) {
+        if (status == null) return "";
+        switch (status) {
+            case 1: return "草稿";
+            case 2: return "审批中";
+            case 3: return "已通过";
+            case 4: return "已拒绝";
+            default: return "未知";
+        }
+    }
+
+    private String joinIds(Set<Long> ids) {
+        StringBuilder sb = new StringBuilder();
+        int i = 0;
+        for (Long id : ids) {
+            if (i > 0) sb.append(",");
+            sb.append(id);
+            i++;
+        }
+        return sb.toString();
     }
 }

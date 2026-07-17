@@ -6,6 +6,7 @@ import com.limou.hrms.common.BaseResponse;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.common.ResultUtils;
 import com.limou.hrms.constant.UserConstant;
+import com.limou.hrms.context.UserContext;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.model.dto.position.PositionCreateRequest;
 import com.limou.hrms.model.dto.position.PositionQueryRequest;
@@ -22,7 +23,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 职位管理控制器
+ * 职位管理控制器 — CRUD + 序列枚举
  */
 @RestController
 @RequestMapping("/api/v1/positions")
@@ -33,27 +34,29 @@ public class PositionController {
     private final PositionService positionService;
 
     /**
-     * 查询职位序列枚举
+     * GET /api/v1/positions/sequences — 获取职位序列 + 职级配置枚举
      */
     @GetMapping("/sequences")
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
     public BaseResponse<List<Map<String, Object>>> getSequences() {
+        log.info("{} 获取职位序列枚举", UserContext.getCurrentUser());
         List<Map<String, Object>> sequences = positionService.getSequences();
         return ResultUtils.success(sequences);
     }
 
     /**
-     * 查询职位列表
+     * GET /api/v1/positions — 查询职位列表（分页 + 模糊搜索）
      */
     @GetMapping
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
     public BaseResponse<Page<PositionVO>> getPositionList(PositionQueryRequest queryReq) {
+        log.info("{} 查询职位列表, keyword={}", UserContext.getCurrentUser(), queryReq.getKeyword());
         Page<PositionVO> page = positionService.getPositionList(queryReq);
         return ResultUtils.success(page);
     }
 
     /**
-     * 查询职位详情
+     * GET /api/v1/positions/{id} — 查询职位详情
      */
     @GetMapping("/{id}")
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
@@ -61,22 +64,24 @@ public class PositionController {
         if (id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
+        log.info("{} 查询职位详情, id={}", UserContext.getCurrentUser(), id);
         PositionVO vo = positionService.getPositionDetail(id);
         return ResultUtils.success(vo);
     }
 
     /**
-     * 创建职位
+     * POST /api/v1/positions — 创建职位
      */
     @PostMapping
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
     public BaseResponse<Position> createPosition(@Valid @RequestBody PositionCreateRequest dto) {
+        log.info("{} 创建职位, name={}", UserContext.getCurrentUser(), dto.getName());
         Position position = positionService.createPosition(dto);
         return ResultUtils.success(position);
     }
 
     /**
-     * 更新职位
+     * PUT /api/v1/positions/{id} — 更新职位（部分更新）
      */
     @PutMapping("/{id}")
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
@@ -85,12 +90,13 @@ public class PositionController {
         if (id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
+        log.info("{} 更新职位, id={}", UserContext.getCurrentUser(), id);
         Position position = positionService.updatePosition(id, dto);
         return ResultUtils.success(position);
     }
 
     /**
-     * 删除职位（逻辑删除）
+     * DELETE /api/v1/positions/{id} — 删除职位（逻辑删除，需先清空员工关联）
      */
     @DeleteMapping("/{id}")
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
@@ -98,6 +104,7 @@ public class PositionController {
         if (id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
+        log.info("{} 删除职位, id={}", UserContext.getCurrentUser(), id);
         positionService.deletePosition(id);
         return ResultUtils.success(null);
     }
