@@ -99,9 +99,7 @@ class ProbationServiceTest {
     @Test
     void createApplication_draft_shouldSucceed() {
         when(employeeMapper.selectById(EMPLOYEE_ID)).thenReturn(mockEmployee());
-
         Long id = service.createApplication(buildCreateDTO());
-
         assertNotNull(id);
     }
 

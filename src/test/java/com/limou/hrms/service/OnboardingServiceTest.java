@@ -362,7 +362,6 @@ class OnboardingServiceTest {
     @Test
     void getDetail_notFound_shouldThrow() {
         when(onboardingMapper.selectById(APP_ID)).thenReturn(null);
-
         assertThrows(BusinessException.class, () -> service.getDetail(APP_ID));
     }
 }

@@ -12,10 +12,7 @@ import com.limou.hrms.mapper.*;
 import com.limou.hrms.model.dto.onboarding.OnboardingCreateDTO;
 import com.limou.hrms.model.dto.onboarding.OnboardingUpdateDTO;
 import com.limou.hrms.model.entity.*;
-import com.limou.hrms.model.enums.ApprovalBizType;
-import com.limou.hrms.model.enums.EmployeeStatus;
-import com.limou.hrms.model.enums.OnboardingStatus;
-import com.limou.hrms.model.enums.UserRoleEnum;
+import com.limou.hrms.model.enums.*;
 import org.springframework.util.DigestUtils;
 import com.limou.hrms.model.query.OnboardingQuery;
 import com.limou.hrms.model.vo.*;
@@ -105,7 +102,7 @@ public class OnboardingServiceImpl
             submitToApproval(app.getId());
         }
 
-        log.info("入职申请创建成功: id={}, name={}", app.getId(), app.getName());
+        log.info("入职申请创建成功: 申请表id={}, name={}", app.getId(), app.getName());
         return app.getId();
     }
 
@@ -113,6 +110,8 @@ public class OnboardingServiceImpl
     public void updateDraft(Long id, OnboardingUpdateDTO dto) {
         OnboardingApplication app = getAppOrThrow(id);
         if (app.getStatus() != OnboardingStatus.DRAFT.getCode()) {
+            log.warn("仅草稿状态可更新");
+            log.warn("当前状态: {}", OnboardingStatus.fromCode(app.getStatus()));
             throw new BusinessException(ErrorCode.ONBOARDING_DRAFT_ONLY);
         }
         Long currentEmployeeId = dataScopeContext.getCurrentEmployeeId();
@@ -134,21 +133,24 @@ public class OnboardingServiceImpl
         if (dto.getDirectReportId() != null) app.setDirectReportId(dto.getDirectReportId());
 
         onboardingMapper.updateById(app);
-        log.info("入职草稿更新成功: id={}", id);
+        log.info("入职草稿更新成功: 申请表id={}", id);
     }
 
     @Override
     public void deleteDraft(Long id) {
         OnboardingApplication app = getAppOrThrow(id);
         if (app.getStatus() != OnboardingStatus.DRAFT.getCode()) {
+            log.warn("仅草稿状态可删除，当前状态: {}", OnboardingStatus.fromCode(app.getStatus()));
             throw new BusinessException(ErrorCode.ONBOARDING_DRAFT_ONLY);
         }
         Long currentEmployeeId = dataScopeContext.getCurrentEmployeeId();
         if (!app.getApplicantId().equals(currentEmployeeId)) {
+            log.warn("仅申请人可删除草稿");
+            log.warn("当前申请人ID: {}", app.getApplicantId());
             throw new BusinessException(ErrorCode.ONBOARDING_DRAFT_ONLY, "仅申请人可删除草稿");
         }
         onboardingMapper.deleteById(id);
-        log.info("入职草稿删除成功: id={}", id);
+        log.info("入职草稿删除成功: 申请表id={}", id);
     }
 
     @Override
@@ -156,6 +158,7 @@ public class OnboardingServiceImpl
     public void submitToApproval(Long id) {
         OnboardingApplication app = getAppOrThrow(id);
         if (app.getStatus() != OnboardingStatus.DRAFT.getCode()) {
+            log.warn("仅草稿状态可提交审批，当前状态: {}", OnboardingStatus.fromCode(app.getStatus()));
             throw new BusinessException(ErrorCode.ONBOARDING_SUBMIT_DRAFT_ONLY);
         }
         validateFieldsComplete(app);
@@ -168,7 +171,7 @@ public class OnboardingServiceImpl
         app.setApprovalInstanceId(instance.getId());
         onboardingMapper.updateById(app);
 
-        log.info("入职申请已提交审批: id={}, instanceId={}", id, instance.getId());
+        log.info("入职申请已提交审批: 申请表id={}, instanceId={}", id, instance.getId());
     }
 
     @Override
@@ -176,10 +179,14 @@ public class OnboardingServiceImpl
     public void cancel(Long id) {
         OnboardingApplication app = getAppOrThrow(id);
         if (app.getStatus() != OnboardingStatus.PENDING.getCode()) {
+            log.warn("仅待审批状态可撤回，当前状态: {}", OnboardingStatus.fromCode(app.getStatus()));
             throw new BusinessException(ErrorCode.ONBOARDING_CANCEL_FIRST_NODE_ONLY);
         }
         Long currentEmployeeId = dataScopeContext.getCurrentEmployeeId();
         if (!app.getApplicantId().equals(currentEmployeeId)) {
+            log.warn("仅申请人可撤回");
+            log.warn("当前申请人ID: {}", app.getApplicantId());
+            log.warn("当前登录用户ID: {}", currentEmployeeId);
             throw new BusinessException(ErrorCode.ONBOARDING_CANCEL_FIRST_NODE_ONLY, "仅申请人可撤回");
         }
         // 审批中心会校验是否第一节点
@@ -189,7 +196,7 @@ public class OnboardingServiceImpl
         app.setApprovalInstanceId(null);
         onboardingMapper.updateById(app);
 
-        log.info("入职申请已撤回: id={}", id);
+        log.info("入职申请已撤回: 申请表id={}", id);
     }
 
     @Override
@@ -197,9 +204,11 @@ public class OnboardingServiceImpl
     public void confirmJoin(Long id, LocalDate actualHireDate) {
         OnboardingApplication app = getAppOrThrow(id);
         if (app.getStatus() != OnboardingStatus.APPROVED.getCode()) {
+            log.warn("仅已批准待入职状态可确认入职，当前状态: {}", OnboardingStatus.fromCode(app.getStatus()));
             throw new BusinessException(ErrorCode.ONBOARDING_CONFIRM_APPROVED_ONLY);
         }
         if (app.getEmployeeId() == null) {
+            log.warn("员工档案未创建，无法确认入职");
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "员工档案未创建，无法确认入职");
         }
         // 更新员工入职日期
@@ -213,7 +222,7 @@ public class OnboardingServiceImpl
         app.setStatus(OnboardingStatus.JOINED.getCode());
         onboardingMapper.updateById(app);
 
-        log.info("员工已确认入职: id={}, employeeId={}", id, app.getEmployeeId());
+        log.info("员工已确认入职: 申请表id={}, employeeId={}", id, app.getEmployeeId());
     }
 
     @Override
@@ -224,7 +233,7 @@ public class OnboardingServiceImpl
         }
         app.setStatus(OnboardingStatus.ABANDONED.getCode());
         onboardingMapper.updateById(app);
-        log.info("入职申请已放弃: id={}", id);
+        log.info("入职申请已放弃: 申请表id={}", id);
     }
 
     @Override
@@ -322,7 +331,7 @@ public class OnboardingServiceImpl
         app.setStatus(OnboardingStatus.APPROVED.getCode());
         onboardingMapper.updateById(app);
 
-        log.info("入职审批通过后处理完成: id={}, employeeId={}, employeeNo={}", bizId, employee.getId(), employeeNo);
+        log.info("入职审批通过后处理完成: 申请表id={}, employeeId={}, employeeNo={}", bizId, employee.getId(), employeeNo);
     }
 
     @Override
@@ -331,7 +340,7 @@ public class OnboardingServiceImpl
         OnboardingApplication app = getAppOrThrow(bizId);
         app.setStatus(OnboardingStatus.REJECTED.getCode());
         onboardingMapper.updateById(app);
-        log.info("入职审批已拒绝: id={}", bizId);
+        log.info("入职审批已拒绝: 申请表id={}", bizId);
     }
 
     // ==================== 私有方法 ====================
@@ -339,6 +348,7 @@ public class OnboardingServiceImpl
     private OnboardingApplication getAppOrThrow(Long id) {
         OnboardingApplication app = onboardingMapper.selectById(id);
         if (app == null) {
+            log.warn("id为{}的入职表申请不存在", id);
             throw new BusinessException(ErrorCode.ONBOARDING_NOT_FOUND);
         }
         return app;
@@ -357,6 +367,7 @@ public class OnboardingServiceImpl
                 || app.getHireType() == null
                 || app.getDefaultProbationMonths() == null
                 || app.getProbationRatio() == null) {
+            log.warn("必填字段不完整,当前表单ID: {}", app.getId());
             throw new BusinessException(ErrorCode.ONBOARDING_FIELDS_INCOMPLETE);
         }
     }
@@ -365,6 +376,7 @@ public class OnboardingServiceImpl
     private String generateEmployeeNo(Long departmentId) {
         Department dept = departmentMapper.selectById(departmentId);
         if (dept == null) {
+            log.warn("部门ID为{}不存在", departmentId);
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "部门不存在");
         }
         String deptCode = dept.getCode();

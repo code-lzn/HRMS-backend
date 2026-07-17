@@ -83,7 +83,7 @@ public class ResignationServiceImpl
 
         if (Boolean.TRUE.equals(dto.getSubmitDirectly())) submitToApproval(app.getId());
 
-        log.info("离职申请创建成功: id={}, employeeId={}", app.getId(), dto.getEmployeeId());
+        log.info("离职申请创建成功: 表单id={}, employeeId={}", app.getId(), dto.getEmployeeId());
         return app.getId();
     }
 

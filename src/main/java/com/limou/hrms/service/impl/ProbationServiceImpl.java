@@ -74,9 +74,11 @@ public class ProbationServiceImpl
         // 校验员工在职状态为试用期
         Employee employee = employeeMapper.selectById(dto.getEmployeeId());
         if (employee == null) {
+            log.warn("员工ID为{}不存在", dto.getEmployeeId());
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "员工不存在");
         }
         if (employee.getStatus() == null || employee.getStatus() != EmployeeStatus.PROBATION.getValue()) {
+            log.warn("员工ID为{}在职状态不是试用期", dto.getEmployeeId());
             throw new BusinessException(ErrorCode.PROBATION_EMPLOYEE_NOT_PROBATION);
         }
 
@@ -99,7 +101,7 @@ public class ProbationServiceImpl
             submitToApproval(app.getId());
         }
 
-        log.info("转正申请创建成功: id={}, employeeId={}", app.getId(), dto.getEmployeeId());
+        log.info("转正申请创建成功: 表单id={}, employeeId={}", app.getId(), dto.getEmployeeId());
         return app.getId();
     }
 
@@ -141,10 +143,12 @@ public class ProbationServiceImpl
     public void submitToApproval(Long id) {
         ProbationApplication app = getAppOrThrow(id);
         if (app.getStatus() != 1) {
+            log.warn("转正申请状态为{}，仅草稿状态可提交审批", app.getStatus());
             throw new BusinessException(ErrorCode.PROBATION_SUBMIT_DRAFT_ONLY);
         }
         // 校验必填字段
         if (StringUtils.isBlank(app.getPerformanceReview())) {
+            log.warn("转正申请id为{}，试用期表现评价不能为空", id);
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "试用期表现评价不能为空");
         }
 
@@ -163,10 +167,12 @@ public class ProbationServiceImpl
     public void cancel(Long id) {
         ProbationApplication app = getAppOrThrow(id);
         if (app.getStatus() != 2) {
+            log.warn("转正申请状态为{}，仅审批中状态可撤回", app.getStatus());
             throw new BusinessException(ErrorCode.PROBATION_CANCEL_FIRST_NODE_ONLY);
         }
         Long currentEmployeeId = dataScopeContext.getCurrentEmployeeId();
         if (!app.getApplicantId().equals(currentEmployeeId)) {
+            log.warn("转正申请id为{},仅申请人可以撤回，当前用户ID为{},申请人ID为{}", id, currentEmployeeId, app.getApplicantId());
             throw new BusinessException(ErrorCode.PROBATION_CANCEL_FIRST_NODE_ONLY, "仅申请人可撤回");
         }
 
@@ -184,11 +190,13 @@ public class ProbationServiceImpl
     public void handleResult(Long id, ProbationHandleResultDTO dto) {
         ProbationApplication app = getAppOrThrow(id);
         if (app.getStatus() != 4) { // 仅已拒绝状态
+            log.warn("转正申请id为{},状态为{}，仅已拒绝状态可处理", id, app.getStatus());
             throw new BusinessException(ErrorCode.PROBATION_HANDLE_REJECTED_ONLY);
         }
 
         ProbationResult result = ProbationResult.fromCode(dto.getResult());
         if (result == null) {
+            log.warn("转正申请id为{},处理结果为{}，无效的处理结果", id, dto.getResult());
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "无效的处理结果");
         }
 
@@ -205,6 +213,7 @@ public class ProbationServiceImpl
                 break;
             case EXTEND:
                 if (dto.getExtendedEndDate() == null) {
+                    log.warn("转正申请id为{},处理结果为{}，延长试用期结束日期不能为空", id, dto.getResult());
                     throw new BusinessException(ErrorCode.PROBATION_EXTEND_DATE_REQUIRED);
                 }
                 app.setExtendedEndDate(dto.getExtendedEndDate());
@@ -228,7 +237,7 @@ public class ProbationServiceImpl
         }
 
         probationMapper.updateById(app);
-        log.info("转正结果已处理: id={}, result={}", id, result.getDesc());
+        log.info("转正结果已处理: 表单id={}, result={}", id, result.getDesc());
     }
 
     @Override
@@ -326,7 +335,7 @@ public class ProbationServiceImpl
         app.setStatus(3); // 已完成
         probationMapper.updateById(app);
 
-        log.info("转正审批通过: id={}, employeeId={}", bizId, app.getEmployeeId());
+        log.info("转正审批通过: 表单id={}, employeeId={}", bizId, app.getEmployeeId());
     }
 
     @Override
@@ -335,7 +344,7 @@ public class ProbationServiceImpl
         ProbationApplication app = getAppOrThrow(bizId);
         app.setStatus(4); // 已拒绝
         probationMapper.updateById(app);
-        log.info("转正审批已拒绝: id={}", bizId);
+        log.info("转正审批已拒绝: 表单id={}", bizId);
     }
 
     // ==================== 私有方法 ====================
@@ -343,6 +352,7 @@ public class ProbationServiceImpl
     private ProbationApplication getAppOrThrow(Long id) {
         ProbationApplication app = probationMapper.selectById(id);
         if (app == null) {
+            log.warn("转正申请id为{}不存在", id);
             throw new BusinessException(ErrorCode.PROBATION_NOT_FOUND);
         }
         return app;
