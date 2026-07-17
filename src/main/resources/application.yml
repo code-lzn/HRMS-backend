@@ -20,13 +20,12 @@ spring:
     store-type: redis
     timeout: 2592000
 
-  # 数据库配置
-  # todo 需替换配置
+  # 数据库配置（密码等敏感信息在 application-dev.yml 中，不提交到仓库）
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://120.26.212.131:3306/szml1
-    username: szml1
-    password: 5539d601c3e3f931
+    url: ${DB_URL:jdbc:mysql://localhost:3306/hrms}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:root}
   # Redis 配置
   redis:
     database: 1
@@ -56,6 +55,8 @@ server:
     session:
       cookie:
         max-age: 2592000
+        same-site: none
+        secure: false
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: false
