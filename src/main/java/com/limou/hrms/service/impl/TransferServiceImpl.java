@@ -14,6 +14,7 @@ import com.limou.hrms.model.dto.transfer.TransferUpdateDTO;
 import com.limou.hrms.model.entity.*;
 import com.limou.hrms.model.enums.ApprovalBizType;
 import com.limou.hrms.model.enums.EmployeeStatus;
+import com.limou.hrms.model.enums.TransferStatus;
 import com.limou.hrms.model.query.TransferQuery;
 import com.limou.hrms.common.PageRequest;
 import com.limou.hrms.model.vo.*;
@@ -66,12 +67,14 @@ public class TransferServiceImpl
         // 校验员工在职状态
         Employee employee = employeeMapper.selectById(dto.getEmployeeId());
         if (employee == null) {
+            log.warn("调岗申请创建失败: id为{}的员工不存在", dto.getEmployeeId());
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "员工不存在");
         }
         Integer empStatus = employee.getStatus();
         if (empStatus == null
                 || (empStatus != EmployeeStatus.PROBATION.getValue()
                     && empStatus != EmployeeStatus.REGULAR.getValue())) {
+            log.warn("调岗申请创建失败: 员工id为{}, 状态为{}, 仅试用期或正式员工可调岗", dto.getEmployeeId(), EmployeeStatus.getByValue(empStatus).getDesc());
             throw new BusinessException(ErrorCode.TRANSFER_EMPLOYEE_NOT_ACTIVE);
         }
 
@@ -80,6 +83,7 @@ public class TransferServiceImpl
 
         // 新部门必须与当前不同
         if (dto.getToDepartmentId().equals(wi.getDepartmentId())) {
+            log.warn("调岗申请创建失败: 员工id为{},调岗前部门id为{}, 新部门id为{}, 前后部门id不能相同", dto.getEmployeeId(), wi.getDepartmentId(), dto.getToDepartmentId());
             throw new BusinessException(ErrorCode.TRANSFER_DEPT_SAME);
         }
 
@@ -96,7 +100,7 @@ public class TransferServiceImpl
         app.setSalaryAdjustment(dto.getSalaryAdjustment());
         app.setReason(dto.getReason());
         app.setApplicantId(dataScopeContext.getCurrentEmployeeId());
-        app.setStatus(1); // 草稿
+        app.setStatus(TransferStatus.DRAFT.getCode());
         transferMapper.insert(app);
 
         // 直接提交
@@ -111,7 +115,7 @@ public class TransferServiceImpl
     @Override
     public void updateDraft(Long id, TransferUpdateDTO dto) {
         TransferApplication app = getAppOrThrow(id);
-        if (app.getStatus() != 1) {
+        if (app.getStatus() != TransferStatus.DRAFT.getCode()) {
             throw new BusinessException(ErrorCode.TRANSFER_DRAFT_ONLY);
         }
         Long currentEmployeeId = dataScopeContext.getCurrentEmployeeId();
@@ -133,7 +137,7 @@ public class TransferServiceImpl
     @Override
     public void deleteDraft(Long id) {
         TransferApplication app = getAppOrThrow(id);
-        if (app.getStatus() != 1) {
+        if (app.getStatus() != TransferStatus.DRAFT.getCode()) {
             throw new BusinessException(ErrorCode.TRANSFER_DRAFT_ONLY);
         }
         Long currentEmployeeId = dataScopeContext.getCurrentEmployeeId();
@@ -148,7 +152,7 @@ public class TransferServiceImpl
     @Transactional(rollbackFor = Exception.class)
     public void submitToApproval(Long id) {
         TransferApplication app = getAppOrThrow(id);
-        if (app.getStatus() != 1) {
+        if (app.getStatus() != TransferStatus.DRAFT.getCode()) {
             throw new BusinessException(ErrorCode.TRANSFER_SUBMIT_DRAFT_ONLY);
         }
         if (StringUtils.isBlank(app.getReason())) {
@@ -158,7 +162,7 @@ public class TransferServiceImpl
         ApprovalInstance instance = approvalFlowService.createInstance(
                 ApprovalBizType.TRANSFER, app.getId(), app.getApplicantId());
 
-        app.setStatus(2); // 审批中
+        app.setStatus(TransferStatus.PENDING.getCode());
         app.setApprovalInstanceId(instance.getId());
         transferMapper.updateById(app);
 
@@ -169,7 +173,7 @@ public class TransferServiceImpl
     @Transactional(rollbackFor = Exception.class)
     public void cancel(Long id) {
         TransferApplication app = getAppOrThrow(id);
-        if (app.getStatus() != 2) {
+        if (app.getStatus() != TransferStatus.PENDING.getCode()) {
             throw new BusinessException(ErrorCode.TRANSFER_CANCEL_FIRST_NODE_ONLY);
         }
         Long currentEmployeeId = dataScopeContext.getCurrentEmployeeId();
@@ -179,7 +183,7 @@ public class TransferServiceImpl
 
         approvalFlowService.cancel(app.getApprovalInstanceId());
 
-        app.setStatus(1);
+        app.setStatus(TransferStatus.DRAFT.getCode());
         app.setApprovalInstanceId(null);
         transferMapper.updateById(app);
         log.info("调岗申请已撤回: id={}", id);
@@ -272,10 +276,10 @@ public class TransferServiceImpl
         transferHistoryMapper.insert(history);
 
         // 3. 更新申请状态
-        app.setStatus(3); // 已生效
+        app.setStatus(TransferStatus.EFFECTIVE.getCode());
         transferMapper.updateById(app);
 
-        log.info("调岗生效: id={}, employeeId={}, {}→{}", bizId, app.getEmployeeId(),
+        log.info("调岗生效: id={}, employeeId={}, 从部门{}→到部门{}", bizId, app.getEmployeeId(),
                 app.getFromDepartmentId(), app.getToDepartmentId());
     }
 
@@ -283,9 +287,9 @@ public class TransferServiceImpl
     public void onRejected(ApprovalBizType bizType, Long bizId) {
         if (bizType != ApprovalBizType.TRANSFER) return;
         TransferApplication app = getAppOrThrow(bizId);
-        app.setStatus(4); // 已拒绝
+        app.setStatus(TransferStatus.REJECTED.getCode());
         transferMapper.updateById(app);
-        log.info("调岗审批已拒绝: id={}", bizId);
+        log.info("调岗审批已拒绝: 表单id={}，状态->{}", bizId, app.getStatus());
     }
 
     // ==================== 私有方法 ====================
@@ -400,14 +404,8 @@ public class TransferServiceImpl
     }
 
     private String getStatusDesc(Integer status) {
-        if (status == null) return "";
-        switch (status) {
-            case 1: return "草稿";
-            case 2: return "审批中";
-            case 3: return "已生效";
-            case 4: return "已拒绝";
-            default: return "";
-        }
+        TransferStatus ts = TransferStatus.fromCode(status);
+        return ts != null ? ts.getDesc() : "";
     }
 
     private String getEmployeeNo(Long employeeId) {

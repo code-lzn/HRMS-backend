@@ -14,6 +14,7 @@ import com.limou.hrms.model.dto.resignation.ResignationUpdateDTO;
 import com.limou.hrms.model.entity.*;
 import com.limou.hrms.model.enums.ApprovalBizType;
 import com.limou.hrms.model.enums.EmployeeStatus;
+import com.limou.hrms.model.enums.ResignationStatus;
 import com.limou.hrms.model.query.ResignationQuery;
 import com.limou.hrms.model.vo.*;
 import com.limou.hrms.service.ApprovalCallback;
@@ -64,9 +65,11 @@ public class ResignationServiceImpl
         if (empStatus == null
                 || (empStatus != EmployeeStatus.PROBATION.getValue()
                     && empStatus != EmployeeStatus.REGULAR.getValue())) {
+            log.warn("离职申请创建失败: 员工id为{}, 状态为{}, 仅试用期或正式员工可离职", dto.getEmployeeId(), EmployeeStatus.getByValue(empStatus).getDesc());
             throw new BusinessException(ErrorCode.RESIGNATION_EMPLOYEE_NOT_ACTIVE);
         }
         if (dto.getResignationDate().isBefore(LocalDate.now())) {
+            log.warn("离职申请创建失败: 员工id为{}, 离职日期为{}, 不能早于当前日期{}", dto.getEmployeeId(), dto.getResignationDate(), LocalDate.now());
             throw new BusinessException(ErrorCode.RESIGNATION_DATE_BEFORE_TODAY);
         }
 
@@ -78,7 +81,7 @@ public class ResignationServiceImpl
         app.setHandoverToId(dto.getHandoverToId());
         app.setRemark(dto.getRemark());
         app.setApplicantId(dataScopeContext.getCurrentEmployeeId());
-        app.setStatus(1); // 草稿
+        app.setStatus(ResignationStatus.DRAFT.getCode());
         resignationMapper.insert(app);
 
         if (Boolean.TRUE.equals(dto.getSubmitDirectly())) submitToApproval(app.getId());
@@ -90,7 +93,7 @@ public class ResignationServiceImpl
     @Override
     public void updateDraft(Long id, ResignationUpdateDTO dto) {
         ResignationApplication app = getAppOrThrow(id);
-        if (app.getStatus() != 1) throw new BusinessException(ErrorCode.RESIGNATION_DRAFT_ONLY);
+        if (app.getStatus() != ResignationStatus.DRAFT.getCode()) throw new BusinessException(ErrorCode.RESIGNATION_DRAFT_ONLY);
         if (!app.getApplicantId().equals(dataScopeContext.getCurrentEmployeeId()))
             throw new BusinessException(ErrorCode.RESIGNATION_DRAFT_ONLY, "仅申请人可编辑草稿");
 
@@ -105,7 +108,7 @@ public class ResignationServiceImpl
     @Override
     public void deleteDraft(Long id) {
         ResignationApplication app = getAppOrThrow(id);
-        if (app.getStatus() != 1) throw new BusinessException(ErrorCode.RESIGNATION_DRAFT_ONLY);
+        if (app.getStatus() != ResignationStatus.DRAFT.getCode()) throw new BusinessException(ErrorCode.RESIGNATION_DRAFT_ONLY);
         if (!app.getApplicantId().equals(dataScopeContext.getCurrentEmployeeId()))
             throw new BusinessException(ErrorCode.RESIGNATION_DRAFT_ONLY, "仅申请人可删除草稿");
         resignationMapper.deleteById(id);
@@ -115,13 +118,13 @@ public class ResignationServiceImpl
     @Transactional(rollbackFor = Exception.class)
     public void submitToApproval(Long id) {
         ResignationApplication app = getAppOrThrow(id);
-        if (app.getStatus() != 1) throw new BusinessException(ErrorCode.RESIGNATION_SUBMIT_DRAFT_ONLY);
+        if (app.getStatus() != ResignationStatus.DRAFT.getCode()) throw new BusinessException(ErrorCode.RESIGNATION_SUBMIT_DRAFT_ONLY);
         if (StringUtils.isBlank(app.getReason()) || app.getResignationDate() == null || app.getHandoverToId() == null)
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "必填字段不完整");
 
         ApprovalInstance instance = approvalFlowService.createInstance(
                 ApprovalBizType.RESIGNATION, app.getId(), app.getApplicantId());
-        app.setStatus(2);
+        app.setStatus(ResignationStatus.PENDING.getCode());
         app.setApprovalInstanceId(instance.getId());
         resignationMapper.updateById(app);
         log.info("离职申请已提交审批: id={}", id);
@@ -131,11 +134,11 @@ public class ResignationServiceImpl
     @Transactional(rollbackFor = Exception.class)
     public void cancel(Long id) {
         ResignationApplication app = getAppOrThrow(id);
-        if (app.getStatus() != 2) throw new BusinessException(ErrorCode.RESIGNATION_CANCEL_FIRST_NODE_ONLY);
+        if (app.getStatus() != ResignationStatus.PENDING.getCode()) throw new BusinessException(ErrorCode.RESIGNATION_CANCEL_FIRST_NODE_ONLY);
         if (!app.getApplicantId().equals(dataScopeContext.getCurrentEmployeeId()))
             throw new BusinessException(ErrorCode.RESIGNATION_CANCEL_FIRST_NODE_ONLY, "仅申请人可撤回");
         approvalFlowService.cancel(app.getApprovalInstanceId());
-        app.setStatus(1);
+        app.setStatus(ResignationStatus.DRAFT.getCode());
         app.setApprovalInstanceId(null);
         resignationMapper.updateById(app);
     }
@@ -174,7 +177,7 @@ public class ResignationServiceImpl
     public void onApproved(ApprovalBizType bizType, Long bizId) {
         if (bizType != ApprovalBizType.RESIGNATION) return;
         ResignationApplication app = getAppOrThrow(bizId);
-        app.setStatus(3); // 审批通过 → 待离职
+        app.setStatus(ResignationStatus.APPROVED.getCode());
         resignationMapper.updateById(app);
 
         // 员工状态 → 待离职
@@ -190,9 +193,9 @@ public class ResignationServiceImpl
     public void onRejected(ApprovalBizType bizType, Long bizId) {
         if (bizType != ApprovalBizType.RESIGNATION) return;
         ResignationApplication app = getAppOrThrow(bizId);
-        app.setStatus(5); // 已拒绝
+        app.setStatus(ResignationStatus.REJECTED.getCode());
         resignationMapper.updateById(app);
-        log.info("离职审批已拒绝: id={}", bizId);
+        log.info("离职审批已拒绝: id={}, employeeId={}", bizId, app.getEmployeeId());
     }
 
     // ==================== 私有方法 ====================
@@ -281,8 +284,8 @@ public class ResignationServiceImpl
     }
 
     private String getStatusDesc(Integer s) {
-        if (s == null) return "";
-        switch (s) { case 1: return "草稿"; case 2: return "审批中"; case 3: return "待离职"; case 4: return "已离职"; case 5: return "已拒绝"; default: return ""; }
+        ResignationStatus rs = ResignationStatus.fromCode(s);
+        return rs != null ? rs.getDesc() : "";
     }
 
     private String getResignationTypeDesc(Integer t) {

@@ -66,7 +66,7 @@ public enum ErrorCode {
     TRANSFER_DRAFT_ONLY(33002, "仅草稿状态可操作"),
     TRANSFER_SUBMIT_DRAFT_ONLY(33003, "仅草稿状态可提交审批"),
     TRANSFER_CANCEL_FIRST_NODE_ONLY(33004, "仅第一级审批节点可撤回申请"),
-    TRANSFER_EMPLOYEE_NOT_ACTIVE(33005, "员工在职状态不允许调岗"),
+    TRANSFER_EMPLOYEE_NOT_ACTIVE(33005, "仅试用期或正式员工可调岗"),
     TRANSFER_DEPT_SAME(33006, "调岗前后部门不能相同"),
     // endregion
 
@@ -75,7 +75,7 @@ public enum ErrorCode {
     RESIGNATION_DRAFT_ONLY(34002, "仅草稿状态可操作"),
     RESIGNATION_SUBMIT_DRAFT_ONLY(34003, "仅草稿状态可提交审批"),
     RESIGNATION_CANCEL_FIRST_NODE_ONLY(34004, "仅第一级审批节点可撤回申请"),
-    RESIGNATION_EMPLOYEE_NOT_ACTIVE(34005, "员工在职状态不允许离职"),
+    RESIGNATION_EMPLOYEE_NOT_ACTIVE(34005, "仅试用期或正式员工可离职"),
     RESIGNATION_DATE_BEFORE_TODAY(34006, "离职日期不能早于今天");
     // endregion
 

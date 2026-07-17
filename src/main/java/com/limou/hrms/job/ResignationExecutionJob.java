@@ -8,6 +8,7 @@ import com.limou.hrms.model.entity.Employee;
 import com.limou.hrms.model.entity.ResignationApplication;
 import com.limou.hrms.model.entity.User;
 import com.limou.hrms.model.enums.EmployeeStatus;
+import com.limou.hrms.model.enums.ResignationStatus;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -41,7 +42,7 @@ public class ResignationExecutionJob {
         LocalDate today = LocalDate.now();
         List<ResignationApplication> list = resignationMapper.selectList(
                 new QueryWrapper<ResignationApplication>()
-                        .eq("status", 3) // 审批通过待离职
+                        .eq("status", ResignationStatus.APPROVED.getCode()) // 审批通过待离职
                         .eq("resignation_date", today));
 
         for (ResignationApplication app : list) {
@@ -64,7 +65,7 @@ public class ResignationExecutionJob {
                 }
 
                 // 更新离职申请
-                app.setStatus(4); // 已离职
+                app.setStatus(ResignationStatus.RESIGNED.getCode());
                 app.setActualResignationDate(today);
                 resignationMapper.updateById(app);
 
