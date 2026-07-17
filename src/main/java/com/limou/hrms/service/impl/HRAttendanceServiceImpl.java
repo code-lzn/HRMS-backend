@@ -140,14 +140,20 @@ public class HRAttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Atten
         String dateStr = DateUtil.formatDate(dto.getAttendanceDate());
         Attendance existing = this.lambdaQuery()
                 .eq(Attendance::getEmployeeId, dto.getEmployeeId())
-                .eq(Attendance::getAttendanceDate, dateStr)
+                .eq(Attendance::getAttendanceDate, dto.getAttendanceDate())
                 .one();
         ThrowUtils.throwIf(existing != null, ErrorCode.OPERATION_ERROR, "该员工当天已存在考勤记录");
 
         Attendance record = new Attendance();
-        BeanUtils.copyProperties(dto, record);
         record.setEmployeeId(dto.getEmployeeId());
-        record.setAttendanceDate(DateUtil.parseDate(dateStr));
+        record.setUserId(emp.getUserId());
+        record.setAttendanceDate(dto.getAttendanceDate());
+        record.setPunchInTime(dto.getPunchInTime());
+        record.setPunchOutTime(dto.getPunchOutTime());
+        record.setPunchInLocation(dto.getPunchInLocation());
+        record.setPunchOutLocation(dto.getPunchOutLocation());
+        record.setOvertimeHours(dto.getOvertimeHours());
+        record.setRemark(dto.getRemark());
 
         calculateAttendanceStatus(record);
 

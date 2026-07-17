@@ -13,7 +13,6 @@ import com.limou.hrms.model.vo.ResignationVO;
 import com.limou.hrms.service.ApprovalService;
 import com.limou.hrms.service.ResignationService;
 
-import javax.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

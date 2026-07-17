@@ -5,20 +5,28 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.mapper.EmployeeLeaveBalanceMapper;
+import com.limou.hrms.model.entity.Employee;
 import com.limou.hrms.model.entity.EmployeeLeaveBalance;
 import com.limou.hrms.model.vo.LeaveBalanceVO;
 import com.limou.hrms.service.EmployeeLeaveBalanceService;
+import com.limou.hrms.service.EmployeeService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import javax.annotation.Resource;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.Calendar;
+import java.util.Date;
 
 @Slf4j
 @Service
 public class EmployeeLeaveBalanceServiceImpl extends ServiceImpl<EmployeeLeaveBalanceMapper, EmployeeLeaveBalance>
         implements EmployeeLeaveBalanceService {
+
+    @Resource
+    private EmployeeService employeeService;
 
     @Override
     public LeaveBalanceVO getCurrentYearBalance(Long employeeId) {
@@ -48,15 +56,81 @@ public class EmployeeLeaveBalanceServiceImpl extends ServiceImpl<EmployeeLeaveBa
             balance = new EmployeeLeaveBalance();
             balance.setEmployeeId(employeeId);
             balance.setYear(year);
-            balance.setAnnualTotal(BigDecimal.ZERO);
+            balance.setAnnualTotal(calculateAnnualLeaveDays(employeeId, year));
             balance.setAnnualUsed(BigDecimal.ZERO);
             balance.setSickTotal(BigDecimal.ZERO);
             balance.setSickUsed(BigDecimal.ZERO);
             balance.setCompTotal(BigDecimal.ZERO);
             balance.setCompUsed(BigDecimal.ZERO);
             this.save(balance);
+        } else if (balance.getAnnualTotal().compareTo(BigDecimal.ZERO) == 0 && year == Calendar.getInstance().get(Calendar.YEAR)) {
+            balance.setAnnualTotal(calculateAnnualLeaveDays(employeeId, year));
+            this.updateById(balance);
         }
         return balance;
+    }
+
+//年假计算
+    private BigDecimal calculateAnnualLeaveDays(Long employeeId, int year) {
+
+
+//        - 入职不满1年：0天
+//                - 满1年不满10年：5天/年
+//                - 满10年不满20年：10天/年
+//                - 满20年及以上：15天/年
+        Employee employee = employeeService.getById(employeeId);
+        if (employee == null || employee.getHireDate() == null) {
+            return BigDecimal.ZERO;
+        }
+
+        Date hireDate = employee.getHireDate();
+        Calendar hireCal = Calendar.getInstance();
+        hireCal.setTime(hireDate);
+        
+        int hireYear = hireCal.get(Calendar.YEAR);
+        int hireMonth = hireCal.get(Calendar.MONTH) + 1;
+
+        Calendar targetCal = Calendar.getInstance();
+        targetCal.set(year, 11, 31);
+        Date targetDate = targetCal.getTime();
+
+        Calendar hireForCompare = Calendar.getInstance();
+        hireForCompare.setTime(hireDate);
+        hireForCompare.set(Calendar.HOUR_OF_DAY, 0);
+        hireForCompare.set(Calendar.MINUTE, 0);
+        hireForCompare.set(Calendar.SECOND, 0);
+        hireForCompare.set(Calendar.MILLISECOND, 0);
+
+        Calendar targetForCompare = Calendar.getInstance();
+        targetForCompare.setTime(targetDate);
+        targetForCompare.set(Calendar.HOUR_OF_DAY, 0);
+        targetForCompare.set(Calendar.MINUTE, 0);
+        targetForCompare.set(Calendar.SECOND, 0);
+        targetForCompare.set(Calendar.MILLISECOND, 0);
+
+        long diffYears = targetForCompare.get(Calendar.YEAR) - hireForCompare.get(Calendar.YEAR);
+        if (targetForCompare.get(Calendar.DAY_OF_YEAR) < hireForCompare.get(Calendar.DAY_OF_YEAR)) {
+            diffYears--;
+        }
+
+        int baseDays;
+        if (diffYears < 1) {
+            baseDays = 0;
+        } else if (diffYears < 10) {
+            baseDays = 5;
+        } else if (diffYears < 20) {
+            baseDays = 10;
+        } else {
+            baseDays = 15;
+        }
+
+        if (hireYear == year) {
+            int remainingMonths = 12 - hireMonth + 1;
+            BigDecimal ratio = BigDecimal.valueOf(remainingMonths).divide(BigDecimal.valueOf(12), 4, RoundingMode.DOWN);
+            return BigDecimal.valueOf(baseDays).multiply(ratio).setScale(0, RoundingMode.DOWN);
+        }
+
+        return BigDecimal.valueOf(baseDays);
     }
 
     @Override
