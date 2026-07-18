@@ -136,6 +136,7 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
         emp.setEmail(entity.getEmail());
         emp.setDepartmentId(entity.getDeptId());
         emp.setPositionId(entity.getPositionId());
+        emp.setAvatar("https://gd-hbimg.huaban.com/08aaeb96f1f7360a2016ab5da1d6dd2d8f9933b62f9137-uqfbvd_fw658webp");
         emp.setEmploymentType(entity.getEmploymentType());
         emp.setStatus(EmployeeStatus.PROBATION.getCode());
         emp.setHireDate(hireDate);
