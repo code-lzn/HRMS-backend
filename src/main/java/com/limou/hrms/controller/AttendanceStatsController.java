@@ -61,4 +61,22 @@ public class AttendanceStatsController {
         List<AttendanceStatsVO> list = attendanceStatsService.getLateEarlyRanking(month);
         return ResultUtils.success(list);
     }
+
+    @GetMapping("/personal-trend")
+    public BaseResponse<AttendanceTrendVO> getPersonalTrend(
+            @RequestParam(defaultValue = "6") Integer months,
+            HttpServletRequest request) {
+        User loginUser = userService.getLoginUser(request);
+        AttendanceTrendVO vo = attendanceStatsService.getPersonalTrend(loginUser.getId(), months);
+        return ResultUtils.success(vo);
+    }
+
+    @GetMapping("/personal-leave-distribution")
+    public BaseResponse<LeaveTypeDistributionVO> getPersonalLeaveDistribution(
+            @RequestParam String month,
+            HttpServletRequest request) {
+        User loginUser = userService.getLoginUser(request);
+        LeaveTypeDistributionVO vo = attendanceStatsService.getPersonalLeaveDistribution(loginUser.getId(), month);
+        return ResultUtils.success(vo);
+    }
 }

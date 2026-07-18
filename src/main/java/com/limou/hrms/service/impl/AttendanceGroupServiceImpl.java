@@ -9,17 +9,20 @@ import com.limou.hrms.mapper.AttendanceGroupMapper;
 import com.limou.hrms.model.dto.attendance.AttendanceGroupDTO;
 import com.limou.hrms.model.entity.AttendanceGroup;
 import com.limou.hrms.model.entity.AttendanceGroupEmployee;
+import com.limou.hrms.model.entity.Department;
+import com.limou.hrms.model.entity.Employee;
 import com.limou.hrms.model.vo.AttendanceGroupVO;
 import com.limou.hrms.service.AttendanceGroupService;
+import cn.hutool.core.date.DateUtil;
+import com.limou.hrms.service.DepartmentService;
+import com.limou.hrms.service.EmployeeService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -29,6 +32,12 @@ public class AttendanceGroupServiceImpl extends ServiceImpl<AttendanceGroupMappe
 
     @Resource
     private AttendanceGroupEmployeeMapper groupEmployeeMapper;
+
+    @Resource
+    private EmployeeService employeeService;
+
+    @Resource
+    private DepartmentService departmentService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -41,6 +50,7 @@ public class AttendanceGroupServiceImpl extends ServiceImpl<AttendanceGroupMappe
 
         AttendanceGroup group = new AttendanceGroup();
         BeanUtils.copyProperties(dto, group);
+        applyTimeFields(dto, group);
         if (group.getLateThreshold() == null) group.setLateThreshold(15);
         if (group.getEarlyThreshold() == null) group.setEarlyThreshold(15);
         if (group.getStatus() == null) group.setStatus(1);
@@ -50,8 +60,18 @@ public class AttendanceGroupServiceImpl extends ServiceImpl<AttendanceGroupMappe
         boolean saved = this.save(group);
         ThrowUtils.throwIf(!saved, ErrorCode.OPERATION_ERROR, "创建考勤组失败");
 
+        List<Long> allEmployeeIds = new ArrayList<>();
+        if (dto.getDepartmentIds() != null && !dto.getDepartmentIds().isEmpty()) {
+            List<Long> deptEmpIds = employeeService.lambdaQuery()
+                    .in(Employee::getDepartmentId, dto.getDepartmentIds())
+                    .list().stream().map(Employee::getId).collect(Collectors.toList());
+            allEmployeeIds.addAll(deptEmpIds);
+        }
         if (dto.getEmployeeIds() != null && !dto.getEmployeeIds().isEmpty()) {
-            assignEmployees(group.getId(), dto.getEmployeeIds());
+            allEmployeeIds.addAll(dto.getEmployeeIds());
+        }
+        if (!allEmployeeIds.isEmpty()) {
+            assignEmployees(group.getId(), allEmployeeIds.stream().distinct().collect(Collectors.toList()));
         }
 
         return convertToVO(group);
@@ -65,16 +85,30 @@ public class AttendanceGroupServiceImpl extends ServiceImpl<AttendanceGroupMappe
         AttendanceGroup group = this.getById(dto.getId());
         ThrowUtils.throwIf(group == null, ErrorCode.NOT_FOUND_ERROR, "考勤组不存在");
 
-        BeanUtils.copyProperties(dto, group, "id", "createTime");
+        BeanUtils.copyProperties(dto, group, "id", "createTime", "status");
+        applyTimeFields(dto, group);
         group.setUpdateTime(new Date());
 
         boolean updated = this.updateById(group);
         ThrowUtils.throwIf(!updated, ErrorCode.OPERATION_ERROR, "更新考勤组失败");
 
-        if (dto.getEmployeeIds() != null) {
+        if (dto.getDepartmentIds() != null || dto.getEmployeeIds() != null) {
             groupEmployeeMapper.delete(new LambdaQueryWrapper<AttendanceGroupEmployee>()
                     .eq(AttendanceGroupEmployee::getGroupId, dto.getId()));
-            assignEmployees(dto.getId(), dto.getEmployeeIds());
+
+            List<Long> allEmployeeIds = new ArrayList<>();
+            if (dto.getDepartmentIds() != null && !dto.getDepartmentIds().isEmpty()) {
+                List<Long> deptEmpIds = employeeService.lambdaQuery()
+                        .in(Employee::getDepartmentId, dto.getDepartmentIds())
+                        .list().stream().map(Employee::getId).collect(Collectors.toList());
+                allEmployeeIds.addAll(deptEmpIds);
+            }
+            if (dto.getEmployeeIds() != null && !dto.getEmployeeIds().isEmpty()) {
+                allEmployeeIds.addAll(dto.getEmployeeIds());
+            }
+            if (!allEmployeeIds.isEmpty()) {
+                assignEmployees(dto.getId(), allEmployeeIds.stream().distinct().collect(Collectors.toList()));
+            }
         }
 
         return convertToVO(group);
@@ -146,18 +180,68 @@ public class AttendanceGroupServiceImpl extends ServiceImpl<AttendanceGroupMappe
                 .in(AttendanceGroupEmployee::getEmployeeId, employeeIds));
     }
 
+    private void applyTimeFields(AttendanceGroupDTO dto, AttendanceGroup group) {
+        if (dto.getWorkStartTime() != null && !dto.getWorkStartTime().isEmpty()) {
+            group.setWorkStartTime(parseTimeString(dto.getWorkStartTime()));
+        }
+        if (dto.getWorkEndTime() != null && !dto.getWorkEndTime().isEmpty()) {
+            group.setWorkEndTime(parseTimeString(dto.getWorkEndTime()));
+        }
+        if (dto.getLunchStartTime() != null && !dto.getLunchStartTime().isEmpty()) {
+            group.setLunchStartTime(parseTimeString(dto.getLunchStartTime()));
+        }
+        if (dto.getLunchEndTime() != null && !dto.getLunchEndTime().isEmpty()) {
+            group.setLunchEndTime(parseTimeString(dto.getLunchEndTime()));
+        }
+        if (dto.getFlexibleStart() != null && !dto.getFlexibleStart().isEmpty()) {
+            group.setFlexibleStart(parseTimeString(dto.getFlexibleStart()));
+        }
+        if (dto.getFlexibleEnd() != null && !dto.getFlexibleEnd().isEmpty()) {
+            group.setFlexibleEnd(parseTimeString(dto.getFlexibleEnd()));
+        }
+    }
+
+    private Date parseTimeString(String time) {
+        if (time == null || time.isEmpty()) return null;
+        // 统一补全为 HH:mm:ss 格式
+        String[] parts = time.trim().split(":");
+        if (parts.length == 2) {
+            time = time + ":00";
+        }
+        return DateUtil.parseTime(time);
+    }
+
     private AttendanceGroupVO convertToVO(AttendanceGroup group) {
         AttendanceGroupVO vo = new AttendanceGroupVO();
         BeanUtils.copyProperties(group, vo);
 
         vo.setShiftTypeText(getShiftTypeText(group.getShiftType()));
-        vo.setStatusText(group.getStatus() == 1 ? "启用" : "禁用");
+        vo.setStatusText(Integer.valueOf(1).equals(group.getStatus()) ? "启用" : "禁用");
 
         List<AttendanceGroupEmployee> employees = groupEmployeeMapper.selectList(new LambdaQueryWrapper<AttendanceGroupEmployee>()
                 .eq(AttendanceGroupEmployee::getGroupId, group.getId()));
         vo.setEmployeeCount(employees.size());
         vo.setEmployeeIds(employees.stream()
                 .map(AttendanceGroupEmployee::getEmployeeId).collect(Collectors.toList()));
+
+        if (!employees.isEmpty()) {
+            List<Long> empIds = employees.stream()
+                    .map(AttendanceGroupEmployee::getEmployeeId).collect(Collectors.toList());
+            List<Employee> empList = employeeService.listByIds(empIds);
+            Set<Long> deptIdSet = empList.stream()
+                    .map(Employee::getDepartmentId).filter(Objects::nonNull).collect(Collectors.toSet());
+            vo.setDepartmentIds(new ArrayList<>(deptIdSet));
+            if (!deptIdSet.isEmpty()) {
+                List<Department> depts = departmentService.listByIds(new ArrayList<>(deptIdSet));
+                vo.setDepartmentNames(depts.stream()
+                        .map(Department::getDeptName).filter(Objects::nonNull).collect(Collectors.toList()));
+            } else {
+                vo.setDepartmentNames(Collections.emptyList());
+            }
+        } else {
+            vo.setDepartmentIds(Collections.emptyList());
+            vo.setDepartmentNames(Collections.emptyList());
+        }
 
         return vo;
     }

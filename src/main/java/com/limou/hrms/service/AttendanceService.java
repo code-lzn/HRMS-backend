@@ -31,4 +31,20 @@ public interface AttendanceService extends IService<Attendance> {
      * 获取今日打卡状态
      */
     AttendanceVO getTodayStatus(Long userId);
+
+    /**
+     * 生成某天的考勤记录（为未打卡员工创建缺勤记录）
+     */
+    int generateDailyRecords(String date);
+
+    /**
+     * 日终评估：检查缺卡情况，标记异常
+     */
+    int evaluateEndOfDay(String date);
+
+    /**
+     * 同步考勤异常审批结果（定时任务调用）
+     * 查询已完成的 ATTENDANCE_ANOMALY 审批，若拒绝则恢复考勤状态为正常
+     */
+    int syncAnomalyApprovals();
 }

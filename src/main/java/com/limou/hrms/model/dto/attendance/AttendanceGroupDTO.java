@@ -3,7 +3,6 @@ package com.limou.hrms.model.dto.attendance;
 import lombok.Data;
 
 import java.io.Serializable;
-import java.util.Date;
 import java.util.List;
 
 @Data
@@ -15,17 +14,17 @@ public class AttendanceGroupDTO implements Serializable {
 
     private Integer shiftType;
 
-    private Date workStartTime;
+    private String workStartTime;
 
-    private Date workEndTime;
+    private String workEndTime;
 
-    private Date lunchStartTime;
+    private String lunchStartTime;
 
-    private Date lunchEndTime;
+    private String lunchEndTime;
 
-    private Date flexibleStart;
+    private String flexibleStart;
 
-    private Date flexibleEnd;
+    private String flexibleEnd;
 
     private Integer lateThreshold;
 
@@ -36,6 +35,8 @@ public class AttendanceGroupDTO implements Serializable {
     private Integer status;
 
     private List<Long> employeeIds;
+
+    private List<Long> departmentIds;
 
     private static final long serialVersionUID = 1L;
 }

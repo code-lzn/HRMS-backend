@@ -148,11 +148,47 @@ public class MakeupPunchServiceImpl extends ServiceImpl<MakeupPunchMapper, Makeu
             record.setPunchOutTime(makeup.getPunchTime());
         }
 
-        // 补卡后状态恢复正常
-        if (record.getPunchInTime() != null && record.getPunchOutTime() != null) {
-            record.setStatus(AttendanceStatusEnum.NORMAL.getValue());
-        }
+        // 重新计算迟到/早退/加班状态
+        recalculateStatus(record);
 
         attendanceService.saveOrUpdate(record);
+    }
+
+    private void recalculateStatus(Attendance record) {
+        record.setLateMinutes(0);
+        record.setEarlyMinutes(0);
+        record.setOvertimeHours(0.0);
+
+        if (record.getPunchInTime() != null) {
+            int punchInHour = DateUtil.hour(record.getPunchInTime(), true);
+            int punchInMinute = DateUtil.minute(record.getPunchInTime());
+            int thresholdMinutes = AttendanceConstant.DEFAULT_WORK_START_HOUR * 60 + AttendanceConstant.LATE_GRACE_MINUTES;
+            int punchInTotalMinutes = punchInHour * 60 + punchInMinute;
+            if (punchInTotalMinutes > thresholdMinutes) {
+                record.setLateMinutes(punchInTotalMinutes - thresholdMinutes);
+            }
+        }
+
+        if (record.getPunchOutTime() != null) {
+            int punchOutHour = DateUtil.hour(record.getPunchOutTime(), true);
+            int punchOutMinute = DateUtil.minute(record.getPunchOutTime());
+            int workEndMinutes = AttendanceConstant.DEFAULT_WORK_END_HOUR * 60;
+            int punchOutTotalMinutes = punchOutHour * 60 + punchOutMinute;
+            if (punchOutTotalMinutes < workEndMinutes) {
+                record.setEarlyMinutes(workEndMinutes - punchOutTotalMinutes);
+            } else if (punchOutTotalMinutes > workEndMinutes) {
+                record.setOvertimeHours((punchOutTotalMinutes - workEndMinutes) / 60.0);
+            }
+        }
+
+        if (record.getLateMinutes() > 0) {
+            record.setStatus(AttendanceStatusEnum.LATE.getValue());
+        } else if (record.getEarlyMinutes() > 0) {
+            record.setStatus(AttendanceStatusEnum.LEAVE_EARLY.getValue());
+        } else if (record.getPunchInTime() != null && record.getPunchOutTime() != null) {
+            record.setStatus(AttendanceStatusEnum.NORMAL.getValue());
+        } else {
+            record.setStatus(AttendanceStatusEnum.MISSING.getValue());
+        }
     }
 }

@@ -6,6 +6,12 @@ import com.limou.hrms.common.ResultUtils;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.model.dto.attendance.PunchRequest;
 import com.limou.hrms.model.entity.User;
+import com.limou.hrms.common.BaseResponse;
+import com.limou.hrms.common.ErrorCode;
+import com.limou.hrms.common.ResultUtils;
+import com.limou.hrms.exception.BusinessException;
+import com.limou.hrms.model.dto.attendance.PunchRequest;
+import com.limou.hrms.model.entity.User;
 import com.limou.hrms.model.vo.AttendanceCalendarVO;
 import com.limou.hrms.model.vo.AttendanceVO;
 import com.limou.hrms.service.AttendanceService;
@@ -16,7 +22,9 @@ import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 考勤打卡接口
@@ -79,5 +87,52 @@ public class AttendanceController {
         User loginUser = userService.getLoginUser(request);
         List<AttendanceVO> list = attendanceService.getMonthRecords(loginUser.getId(), month);
         return ResultUtils.success(list);
+    }
+
+    /**
+     * 生成某天的考勤记录（为未打卡员工创建缺勤/旷工记录）
+     */
+    @PostMapping("/generate/{date}")
+    public BaseResponse<Map<String, Object>> generateDailyRecords(@PathVariable String date) {
+        int count = attendanceService.generateDailyRecords(date);
+        Map<String, Object> result = new HashMap<>();
+        result.put("generated", count);
+        return ResultUtils.success(result);
+    }
+
+    /**
+     * 日终评估：检查缺卡情况，标记异常（上班缺卡/下班缺卡）
+     */
+    @PostMapping("/evaluate/{date}")
+    public BaseResponse<Map<String, Object>> evaluateEndOfDay(@PathVariable String date) {
+        int count = attendanceService.evaluateEndOfDay(date);
+        Map<String, Object> result = new HashMap<>();
+        result.put("updated", count);
+        return ResultUtils.success(result);
+    }
+
+    /**
+     * 同步考勤异常审批结果（由定时任务调用）
+     * 将已拒绝的异常审批对应的考勤状态恢复为正常
+     */
+    @PostMapping("/sync-anomaly-approvals")
+    public BaseResponse<Map<String, Object>> syncAnomalyApprovals() {
+        int count = attendanceService.syncAnomalyApprovals();
+        Map<String, Object> result = new HashMap<>();
+        result.put("synced", count);
+        return ResultUtils.success(result);
+    }
+
+    /**
+     * 兜底：确保当天考勤记录已生成（页面加载时调用，幂等）
+     */
+    @PostMapping("/ensure-today")
+    public BaseResponse<Map<String, Object>> ensureTodayRecords() {
+        String today = cn.hutool.core.date.DateUtil.formatDate(new java.util.Date());
+        int count = attendanceService.generateDailyRecords(today);
+        Map<String, Object> result = new HashMap<>();
+        result.put("date", today);
+        result.put("generated", count);
+        return ResultUtils.success(result);
     }
 }

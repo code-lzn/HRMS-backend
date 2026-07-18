@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.limou.hrms.common.ErrorCode;
+import com.limou.hrms.constant.AttendanceConstant;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.exception.ThrowUtils;
 import com.limou.hrms.mapper.AttendanceMapper;
@@ -14,6 +15,7 @@ import com.limou.hrms.model.dto.attendance.HRAttendanceQueryRequest;
 import com.limou.hrms.model.entity.*;
 import com.limou.hrms.model.enums.AttendanceStatusEnum;
 import com.limou.hrms.model.enums.DataScopeEnum;
+import com.limou.hrms.model.enums.LeaveTypeEnum;
 import com.limou.hrms.model.vo.HRAttendanceVO;
 import com.limou.hrms.model.vo.PageResult;
 import com.limou.hrms.service.*;
@@ -50,10 +52,6 @@ public class HRAttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Atten
     @Resource
     private UserService userService;
 
-    private static final int WORK_START_HOUR = 9;
-    private static final int WORK_END_HOUR = 18;
-    private static final int LATE_GRACE_MINUTES = 30;
-
     @Override
     public PageResult<HRAttendanceVO> queryAttendance(HRAttendanceQueryRequest request, HttpServletRequest httpRequest) {
         int pageNum = request.getPageNum() != null ? request.getPageNum() : 1;
@@ -66,18 +64,36 @@ public class HRAttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Atten
         applyDataScopeFilter(queryWrapper, currentUser.getId(), dataScope);
 
         if (request.getEmployeeName() != null && !request.getEmployeeName().isEmpty()) {
-            queryWrapper.inSql(Attendance::getEmployeeId,
-                    "SELECT id FROM employee WHERE employeeName LIKE '%" + request.getEmployeeName() + "%'");
+            List<Long> empIds = employeeService.lambdaQuery()
+                    .like(Employee::getEmployeeName, request.getEmployeeName())
+                    .list().stream().map(Employee::getId).collect(Collectors.toList());
+            if (!empIds.isEmpty()) {
+                queryWrapper.in(Attendance::getEmployeeId, empIds);
+            } else {
+                queryWrapper.eq(Attendance::getEmployeeId, 0L);
+            }
         }
 
         if (request.getEmployeeNo() != null && !request.getEmployeeNo().isEmpty()) {
-            queryWrapper.inSql(Attendance::getEmployeeId,
-                    "SELECT id FROM employee WHERE employeeNo = '" + request.getEmployeeNo() + "'");
+            List<Long> empIds = employeeService.lambdaQuery()
+                    .eq(Employee::getEmployeeNo, request.getEmployeeNo())
+                    .list().stream().map(Employee::getId).collect(Collectors.toList());
+            if (!empIds.isEmpty()) {
+                queryWrapper.in(Attendance::getEmployeeId, empIds);
+            } else {
+                queryWrapper.eq(Attendance::getEmployeeId, 0L);
+            }
         }
 
         if (request.getDepartmentId() != null) {
-            queryWrapper.inSql(Attendance::getEmployeeId,
-                    "SELECT id FROM employee WHERE departmentId = " + request.getDepartmentId());
+            List<Long> empIds = employeeService.lambdaQuery()
+                    .eq(Employee::getDepartmentId, request.getDepartmentId())
+                    .list().stream().map(Employee::getId).collect(Collectors.toList());
+            if (!empIds.isEmpty()) {
+                queryWrapper.in(Attendance::getEmployeeId, empIds);
+            } else {
+                queryWrapper.eq(Attendance::getEmployeeId, 0L);
+            }
         }
 
         if (request.getMonth() != null && !request.getMonth().isEmpty()) {
@@ -217,7 +233,7 @@ public class HRAttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Atten
         if (record.getPunchInTime() != null) {
             int punchInHour = DateUtil.hour(record.getPunchInTime(), true);
             int punchInMinute = DateUtil.minute(record.getPunchInTime());
-            int thresholdMinutes = WORK_START_HOUR * 60 + LATE_GRACE_MINUTES;
+            int thresholdMinutes = AttendanceConstant.DEFAULT_WORK_START_HOUR * 60 + AttendanceConstant.LATE_GRACE_MINUTES;
             int punchInTotalMinutes = punchInHour * 60 + punchInMinute;
 
             if (punchInTotalMinutes > thresholdMinutes) {
@@ -228,7 +244,7 @@ public class HRAttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Atten
         if (record.getPunchOutTime() != null) {
             int punchOutHour = DateUtil.hour(record.getPunchOutTime(), true);
             int punchOutMinute = DateUtil.minute(record.getPunchOutTime());
-            int workEndMinutes = WORK_END_HOUR * 60;
+            int workEndMinutes = AttendanceConstant.DEFAULT_WORK_END_HOUR * 60;
             int punchOutTotalMinutes = punchOutHour * 60 + punchOutMinute;
 
             if (punchOutTotalMinutes < workEndMinutes) {
@@ -265,9 +281,14 @@ public class HRAttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Atten
         List<Long> employeeIds = records.stream().map(Attendance::getEmployeeId).distinct().collect(Collectors.toList());
         Map<Long, List<Leave>> leaveMap = new HashMap<>();
         if (!employeeIds.isEmpty()) {
+            // 只查询与当前页考勤日期范围相关的请假记录
+            Date minDate = records.stream().map(Attendance::getAttendanceDate).min(Date::compareTo).orElse(null);
+            Date maxDate = records.stream().map(Attendance::getAttendanceDate).max(Date::compareTo).orElse(null);
             List<Leave> leaves = leaveService.lambdaQuery()
                     .in(Leave::getEmployeeId, employeeIds)
                     .eq(Leave::getStatus, 1)
+                    .ge(minDate != null, Leave::getEndDate, minDate)
+                    .le(maxDate != null, Leave::getStartDate, maxDate)
                     .list();
             for (Leave leave : leaves) {
                 leaveMap.computeIfAbsent(leave.getEmployeeId(), k -> new ArrayList<>()).add(leave);
@@ -292,7 +313,8 @@ public class HRAttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Atten
                     for (Leave leave : empLeaves) {
                         if (dateStr.compareTo(DateUtil.formatDate(leave.getStartDate())) >= 0
                                 && dateStr.compareTo(DateUtil.formatDate(leave.getEndDate())) <= 0) {
-                            vo.setLeaveTypeText(getLeaveTypeText(leave.getLeaveType()));
+                            LeaveTypeEnum lt = LeaveTypeEnum.getEnumByValue(leave.getLeaveType());
+                            vo.setLeaveTypeText(lt != null ? lt.getText() : "无");
                             vo.setStatus(AttendanceStatusEnum.LEAVE.getValue());
                             vo.setStatusText("请假");
                             break;
@@ -318,22 +340,6 @@ public class HRAttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Atten
         return vo;
     }
 
-    private String getLeaveTypeText(Integer leaveType) {
-        if (leaveType == null) {
-            return "无";
-        }
-        switch (leaveType) {
-            case 0: return "事假";
-            case 1: return "病假";
-            case 2: return "年假";
-            case 3: return "婚假";
-            case 4: return "产假";
-            case 5: return "丧假";
-            case 6: return "调休";
-            default: return "其他";
-        }
-    }
-
     private void applyDataScopeFilter(LambdaQueryWrapper<Attendance> queryWrapper, Long userId, Integer dataScope) {
         DataScopeEnum scope = DataScopeEnum.getByCode(dataScope);
         
@@ -344,9 +350,25 @@ public class HRAttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Atten
             case DEPARTMENT:
                 try {
                     Employee manager = employeeService.getByUserId(userId);
-                    if (manager != null && manager.getDepartmentId() != null) {
-                        queryWrapper.inSql(Attendance::getEmployeeId,
-                                "SELECT id FROM employee WHERE departmentId = " + manager.getDepartmentId());
+                    if (manager != null) {
+                        // 查找该主管负责的所有部门
+                        List<Long> managedDeptIds = departmentService.lambdaQuery()
+                                .eq(Department::getManagerId, manager.getId())
+                                .eq(Department::getIsDeleted, 0)
+                                .list().stream().map(Department::getId).collect(Collectors.toList());
+                        if (!managedDeptIds.isEmpty()) {
+                            List<Long> deptEmpIds = employeeService.lambdaQuery()
+                                    .in(Employee::getDepartmentId, managedDeptIds)
+                                    .list().stream().map(Employee::getId).collect(Collectors.toList());
+                            if (!deptEmpIds.isEmpty()) {
+                                queryWrapper.in(Attendance::getEmployeeId, deptEmpIds);
+                            } else {
+                                queryWrapper.eq(Attendance::getEmployeeId, 0L);
+                            }
+                        } else {
+                            // 未负责任何部门，仅看自己
+                            queryWrapper.eq(Attendance::getEmployeeId, manager.getId());
+                        }
                     }
                 } catch (Exception e) {
                     log.warn("获取部门主管信息失败, userId: {}", userId, e);

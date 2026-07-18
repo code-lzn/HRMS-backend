@@ -2,6 +2,7 @@ package com.limou.hrms.model.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
 import java.io.Serializable;
 import java.util.Date;
@@ -9,7 +10,6 @@ import lombok.Data;
 
 /**
  * 补卡申请表
- * @TableName makeup_punch_request
  */
 @TableName(value ="makeup_punch")
 @Data
@@ -84,5 +84,6 @@ public class MakeupPunch implements Serializable {
     /**
      * 逻辑删除：0=否 1=是
      */
+    @TableLogic
     private Integer isDeleted;
 }

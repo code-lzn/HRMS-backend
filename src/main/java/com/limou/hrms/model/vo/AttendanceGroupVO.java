@@ -43,6 +43,10 @@ public class AttendanceGroupVO implements Serializable {
 
     private List<Long> employeeIds;
 
+    private List<Long> departmentIds;
+
+    private List<String> departmentNames;
+
     private Date createTime;
 
     private Date updateTime;

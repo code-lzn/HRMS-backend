@@ -106,7 +106,7 @@ public class HolidayConfigServiceImpl extends ServiceImpl<HolidayConfigMapper, H
         if (date == null) return false;
         HolidayConfig holiday = this.lambdaQuery()
                 .eq(HolidayConfig::getHolidayDate, DateUtil.formatDate(date))
-                .eq(HolidayConfig::getHolidayType, 0).one();
+                .in(HolidayConfig::getHolidayType, 0, 2).one();
         return holiday != null;
     }
 
@@ -127,7 +127,7 @@ public class HolidayConfigServiceImpl extends ServiceImpl<HolidayConfigMapper, H
 
         HolidayConfig holiday = this.lambdaQuery()
                 .eq(HolidayConfig::getHolidayDate, DateUtil.formatDate(date))
-                .eq(HolidayConfig::getHolidayType, 0).one();
+                .in(HolidayConfig::getHolidayType, 0, 2).one();
         return holiday == null;
     }
 

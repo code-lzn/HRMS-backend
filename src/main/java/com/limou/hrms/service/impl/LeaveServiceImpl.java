@@ -28,6 +28,7 @@ import com.limou.hrms.service.ApprovalService;
 import com.limou.hrms.service.AttendanceService;
 import com.limou.hrms.service.EmployeeLeaveBalanceService;
 import com.limou.hrms.service.EmployeeService;
+import com.limou.hrms.service.HolidayConfigService;
 import com.limou.hrms.service.LeaveService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -72,6 +73,9 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
     @Resource
     private ApprovalDetailService approvalDetailService;
 
+    @Resource
+    private HolidayConfigService holidayConfigService;
+
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -99,6 +103,7 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
         ThrowUtils.throwIf(overlapCount > 0, ErrorCode.LEAVE_OVERLAP_ERROR);
         //去detail表查询审批人id
         EmployeeDetail employeeDetail = employeeDetailMapper.selectById(emp.getId());
+        Long approverId = employeeDetail != null ? employeeDetail.getDirectReportId() : null;
 
         Leave request = new Leave();
         request.setEmployeeId(emp.getId());
@@ -108,7 +113,7 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
         request.setEndDate(end);
         request.setTotalDays(BigDecimal.valueOf(days));
         request.setReason(reason);
-        request.setApproverId(employeeDetail.getDirectReportId());
+        request.setApproverId(approverId);
         request.setStatus(ApprovalStatusEnum.PENDING.getValue());
 
         boolean saved = this.save(request);
@@ -131,31 +136,6 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
         // 同步更新考勤记录状态为"请假"
         updateAttendanceForLeave(emp.getId(), start, end);
 
-        return convertToVO(request, emp);
-    }
-
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public LeaveVO approve(Long requestId, Integer result, String comment, Long approverId) {
-        Leave request = this.getById(requestId);
-        ThrowUtils.throwIf(request == null, ErrorCode.NOT_FOUND_ERROR, "请假申请不存在");
-        ThrowUtils.throwIf(!Objects.equals(request.getStatus(), ApprovalStatusEnum.PENDING.getValue()),
-                ErrorCode.APPROVAL_NOT_PENDING_ERROR);
-        Date now = new Date();
-        request.setStatus(result);
-        request.setApproverId(approverId);
-        request.setApproveTime(now);
-        request.setApproveComment(comment);
-
-        boolean updated = this.updateById(request);
-        ThrowUtils.throwIf(!updated, ErrorCode.OPERATION_ERROR, "审批失败");
-
-        // 如果拒绝，还原考勤状态
-        if (Objects.equals(result, ApprovalStatusEnum.REJECTED.getValue())) {
-            revertAttendanceForLeave(request.getEmployeeId(), request.getStartDate(), request.getEndDate());
-        }
-
-        Employee emp = employeeService.lambdaQuery().eq(Employee::getId, request.getEmployeeId()).one();
         return convertToVO(request, emp);
     }
 
@@ -262,6 +242,9 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
         request.setStatus(ApprovalStatusEnum.CANCELLED.getValue());
         boolean updated = this.updateById(request);
         ThrowUtils.throwIf(!updated, ErrorCode.OPERATION_ERROR, "撤销失败");
+
+        // 还原假期余额
+        employeeLeaveBalanceService.restore(request.getEmployeeId(), request.getLeaveType(), request.getTotalDays());
 
         // 同步到审批中心：更新审批记录状态为 WITHDRAWN
         ApprovalRecord approvaRecord = approvalService.lambdaQuery()
@@ -400,6 +383,11 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
     private void updateAttendanceForLeave(Long employeeId, Date start, Date end) {
         Date cursor = start;
         while (!cursor.after(end)) {
+            // 非工作日跳过
+            if (!holidayConfigService.isWorkDay(cursor)) {
+                cursor = DateUtil.offsetDay(cursor, 1);
+                continue;
+            }
             String dateStr = DateUtil.formatDate(cursor);
             Attendance record = attendanceService.lambdaQuery()
                     .eq(Attendance::getEmployeeId, employeeId)

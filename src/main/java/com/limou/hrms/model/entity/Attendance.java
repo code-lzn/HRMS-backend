@@ -10,7 +10,6 @@ import lombok.Data;
 
 /**
  * 考勤打卡记录表
- * @TableName attendance_record
  */
 @TableName(value ="attendance")
 @Data

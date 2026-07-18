@@ -1,21 +1,23 @@
 package com.limou.hrms.service.impl;
 
 import cn.hutool.core.date.DateUtil;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.constant.AttendanceConstant;
 import com.limou.hrms.exception.ThrowUtils;
+import com.limou.hrms.mapper.ApprovalRecordMapper;
 import com.limou.hrms.mapper.AttendanceMapper;
-import com.limou.hrms.model.entity.Attendance;
-import com.limou.hrms.model.entity.Employee;
+import com.limou.hrms.model.entity.*;
+import com.limou.hrms.model.enums.ApprovalRecordStatusEnum;
 import com.limou.hrms.model.enums.AttendanceStatusEnum;
 import com.limou.hrms.model.enums.PunchTypeEnum;
 import com.limou.hrms.model.vo.AttendanceCalendarVO;
 import com.limou.hrms.model.vo.AttendanceVO;
-import com.limou.hrms.service.AttendanceService;
-import com.limou.hrms.service.EmployeeService;
+import com.limou.hrms.service.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +36,23 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
     @Resource
     private EmployeeService employeeService;
 
+    @Resource
+    private AttendanceGroupService attendanceGroupService;
+
+    @Resource
+    @Lazy
+    private LeaveService leaveService;
+
+    @Resource
+    private HolidayConfigService holidayConfigService;
+
+    @Resource
+    @Lazy
+    private ApprovalService approvalService;
+
+    @Resource
+    private ApprovalRecordMapper approvalRecordMapper;
+
     /**
      * 上下班打卡
      */
@@ -50,7 +69,7 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
                 .eq(Attendance::getAttendanceDate, DateUtil.parseDate(today))
                 .one();
 
-        boolean isPunchIn = (punchType == null || punchType.equals(PunchTypeEnum.WEB.getValue()));
+        boolean isPunchIn = (punchType == null || punchType == 0);
 
         if (record == null) {
             // 首次打卡，新建记录
@@ -58,7 +77,7 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
             record.setEmployeeId(emp.getId());
             record.setUserId(userId);
             record.setAttendanceDate(DateUtil.parseDate(today));
-            record.setStatus(AttendanceStatusEnum.MISSING.getValue()); // 默认缺卡
+            record.setStatus(AttendanceStatusEnum.NORMAL.getValue());
             record.setPunchInType(PunchTypeEnum.WEB.getValue());
             record.setPunchOutType(PunchTypeEnum.WEB.getValue());
         }
@@ -69,10 +88,18 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
             record.setPunchInTime(now);
             record.setPunchInLocation(location);
 
-            // 判断是否迟到
+            // 获取员工考勤组，使用组内规则判断迟到
+            AttendanceGroup group = attendanceGroupService.getGroupByEmployeeId(emp.getId());
+            int workStartHour = AttendanceConstant.DEFAULT_WORK_START_HOUR;
+            int lateGrace = AttendanceConstant.LATE_GRACE_MINUTES;
+            if (group != null && group.getWorkStartTime() != null) {
+                workStartHour = DateUtil.hour(group.getWorkStartTime(), true);
+                lateGrace = group.getLateThreshold() != null ? group.getLateThreshold() : lateGrace;
+            }
+
             int hour = DateUtil.hour(now, true);
             int minute = DateUtil.minute(now);
-            int thresholdMinutes = AttendanceConstant.DEFAULT_WORK_START_HOUR * 60 + AttendanceConstant.LATE_GRACE_MINUTES;
+            int thresholdMinutes = workStartHour * 60 + lateGrace;
             if (hour * 60 + minute > thresholdMinutes) {
                 record.setStatus(AttendanceStatusEnum.LATE.getValue());
             }
@@ -82,9 +109,32 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
             record.setPunchOutTime(now);
             record.setPunchOutLocation(location);
 
-            // 如果上班打卡正常、下班也正常打卡，则状态改为正常
-            if (!Objects.equals(record.getStatus(), AttendanceStatusEnum.LATE.getValue())) {
-                record.setStatus(AttendanceStatusEnum.NORMAL.getValue());
+            // 获取考勤组规则判断早退
+            AttendanceGroup group = attendanceGroupService.getGroupByEmployeeId(emp.getId());
+            int workEndHour = AttendanceConstant.DEFAULT_WORK_END_HOUR;
+            int earlyThreshold = AttendanceConstant.LATE_GRACE_MINUTES;
+            if (group != null && group.getWorkEndTime() != null) {
+                workEndHour = DateUtil.hour(group.getWorkEndTime(), true);
+                earlyThreshold = group.getEarlyThreshold() != null ? group.getEarlyThreshold() : earlyThreshold;
+            }
+
+            int hour = DateUtil.hour(now, true);
+            int minute = DateUtil.minute(now);
+            int earlyMinutes = workEndHour * 60 - (hour * 60 + minute);
+
+            if (earlyMinutes > earlyThreshold) {
+                // 早退：下班时间比规定时间早，且超过阈值
+                record.setEarlyMinutes(earlyMinutes);
+                // 如果已经迟到，保持迟到状态（叠加违规取首次违规）
+                if (!Objects.equals(record.getStatus(), AttendanceStatusEnum.LATE.getValue())) {
+                    record.setStatus(AttendanceStatusEnum.LEAVE_EARLY.getValue());
+                }
+            } else {
+                // 正常下班：保持原有状态（迟到仍然是迟到，正常则保持正常）
+                if (!Objects.equals(record.getStatus(), AttendanceStatusEnum.LATE.getValue())
+                        && !Objects.equals(record.getStatus(), AttendanceStatusEnum.LEAVE_EARLY.getValue())) {
+                    record.setStatus(AttendanceStatusEnum.NORMAL.getValue());
+                }
             }
         }
 
@@ -176,13 +226,175 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
         return convertToVO(record);
     }
 
-    // ========== 私有方法 ==========
+    // ========== 日终处理 ==========
 
-//    private Employee getEmployee(Long userId) {
-//        Employee emp = employeeService.lambdaQuery().eq(Employee::getUserId, userId).one();
-//        ThrowUtils.throwIf(emp == null, ErrorCode.NOT_FOUND_ERROR, "员工档案不存在");
-//        return emp;
-//    }
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int generateDailyRecords(String date) {
+        Date targetDate = DateUtil.parseDate(date);
+        boolean isWorkDay = holidayConfigService.isWorkDay(targetDate);
+
+        List<Employee> employees = employeeService.lambdaQuery()
+                .eq(Employee::getIsDeleted, 0).list();
+        if (employees.isEmpty()) return 0;
+
+        // 查询当天已有的考勤记录
+        List<Attendance> existingRecords = this.lambdaQuery()
+                .eq(Attendance::getAttendanceDate, date)
+                .list();
+        Set<Long> existingEmpIds = existingRecords.stream()
+                .map(Attendance::getEmployeeId).collect(Collectors.toSet());
+
+        // 工作日：跳过请假员工；非工作日：全员休息
+        Set<Long> leaveEmpIds = Collections.emptySet();
+        if (isWorkDay) {
+            List<Leave> todayLeaves = leaveService.lambdaQuery()
+                    .eq(Leave::getStatus, 1)
+                    .le(Leave::getStartDate, date)
+                    .ge(Leave::getEndDate, date)
+                    .list();
+            leaveEmpIds = todayLeaves.stream()
+                    .map(Leave::getEmployeeId).collect(Collectors.toSet());
+        }
+
+        int defaultStatus = isWorkDay ? AttendanceStatusEnum.LATE.getValue()
+                                      : AttendanceStatusEnum.REST.getValue();
+
+        int created = 0;
+        Date now = new Date();
+
+        // 非工作日：修正已有记录中无打卡的非休息状态 → 休息
+        if (!isWorkDay) {
+            for (Attendance r : existingRecords) {
+                if (r.getPunchInTime() == null && r.getPunchOutTime() == null
+                        && !Objects.equals(r.getStatus(), AttendanceStatusEnum.REST.getValue())) {
+                    r.setStatus(AttendanceStatusEnum.REST.getValue());
+                    r.setUpdateTime(now);
+                    this.updateById(r);
+                    created++;
+                }
+            }
+        }
+
+        for (Employee emp : employees) {
+            if (existingEmpIds.contains(emp.getId())) continue;
+            if (leaveEmpIds.contains(emp.getId())) continue;
+
+            Attendance record = new Attendance();
+            record.setEmployeeId(emp.getId());
+            record.setUserId(emp.getUserId());
+            record.setAttendanceDate(targetDate);
+            record.setStatus(defaultStatus);
+            record.setCreateTime(now);
+            record.setUpdateTime(now);
+            this.save(record);
+            created++;
+        }
+
+        return created;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int evaluateEndOfDay(String date) {
+        Date targetDate = DateUtil.parseDate(date);
+
+        List<Attendance> records = this.lambdaQuery()
+                .eq(Attendance::getAttendanceDate, date)
+                .list();
+
+        int updated = 0;
+        for (Attendance r : records) {
+            // 休息日不评估
+            if (Objects.equals(r.getStatus(), AttendanceStatusEnum.REST.getValue())) {
+                continue;
+            }
+
+            boolean hasIn = r.getPunchInTime() != null;
+            boolean hasOut = r.getPunchOutTime() != null;
+
+            if (!hasIn && !hasOut) {
+                // 全天未打卡 → 旷工
+                if (!Objects.equals(r.getStatus(), AttendanceStatusEnum.ABSENT.getValue())) {
+                    r.setStatus(AttendanceStatusEnum.ABSENT.getValue());
+                    r.setUpdateTime(new Date());
+                    this.updateById(r);
+                    updated++;
+                }
+            } else if (hasIn && !hasOut) {
+                // 上班打卡了但下班没打卡 → 下班缺卡
+                r.setStatus(AttendanceStatusEnum.MISS_OUT.getValue());
+                r.setUpdateTime(new Date());
+                this.updateById(r);
+                updated++;
+                createAnomalyApproval(r);
+            } else if (!hasIn && hasOut) {
+                // 下班打卡了但上班没打卡 → 上班缺卡
+                r.setStatus(AttendanceStatusEnum.MISS_IN.getValue());
+                r.setUpdateTime(new Date());
+                this.updateById(r);
+                updated++;
+                createAnomalyApproval(r);
+            }
+        }
+
+        return updated;
+    }
+
+    @Override
+    public int syncAnomalyApprovals() {
+        // 查询所有已拒绝的考勤异常审批
+        List<ApprovalRecord> rejectedRecords = approvalRecordMapper.selectList(
+                new LambdaQueryWrapper<ApprovalRecord>()
+                        .eq(ApprovalRecord::getBusinessType, "ATTENDANCE_ANOMALY")
+                        .eq(ApprovalRecord::getStatus, ApprovalRecordStatusEnum.REJECTED.getValue())
+        );
+
+        int synced = 0;
+        for (ApprovalRecord record : rejectedRecords) {
+            Attendance attendance = this.getById(record.getBusinessId());
+            if (attendance == null) continue;
+
+            // 仅当考勤状态仍为缺卡异常时才恢复
+            Integer status = attendance.getStatus();
+            if (Objects.equals(status, AttendanceStatusEnum.MISS_OUT.getValue())
+                    || Objects.equals(status, AttendanceStatusEnum.MISS_IN.getValue())) {
+                attendance.setStatus(AttendanceStatusEnum.NORMAL.getValue());
+                attendance.setUpdateTime(new Date());
+                this.updateById(attendance);
+                synced++;
+            }
+        }
+
+        return synced;
+    }
+
+    /**
+     * 为缺卡异常创建审批记录，上报部门负责人
+     */
+    private void createAnomalyApproval(Attendance record) {
+        try {
+            Employee emp = employeeService.getById(record.getEmployeeId());
+            if (emp == null) return;
+
+            Map<Integer, Long> overrides = new HashMap<>();
+            overrides.put(2, emp.getId());
+
+            approvalService.startApproval(
+                    "ATTENDANCE_ANOMALY",
+                    record.getId(),
+                    emp.getId(),
+                    emp.getEmployeeName(),
+                    emp.getDepartmentId(),
+                    overrides
+            );
+        } catch (Exception e) {
+            log.warn("创建考勤异常审批失败，员工ID={}, 日期={}, 原因: {}",
+                    record.getEmployeeId(), record.getAttendanceDate(), e.getMessage());
+        }
+    }
+
+    // ========== 私有方法 ==========
 
     private AttendanceVO convertToVO(Attendance record) {
         AttendanceVO vo = new AttendanceVO();

@@ -497,9 +497,12 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
                     leave.setStatus(targetStatus);
                     leave.setApproveTime(now);
                     leaveMapper.updateById(leave);
-                    // 审批通过后扣减请假余额
                     if (isApproved) {
                         employeeLeaveBalanceService.deduct(
+                                leave.getEmployeeId(), leave.getLeaveType(), leave.getTotalDays());
+                    } else {
+                        // 拒绝后还原假期余额 (如果之前已扣减)
+                        employeeLeaveBalanceService.restore(
                                 leave.getEmployeeId(), leave.getLeaveType(), leave.getTotalDays());
                     }
                 }

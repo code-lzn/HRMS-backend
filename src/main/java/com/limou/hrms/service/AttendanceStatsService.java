@@ -15,4 +15,8 @@ public interface AttendanceStatsService {
     LeaveTypeDistributionVO getLeaveTypeDistribution(String month);
 
     List<AttendanceStatsVO> getLateEarlyRanking(String month);
+
+    AttendanceTrendVO getPersonalTrend(Long userId, Integer months);
+
+    LeaveTypeDistributionVO getPersonalLeaveDistribution(Long userId, String month);
 }

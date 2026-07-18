@@ -1,10 +1,13 @@
 package com.limou.hrms.service.impl;
 
+import cn.hutool.core.date.DateUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.exception.BusinessException;
+import com.limou.hrms.mapper.AttendanceMapper;
 import com.limou.hrms.mapper.EmployeeLeaveBalanceMapper;
+import com.limou.hrms.model.entity.Attendance;
 import com.limou.hrms.model.entity.Employee;
 import com.limou.hrms.model.entity.EmployeeLeaveBalance;
 import com.limou.hrms.model.vo.LeaveBalanceVO;
@@ -19,6 +22,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.List;
 
 @Slf4j
 @Service
@@ -28,15 +32,25 @@ public class EmployeeLeaveBalanceServiceImpl extends ServiceImpl<EmployeeLeaveBa
     @Resource
     private EmployeeService employeeService;
 
+    @Resource
+    private AttendanceMapper attendanceMapper;
+
     @Override
     public LeaveBalanceVO getCurrentYearBalance(Long employeeId) {
         int year = Calendar.getInstance().get(Calendar.YEAR);
         EmployeeLeaveBalance balance = getOrCreateBalance(employeeId, year);
 
+        // 调休余额动态计算（上月1号至今的加班时长 - 已用调休）
+        BigDecimal currentCompTotal = calculateCompensatoryLeaveDays(employeeId);
+        if (currentCompTotal.compareTo(balance.getCompTotal()) != 0) {
+            balance.setCompTotal(currentCompTotal);
+            this.updateById(balance);
+        }
+
         LeaveBalanceVO vo = new LeaveBalanceVO();
         vo.setAnnualRemaining(balance.getAnnualTotal().subtract(balance.getAnnualUsed()));
         vo.setSickRemaining(balance.getSickTotal().subtract(balance.getSickUsed()));
-        vo.setCompRemaining(balance.getCompTotal().subtract(balance.getCompUsed()));
+        vo.setCompRemaining(currentCompTotal.subtract(balance.getCompUsed()));
 
         BigDecimal total = vo.getAnnualRemaining()
                 .add(vo.getSickRemaining())
@@ -113,6 +127,13 @@ public class EmployeeLeaveBalanceServiceImpl extends ServiceImpl<EmployeeLeaveBa
             diffYears--;
         }
 
+        if (hireYear == year) {
+            int baseDaysForProrate = 5;
+            int remainingMonths = 12 - hireMonth + 1;
+            BigDecimal ratio = BigDecimal.valueOf(remainingMonths).divide(BigDecimal.valueOf(12), 4, RoundingMode.DOWN);
+            return BigDecimal.valueOf(baseDaysForProrate).multiply(ratio).setScale(0, RoundingMode.DOWN);
+        }
+
         int baseDays;
         if (diffYears < 1) {
             baseDays = 0;
@@ -124,13 +145,40 @@ public class EmployeeLeaveBalanceServiceImpl extends ServiceImpl<EmployeeLeaveBa
             baseDays = 15;
         }
 
-        if (hireYear == year) {
-            int remainingMonths = 12 - hireMonth + 1;
-            BigDecimal ratio = BigDecimal.valueOf(remainingMonths).divide(BigDecimal.valueOf(12), 4, RoundingMode.DOWN);
-            return BigDecimal.valueOf(baseDays).multiply(ratio).setScale(0, RoundingMode.DOWN);
+        return BigDecimal.valueOf(baseDays);
+    }
+
+    /**
+     * 计算调休余额：加班时长 1:1 转换，有效期 = 加班当月及次月
+     */
+    private BigDecimal calculateCompensatoryLeaveDays(Long employeeId) {
+        Calendar now = Calendar.getInstance();
+        // 有效期起算：上月 1 号
+        Calendar validStart = Calendar.getInstance();
+        validStart.set(Calendar.DAY_OF_MONTH, 1);
+        validStart.add(Calendar.MONTH, -1);
+        validStart.set(Calendar.HOUR_OF_DAY, 0);
+        validStart.set(Calendar.MINUTE, 0);
+        validStart.set(Calendar.SECOND, 0);
+        validStart.set(Calendar.MILLISECOND, 0);
+
+        String startDate = DateUtil.formatDate(validStart.getTime());
+
+        List<Attendance> overtimeRecords = attendanceMapper.selectList(
+                new LambdaQueryWrapper<Attendance>()
+                        .eq(Attendance::getEmployeeId, employeeId)
+                        .ge(Attendance::getAttendanceDate, startDate)
+                        .gt(Attendance::getOvertimeHours, 0)
+        );
+
+        double total = 0;
+        for (Attendance r : overtimeRecords) {
+            if (r.getOvertimeHours() != null) {
+                total += r.getOvertimeHours();
+            }
         }
 
-        return BigDecimal.valueOf(baseDays);
+        return BigDecimal.valueOf(total);
     }
 
     @Override
