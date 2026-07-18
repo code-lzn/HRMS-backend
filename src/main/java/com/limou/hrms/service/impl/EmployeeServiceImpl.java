@@ -610,7 +610,7 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
         info.setGender(dto.getGender());
         info.setPhone(dto.getPhone());
         info.setEmail(dto.getEmail());
-        info.setIdCard(aesUtil.encrypt(dto.getIdCard()));
+        info.setIdCard(dto.getIdCard());
         info.setCreateTime(LocalDateTime.now());
         return info;
     }
@@ -757,14 +757,11 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
      */
     private String maskIdCard(String idCard, UserRoleEnum role) {
         if (idCard == null) return null;
-        // 先解密
-        String plain = aesUtil.decrypt(idCard);
-        if (plain == null) plain = idCard;
         if (role == UserRoleEnum.HR || role == UserRoleEnum.ADMIN) {
-            return plain;
+            return idCard;
         }
-        if (plain.length() >= 6) {
-            return plain.substring(0, 4) + "**********" + plain.substring(plain.length() - 2);
+        if (idCard.length() >= 6) {
+            return idCard.substring(0, 4) + "**********" + idCard.substring(idCard.length() - 2);
         }
         return "****";
     }
@@ -789,7 +786,7 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
      */
     private String maskBankAccount(String bankAccount, UserRoleEnum role) {
         if (bankAccount == null) return null;
-        // 先解密
+        // 尝试解密，解密失败（明文存储）则直接用原值
         String plain = aesUtil.decrypt(bankAccount);
         if (plain == null) plain = bankAccount;
         if (role == UserRoleEnum.HR || role == UserRoleEnum.ADMIN

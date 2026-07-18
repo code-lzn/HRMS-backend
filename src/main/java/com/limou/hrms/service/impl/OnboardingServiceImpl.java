@@ -19,7 +19,6 @@ import com.limou.hrms.model.vo.*;
 import com.limou.hrms.service.ApprovalCallback;
 import com.limou.hrms.service.ApprovalFlowService;
 import com.limou.hrms.service.OnboardingService;
-import com.limou.hrms.util.AesUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
@@ -61,8 +60,6 @@ public class OnboardingServiceImpl
     private ApprovalInstanceMapper approvalInstanceMapper;
     @Resource
     private ApprovalNodeMapper approvalNodeMapper;
-    @Resource
-    private AesUtil aesUtil;
     @Resource
     private DataScopeContext dataScopeContext;
     @Resource
@@ -302,7 +299,7 @@ public class OnboardingServiceImpl
         personalInfo.setGender(app.getGender());
         personalInfo.setPhone(app.getPhone());
         personalInfo.setEmail(app.getEmail());
-        personalInfo.setIdCard(aesUtil.encrypt(app.getIdCard()));
+        personalInfo.setIdCard(app.getIdCard());
         personalInfoMapper.insert(personalInfo);
 
         // 4. 写入 work_info

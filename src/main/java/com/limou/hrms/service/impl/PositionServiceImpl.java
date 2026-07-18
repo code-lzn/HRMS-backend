@@ -175,6 +175,11 @@ public class PositionServiceImpl extends ServiceImpl<PositionMapper, Position> i
             deptNameMap = Collections.emptyMap();
         }
 
+        // 批量查询各职位在职员工数
+        List<Long> positionIds = page.getRecords().stream()
+                .map(Position::getId).collect(Collectors.toList());
+        Map<Long, Integer> positionCountMap = loadPositionActiveCountMap(positionIds);
+
         List<PositionVO> voList = page.getRecords().stream().map(pos -> {
             PositionVO vo = new PositionVO();
             BeanUtils.copyProperties(pos, vo);
@@ -188,6 +193,7 @@ public class PositionServiceImpl extends ServiceImpl<PositionMapper, Position> i
             } else {
                 vo.setDepartmentName("全公司通用");
             }
+            vo.setEmployeeCount(positionCountMap.getOrDefault(pos.getId(), 0));
             return vo;
         }).collect(Collectors.toList());
 
@@ -227,17 +233,43 @@ public class PositionServiceImpl extends ServiceImpl<PositionMapper, Position> i
         return Arrays.stream(PositionSequence.values()).map(seq -> {
             Map<String, Object> map = new LinkedHashMap<>();
             map.put("sequence", seq.getValue());
-            map.put("sequenceName", seq.getPrefix());
-            map.put("sequenceDesc", seq.getDesc());
-            map.put("levelPrefix", seq.getPrefix());
-            map.put("levelMin", 1);
-            map.put("levelMax", seq.getMaxLevel());
-            map.put("typicalPositions", seq.getTypicalPositions());
+            map.put("sequenceName", seq.getPrefix() + seq.getDesc());
             return map;
         }).collect(Collectors.toList());
     }
 
     // ==================== 私有校验方法 ====================
+
+    /**
+     * 批量查询各职位的在职员工数
+     */
+    private Map<Long, Integer> loadPositionActiveCountMap(List<Long> positionIds) {
+        if (positionIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        List<EmployeeWorkInfo> workInfos = employeeWorkInfoMapper.selectList(
+                Wrappers.<EmployeeWorkInfo>lambdaQuery()
+                        .in(EmployeeWorkInfo::getPositionId, positionIds));
+        if (workInfos.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        // 过滤在职员工
+        List<Long> employeeIds = workInfos.stream()
+                .map(EmployeeWorkInfo::getEmployeeId)
+                .distinct()
+                .collect(Collectors.toList());
+        Set<Long> activeEmployeeIds = employeeMapper.selectList(
+                        Wrappers.<Employee>lambdaQuery()
+                                .in(Employee::getId, employeeIds)
+                                .in(Employee::getStatus, EmployeeStatus.getActiveValues()))
+                .stream()
+                .map(Employee::getId)
+                .collect(Collectors.toSet());
+        // 按职位聚合
+        return workInfos.stream()
+                .filter(wi -> activeEmployeeIds.contains(wi.getEmployeeId()))
+                .collect(Collectors.groupingBy(EmployeeWorkInfo::getPositionId, Collectors.summingInt(e -> 1)));
+    }
 
     private Position getUndeletedPositionOrThrow(Long id) {
         Position pos = this.lambdaQuery().eq(Position::getId, id).one();

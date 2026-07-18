@@ -5,8 +5,6 @@ import com.limou.hrms.constant.UserConstant;
 import com.limou.hrms.context.UserContext;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.model.entity.User;
-import com.limou.hrms.service.UserService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
@@ -25,10 +23,7 @@ import javax.servlet.http.HttpServletResponse;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class LoginInterceptor implements HandlerInterceptor {
-
-    private final UserService userService;
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
@@ -42,12 +37,7 @@ public class LoginInterceptor implements HandlerInterceptor {
         if (currentUser == null || currentUser.getId() == null) {
             throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
         }
-        // 从数据库获取最新用户信息（保证角色等字段为最新值）
-        User latestUser = userService.getById(currentUser.getId());
-        if (latestUser == null) {
-            throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
-        }
-        UserContext.set(latestUser);
+        UserContext.set(currentUser);
         return true;
     }
 

@@ -94,6 +94,7 @@ public class EmployeeController {
      * 查询员工列表（分页 + 高级搜索 + 数据权限）
      */
     @GetMapping
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.DEPT_HEAD_ROLE})
     public BaseResponse<Page<EmployeeListVO>> getEmployeeList(EmployeeQueryRequest query) {
         log.info("{} 查询员工列表, keyword={}", UserContext.getCurrentUser(), query.getKeyword());
         Page<EmployeeListVO> page = employeeService.listEmployees(query, UserContext.getCurrentUser());
@@ -106,6 +107,7 @@ public class EmployeeController {
      * 按角色自动脱敏敏感字段、控制薪资信息可见性。
      */
     @GetMapping("/{id}")
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.DEPT_HEAD_ROLE})
     public BaseResponse<EmployeeDetailVO> getEmployeeDetail(@PathVariable Long id) {
         if (id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
