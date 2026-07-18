@@ -42,6 +42,10 @@ public class HrTransfer implements Serializable {
 
     private Long toReporterId;
 
+    private String workLocation;
+
+    private String employmentType;
+
     private String status;
 
     private Long operatorId;

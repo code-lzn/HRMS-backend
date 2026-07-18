@@ -77,7 +77,8 @@ public class EmployeeLeaveBalanceServiceImpl extends ServiceImpl<EmployeeLeaveBa
             balance.setCompTotal(BigDecimal.ZERO);
             balance.setCompUsed(BigDecimal.ZERO);
             this.save(balance);
-        } else if (balance.getAnnualTotal().compareTo(BigDecimal.ZERO) == 0 && year == Calendar.getInstance().get(Calendar.YEAR)) {
+        } else if (year == Calendar.getInstance().get(Calendar.YEAR)) {
+            // 当前年份每次都重新计算，确保规则变更后生效
             balance.setAnnualTotal(calculateAnnualLeaveDays(employeeId, year));
             this.updateById(balance);
         }
@@ -100,9 +101,7 @@ public class EmployeeLeaveBalanceServiceImpl extends ServiceImpl<EmployeeLeaveBa
         Date hireDate = employee.getHireDate();
         Calendar hireCal = Calendar.getInstance();
         hireCal.setTime(hireDate);
-        
         int hireYear = hireCal.get(Calendar.YEAR);
-        int hireMonth = hireCal.get(Calendar.MONTH) + 1;
 
         Calendar targetCal = Calendar.getInstance();
         targetCal.set(year, 11, 31);
@@ -128,15 +127,12 @@ public class EmployeeLeaveBalanceServiceImpl extends ServiceImpl<EmployeeLeaveBa
         }
 
         if (hireYear == year) {
-            int baseDaysForProrate = 5;
-            int remainingMonths = 12 - hireMonth + 1;
-            BigDecimal ratio = BigDecimal.valueOf(remainingMonths).divide(BigDecimal.valueOf(12), 4, RoundingMode.DOWN);
-            return BigDecimal.valueOf(baseDaysForProrate).multiply(ratio).setScale(0, RoundingMode.DOWN);
+            return BigDecimal.valueOf(3);
         }
 
         int baseDays;
         if (diffYears < 1) {
-            baseDays = 0;
+            baseDays = 3;
         } else if (diffYears < 10) {
             baseDays = 5;
         } else if (diffYears < 20) {

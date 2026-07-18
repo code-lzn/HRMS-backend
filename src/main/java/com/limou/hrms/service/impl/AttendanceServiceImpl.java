@@ -53,6 +53,9 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
     @Resource
     private ApprovalRecordMapper approvalRecordMapper;
 
+    @Resource
+    private com.limou.hrms.mapper.DepartmentMapper departmentMapper;
+
     /**
      * 上下班打卡
      */
@@ -141,7 +144,7 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
         boolean saved = this.saveOrUpdate(record);
         ThrowUtils.throwIf(!saved, ErrorCode.OPERATION_ERROR, "打卡失败");
 
-        return convertToVO(record);
+        return convertToVO(record, emp);
     }
 
     @Override
@@ -155,6 +158,8 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
                 .eq(Attendance::getEmployeeId, emp.getId())
                 .ge(Attendance::getAttendanceDate, DateUtil.formatDate(monthStart))
                 .le(Attendance::getAttendanceDate, DateUtil.formatDate(monthEnd))
+                .ge(emp.getHireDate() != null, Attendance::getAttendanceDate,
+                        DateUtil.formatDate(emp.getHireDate()))
                 .orderByAsc(Attendance::getAttendanceDate)
                 .list();
 
@@ -203,7 +208,7 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
                 .orderByDesc(Attendance::getAttendanceDate)
                 .list();
 
-        return records.stream().map(this::convertToVO).collect(Collectors.toList());
+        return records.stream().map(r -> convertToVO(r, emp)).collect(Collectors.toList());
     }
 
     @Override
@@ -221,9 +226,14 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
             vo.setAttendanceDate(DateUtil.parseDate(today));
             vo.setStatus(AttendanceStatusEnum.MISSING.getValue());
             vo.setStatusText("未打卡");
+            vo.setEmployeeName(emp.getEmployeeName());
+            if (emp.getDepartmentId() != null) {
+                Department dept = departmentMapper.selectById(emp.getDepartmentId());
+                vo.setDeptName(dept != null ? dept.getDeptName() : null);
+            }
             return vo;
         }
-        return convertToVO(record);
+        return convertToVO(record, emp);
     }
 
     // ========== 日终处理 ==========
@@ -235,7 +245,9 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
         boolean isWorkDay = holidayConfigService.isWorkDay(targetDate);
 
         List<Employee> employees = employeeService.lambdaQuery()
-                .eq(Employee::getIsDeleted, 0).list();
+                .eq(Employee::getIsDeleted, 0)
+                .le(Employee::getHireDate, date)
+                .list();
         if (employees.isEmpty()) return 0;
 
         // 查询当天已有的考勤记录
@@ -396,11 +408,16 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
 
     // ========== 私有方法 ==========
 
-    private AttendanceVO convertToVO(Attendance record) {
+    private AttendanceVO convertToVO(Attendance record, Employee emp) {
         AttendanceVO vo = new AttendanceVO();
         BeanUtils.copyProperties(record, vo);
         AttendanceStatusEnum status = AttendanceStatusEnum.getEnumByValue(record.getStatus());
         vo.setStatusText(status != null ? status.getText() : "未知");
+        vo.setEmployeeName(emp != null ? emp.getEmployeeName() : null);
+        if (emp != null && emp.getDepartmentId() != null) {
+            Department dept = departmentMapper.selectById(emp.getDepartmentId());
+            vo.setDeptName(dept != null ? dept.getDeptName() : null);
+        }
         return vo;
     }
 }

@@ -28,4 +28,7 @@ public interface ResignationService extends IService<HrResignation> {
 
     /** 定时任务：处理离职日期到达的员工 */
     void processDailyResignations();
+
+    /** 获取各状态统计数量 */
+    java.util.Map<String, Long> getStats();
 }

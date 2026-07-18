@@ -92,9 +92,19 @@ public class ResignationServiceImpl extends ServiceImpl<HrResignationMapper, HrR
         Employee emp = employeeMapper.selectById(entity.getEmployeeId());
         String employeeName = emp != null ? emp.getEmployeeName() : "";
 
+        Long deptId = emp != null ? emp.getDepartmentId() : null;
+        Long deptManagerId = null;
+        if (deptId != null) {
+            Department dept = departmentMapper.selectById(deptId);
+            deptManagerId = dept != null ? dept.getManagerId() : null;
+        }
+        Map<Integer, Long> overrides = new HashMap<>();
+        if (deptManagerId != null) overrides.put(1, deptManagerId); // 节点1: 部门负责人
+        // 节点2 (HR负责人) 不传覆盖，由 resolveApprover 动态查找HR角色用户
+
         ApprovalRecord record = approvalService.startApproval(
                 "RESIGNATION", entity.getId(), hrEmployeeId, employeeName,
-                emp != null ? emp.getDepartmentId() : null);
+                deptId, overrides);
         entity.setRecordId(record.getId());
         entity.setStatus("APPROVING");
         updateById(entity);
@@ -392,5 +402,15 @@ public class ResignationServiceImpl extends ServiceImpl<HrResignationMapper, HrR
             case 4: return "OTHER";
             default: return String.valueOf(type);
         }
+    }
+
+    @Override
+    public Map<String, Long> getStats() {
+        Map<String, Long> stats = new LinkedHashMap<>();
+        stats.put("draft", lambdaQuery().eq(HrResignation::getStatus, "DRAFT").count());
+        stats.put("approving", lambdaQuery().eq(HrResignation::getStatus, "APPROVING").count());
+        stats.put("pending", lambdaQuery().eq(HrResignation::getStatus, "PENDING_RESIGN").count());
+        stats.put("resigned", lambdaQuery().eq(HrResignation::getStatus, "RESIGNED").count());
+        return stats;
     }
 }

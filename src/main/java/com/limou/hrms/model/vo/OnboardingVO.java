@@ -28,6 +28,8 @@ public class OnboardingVO implements Serializable {
     private String bankAccount;
     private String bankName;
     private String candidateName;
+    private String gender;
+    private Integer probationSalaryRatio;
     private String phone;
     private String idCard;
     private String email;
@@ -37,12 +39,17 @@ public class OnboardingVO implements Serializable {
     private Long operatorId;
     private Long approverId;
     private String approverName;
+    private Long directReportId;
+    private String directReportName;
     private String remark;
     private Date createTime;
     private Date updateTime;
 
     private String approvalStatus;
     private String approvalProgress;
+
+    /** 拒绝原因（审批人驳回时填写的意见） */
+    private String rejectionReason;
 
     private static final long serialVersionUID = 1L;
 }

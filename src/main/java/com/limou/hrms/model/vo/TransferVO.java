@@ -27,6 +27,8 @@ public class TransferVO implements Serializable {
     private String toRankCode;
     private Long toReporterId;
     private String toReporterName;
+    private String workLocation;
+    private String employmentType;
     private BigDecimal salaryAdjustment;
     private String reason;
     private String status;

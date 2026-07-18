@@ -58,6 +58,12 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
     private LeaveMapper leaveMapper;
 
     @Resource
+    private UserService userService;
+
+    @Resource
+    private RoleService roleService;
+
+    @Resource
     private MakeupPunchMapper makeupPunchMapper;
 
     @Resource
@@ -173,12 +179,29 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
                 .orderByAsc(ApprovalDetail::getStepOrder)
                 .list();
 
+        // 当已存审批明细缺少审批人名称时，尝试动态重新解析（不持久化，仅展示用）
+        Employee applicant = record.getApplicantId() != null
+                ? employeeService.getById(record.getApplicantId()) : null;
+
         List<ApprovalDetailVO.NodeDetail> nodes = new ArrayList<>();
         for (ApprovalDetail detail : details) {
             ApprovalDetailVO.NodeDetail node = new ApprovalDetailVO.NodeDetail();
             node.setNodeName(detail.getNodeName());
             node.setStepOrder(detail.getStepOrder());
-            node.setApproverName(detail.getApproverName());
+            String approverName = detail.getApproverName();
+            if (approverName == null && detail.getNodeId() != null) {
+                ApprovalFlowNode nodeDef = approvalFlowNodeService.getById(detail.getNodeId());
+                if (nodeDef != null) {
+                    Long resolvedId = resolveApprover(nodeDef, applicant, record.getDepartmentId());
+                    if (resolvedId != null) {
+                        Employee resolvedEmp = employeeService.getById(resolvedId);
+                        if (resolvedEmp != null) {
+                            approverName = resolvedEmp.getEmployeeName();
+                        }
+                    }
+                }
+            }
+            node.setApproverName(approverName);
             node.setAction(detail.getAction());
             node.setActionText(getActionText(detail.getAction()));
             node.setComment(detail.getComment());
@@ -580,8 +603,6 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
     //否则是这个节点的审批人id进行负责
 
     private Long resolveApprover(ApprovalFlowNode node, Employee applicant, Long targetDepartmentId) {
-        //审批员工校验
-        if (applicant == null) return null;
         //审批类型校验
         ApproverTypeEnum approverType = ApproverTypeEnum.getEnumByValue(node.getApproverType());
         //当审批类型为空时，直接返回节点的审批人
@@ -589,6 +610,7 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
         //审批类型不是空的时候，根据审批类型进行审批人解析
         switch (approverType) {
             case DEPT_MANAGER: {
+                if (applicant == null) return null;
                 Long deptId = targetDepartmentId != null ? targetDepartmentId : applicant.getDepartmentId();
                 if (deptId != null) {
                     Department dept = departmentService.getById(deptId);
@@ -599,13 +621,39 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
                 return null;
             }
             case DIRECT_SUPERIOR: {
+                if (applicant == null) return 15L; // 默认系统管理员limou
                 EmployeeDetail detail = employeeDetailMapper.selectOne(
                         new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<EmployeeDetail>()
                                 .eq(EmployeeDetail::getEmployeeId, applicant.getId())
                 );
-                return detail != null ? detail.getDirectReportId() : null;
+                Long directReportId = detail != null ? detail.getDirectReportId() : null;
+                return directReportId != null ? directReportId : 15L; // 找不到直接汇报人时默认limou
             }
-            case HR_MANAGER:
+            case HR_MANAGER: {
+                if (node.getApproverId() != null) {
+                    return node.getApproverId();
+                }
+                // 动态查找HR角色用户
+                List<Role> roles = roleService.lambdaQuery()
+                        .like(Role::getRoleCode, "HR")
+                        .list();
+                if (roles.isEmpty()) {
+                    roles = roleService.lambdaQuery()
+                            .like(Role::getRoleName, "HR")
+                            .list();
+                }
+                for (Role role : roles) {
+                    User hrUser = userService.lambdaQuery()
+                            .eq(User::getRoleId, role.getId())
+                            .isNotNull(User::getEmployeeId)
+                            .last("LIMIT 1")
+                            .one();
+                    if (hrUser != null && hrUser.getEmployeeId() != null) {
+                        return hrUser.getEmployeeId();
+                    }
+                }
+                return null;
+            }
             case FINANCE:
             case BOSS:
             case SPECIFIED:

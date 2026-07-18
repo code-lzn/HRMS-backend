@@ -62,6 +62,12 @@ public class HrOnboarding implements Serializable {
     /** 候选人姓名 */
     private String candidateName;
 
+    /** 候选人性別: MALE/FEMALE */
+    private String gender;
+
+    /** 试用期薪资比例(%) */
+    private Integer probationSalaryRatio;
+
     /** 联系手机号 */
     private String phone;
 
@@ -85,6 +91,9 @@ public class HrOnboarding implements Serializable {
 
     /** 审批人ID（部门负责人，关联 employee.id） */
     private Long approverId;
+
+    /** 直接汇报人ID */
+    private Long directReportId;
 
     /** 单据备注 */
     private String remark;

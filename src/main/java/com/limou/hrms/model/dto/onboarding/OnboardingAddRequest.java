@@ -54,6 +54,9 @@ public class OnboardingAddRequest implements Serializable {
     /** 候选人姓名 */
     private String candidateName;
 
+    /** 直接汇报人ID */
+    private Long directReportId;
+
     /** 联系手机号 */
     private String phone;
 

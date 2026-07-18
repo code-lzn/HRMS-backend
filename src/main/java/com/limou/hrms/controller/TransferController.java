@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.*;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/transfer")
@@ -41,6 +42,11 @@ public class TransferController {
     @GetMapping("/detail")
     public BaseResponse<TransferVO> detail(@RequestParam Long id) {
         return ResultUtils.success(transferService.getTransferDetail(id));
+    }
+
+    @GetMapping("/stats")
+    public BaseResponse<Map<String, Long>> stats() {
+        return ResultUtils.success(transferService.getStats());
     }
 
     @PostMapping("/draft")

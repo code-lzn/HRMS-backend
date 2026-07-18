@@ -56,9 +56,6 @@ public class Employee implements Serializable {
     private Date hireDate;
 
 
-    /** 头像URL */
-    private String avatar;
-
     /** 录用类型 */
     private String employmentType;
 

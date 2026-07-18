@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.*;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/resignation")
@@ -41,6 +42,11 @@ public class ResignationController {
     @GetMapping("/detail")
     public BaseResponse<ResignationVO> detail(@RequestParam Long id) {
         return ResultUtils.success(resignationService.getResignationDetail(id));
+    }
+
+    @GetMapping("/stats")
+    public BaseResponse<Map<String, Long>> stats() {
+        return ResultUtils.success(resignationService.getStats());
     }
 
     @PostMapping("/draft")

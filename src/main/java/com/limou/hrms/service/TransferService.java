@@ -25,4 +25,7 @@ public interface TransferService extends IService<HrTransfer> {
     void onApprovalPassed(Long businessId);
 
     void onApprovalRejected(Long businessId);
+
+    /** 获取各状态统计数量 */
+    java.util.Map<String, Long> getStats();
 }

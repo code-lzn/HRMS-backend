@@ -119,6 +119,31 @@ public class OnboardingController {
         return ResultUtils.success(true);
     }
 
+    @PostMapping("/{id}/revoke")
+    public BaseResponse<Boolean> revoke(@PathVariable Long id, HttpServletRequest httpReq) {
+        onboardingService.revokeOnboarding(id, getLoginUserId(httpReq));
+        return ResultUtils.success(true);
+    }
+
+    @PutMapping("/{id}/hire-date")
+    public BaseResponse<Boolean> updateHireDate(@PathVariable Long id,
+                                                 @RequestParam String hireDate,
+                                                 HttpServletRequest httpReq) {
+        Date date;
+        try { date = new SimpleDateFormat("yyyy-MM-dd").parse(hireDate); }
+        catch (Exception e) { throw new BusinessException(ErrorCode.PARAMS_ERROR, "日期格式错误，应为 yyyy-MM-dd"); }
+        onboardingService.updateHireDate(id, date, getLoginUserId(httpReq));
+        return ResultUtils.success(true);
+    }
+
+    @PostMapping("/{id}/resubmit")
+    public BaseResponse<Map<String, Object>> resubmit(@PathVariable Long id, HttpServletRequest httpReq) {
+        onboardingService.resubmitOnboarding(id, getLoginUserId(httpReq));
+        Map<String, Object> data = new HashMap<>();
+        data.put("id", id);
+        return ResultUtils.success(data);
+    }
+
     @PostMapping("/employee-confirm")
     public BaseResponse<Boolean> employeeConfirm(@RequestParam Long id, HttpServletRequest httpReq) {
         Long userId = getLoginUserId(httpReq);
@@ -163,6 +188,11 @@ public class OnboardingController {
         com.limou.hrms.model.entity.Employee emp = employeeService.getByUserId(loginUser.getId());
         onboardingService.deptManagerReject(actionRequest.getDetailId(), emp != null ? emp.getId() : null, actionRequest.getComment());
         return ResultUtils.success(true);
+    }
+
+    @GetMapping("/stats")
+    public BaseResponse<Map<String, Long>> stats() {
+        return ResultUtils.success(onboardingService.getStats());
     }
 
     //拿到可以进行转交的人

@@ -86,6 +86,31 @@ public class AttendanceStatsServiceImpl implements AttendanceStatsService {
         double rate = totalDays > 0 ? (actualDays * 100.0 / totalDays) : 0;
         vo.setAttendanceRate(BigDecimal.valueOf(rate).setScale(2, RoundingMode.HALF_UP).doubleValue());
 
+        // 加班时长：当月已审批的加班时长汇总
+        double overtimeTotal = records.stream()
+                .filter(r -> r.getOvertimeHours() != null)
+                .mapToDouble(Attendance::getOvertimeHours)
+                .sum();
+        vo.setOvertimeHours(BigDecimal.valueOf(overtimeTotal).setScale(1, RoundingMode.HALF_UP).doubleValue());
+
+        // 年假余额
+        LeaveBalanceVO balance = employeeLeaveBalanceService.getCurrentYearBalance(emp.getId());
+        vo.setAnnualLeaveBalance(balance != null && balance.getAnnualRemaining() != null
+                ? balance.getAnnualRemaining().doubleValue() : 0.0);
+
+        // 请假天数汇总（从leave_record表统计已批准的请假天数）
+        List<Leave> monthLeaves = leaveService.lambdaQuery()
+                .eq(Leave::getEmployeeId, emp.getId())
+                .eq(Leave::getStatus, 1) // 已批准
+                .ge(Leave::getStartDate, DateUtil.formatDate(monthStart))
+                .le(Leave::getEndDate, DateUtil.formatDate(monthEnd))
+                .list();
+        double leaveDaysTotal = monthLeaves.stream()
+                .filter(l -> l.getTotalDays() != null)
+                .mapToDouble(l -> l.getTotalDays().doubleValue())
+                .sum();
+        vo.setTotalLeaveDays((int) Math.ceil(leaveDaysTotal));
+
         return vo;
     }
 

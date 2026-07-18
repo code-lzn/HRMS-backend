@@ -31,5 +31,9 @@ public class TransferAddRequest implements Serializable {
 
     private String remark;
 
+    private String workLocation;
+
+    private String employmentType;
+
     private static final long serialVersionUID = 1L;
 }

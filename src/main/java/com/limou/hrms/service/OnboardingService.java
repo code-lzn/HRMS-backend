@@ -86,4 +86,16 @@ public interface OnboardingService extends IService<HrOnboarding> {
 
     /** 获取可转交审批的人员列表（角色ID=1和3） */
     List<com.limou.hrms.model.vo.UserVO> getTransferableUsers();
+
+    /** HR撤回审批（仅第一级） */
+    void revokeOnboarding(Long id, Long hrEmployeeId);
+
+    /** 修改入职日期（已批准待入职状态） */
+    void updateHireDate(Long id, Date newHireDate, Long hrEmployeeId);
+
+    /** 重新发起入职申请（已拒绝状态） */
+    void resubmitOnboarding(Long id, Long hrEmployeeId);
+
+    /** 获取各状态统计数量 */
+    java.util.Map<String, Long> getStats();
 }

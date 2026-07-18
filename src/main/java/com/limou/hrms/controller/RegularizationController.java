@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/regularization")
@@ -43,6 +44,11 @@ public class RegularizationController {
     @GetMapping("/detail")
     public BaseResponse<RegularizationVO> detail(@RequestParam Long id) {
         return ResultUtils.success(regularizationService.getRegularizationDetail(id));
+    }
+
+    @GetMapping("/stats")
+    public BaseResponse<Map<String, Long>> stats() {
+        return ResultUtils.success(regularizationService.getStats());
     }
 
     @PostMapping("/draft")

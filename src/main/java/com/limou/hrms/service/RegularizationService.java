@@ -28,4 +28,7 @@ public interface RegularizationService extends IService<HrRegularization> {
     void onApprovalRejected(Long businessId);
 
     List<Employee> getProbationEndingEmployees();
+
+    /** 获取各状态统计数量 */
+    java.util.Map<String, Long> getStats();
 }

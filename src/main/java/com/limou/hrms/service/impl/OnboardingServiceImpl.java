@@ -1,6 +1,7 @@
 package com.limou.hrms.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.limou.hrms.common.ErrorCode;
@@ -79,11 +80,38 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
     public void submitForApproval(Long onboardingId, Long hrEmployeeId) {
         HrOnboarding entity = getById(onboardingId);
         ThrowUtils.throwIf(entity == null, ErrorCode.NOT_FOUND_ERROR, "入职申请不存在");
-        ThrowUtils.throwIf(entity.getRecordId() != null, ErrorCode.OPERATION_ERROR, "该申请已提交审批");
 
+        // 清理可能孤立的审批记录（例如撤回后 recordId 已清空但旧记录残留）
+        if (entity.getRecordId() != null) {
+            ApprovalRecord existingRecord = approvalRecordMapper.selectById(entity.getRecordId());
+            if (existingRecord == null) {
+                // recordId 指向不存在的记录，清空它
+                update(new LambdaUpdateWrapper<HrOnboarding>()
+                        .set(HrOnboarding::getRecordId, null)
+                        .eq(HrOnboarding::getId, onboardingId));
+            } else {
+                ThrowUtils.throwIf(true, ErrorCode.OPERATION_ERROR, "该申请已提交审批");
+            }
+        }
+
+        // 兜底：通过 uk_business 查找并删除任何残留的审批记录
+        ApprovalRecord orphan = approvalRecordMapper.selectOne(
+                new LambdaQueryWrapper<ApprovalRecord>()
+                        .eq(ApprovalRecord::getBusinessType, "ONBOARDING")
+                        .eq(ApprovalRecord::getBusinessId, onboardingId));
+        if (orphan != null) {
+            approvalDetailMapper.delete(new LambdaQueryWrapper<ApprovalDetail>()
+                    .eq(ApprovalDetail::getRecordId, orphan.getId()));
+            approvalRecordMapper.deleteById(orphan.getId());
+        }
+
+        Map<Integer, Long> overrides = new HashMap<>();
+        if (entity.getApproverId() != null) {
+            overrides.put(1, entity.getApproverId());
+        }
         ApprovalRecord record = approvalService.startApproval(
                 "ONBOARDING", entity.getId(), hrEmployeeId, entity.getCandidateName(),
-                entity.getDeptId());  // 按候选人入职部门解析部门负责人
+                entity.getDeptId(), overrides);
         entity.setRecordId(record.getId());
         updateById(entity);
     }
@@ -101,10 +129,21 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void deleteOnboarding(Long id, Long hrEmployeeId) {
         HrOnboarding entity = getById(id);
         ThrowUtils.throwIf(entity == null, ErrorCode.NOT_FOUND_ERROR);
-        ThrowUtils.throwIf(entity.getRecordId() != null, ErrorCode.OPERATION_ERROR, "已提交审批的申请不可删除");
+
+        if (entity.getRecordId() != null) {
+            ApprovalRecord record = approvalRecordMapper.selectById(entity.getRecordId());
+            if (record != null) {
+                ThrowUtils.throwIf(!"APPROVING".equals(record.getStatus()),
+                        ErrorCode.OPERATION_ERROR, "仅审批中的申请可删除");
+                approvalDetailMapper.delete(new LambdaQueryWrapper<ApprovalDetail>()
+                        .eq(ApprovalDetail::getRecordId, record.getId()));
+                approvalRecordMapper.deleteById(record.getId());
+            }
+        }
         removeById(id);
     }
 
@@ -131,12 +170,11 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
         Employee emp = new Employee();
         emp.setEmployeeName(entity.getCandidateName());
         emp.setEmployeeNo(employeeNo);
-        emp.setGender(0);
+        emp.setGender("MALE".equals(entity.getGender()) ? 1 : 0);
         emp.setPhone(entity.getPhone());
         emp.setEmail(entity.getEmail());
         emp.setDepartmentId(entity.getDeptId());
         emp.setPositionId(entity.getPositionId());
-        emp.setAvatar("https://gd-hbimg.huaban.com/08aaeb96f1f7360a2016ab5da1d6dd2d8f9933b62f9137-uqfbvd_fw658webp");
         emp.setEmploymentType(entity.getEmploymentType());
         emp.setStatus(EmployeeStatus.PROBATION.getCode());
         emp.setHireDate(hireDate);
@@ -150,6 +188,8 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
         detail.setBaseSalary(entity.getBaseSalary());
         detail.setBankAccount(entity.getBankAccount());
         detail.setBankName(entity.getBankName());
+        detail.setDirectReportId(entity.getDirectReportId());
+        detail.setContractType(entity.getContractType());
         employeeDetailMapper.insert(detail);
 
         Long roleId = determineRoleId(entity.getPositionId());
@@ -160,6 +200,7 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
         user.setUserName(entity.getCandidateName());
         user.setRoleId(roleId);
         user.setEmployeeId(emp.getId());
+        user.setUserAvatar("https://gd-hbimg.huaban.com/08aaeb96f1f7360a2016ab5da1d6dd2d8f9933b62f9137-uqfbvd_fw658webp");
         userMapper.insert(user);
 
         emp.setUserId(user.getId());
@@ -167,6 +208,14 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
 
         entity.setEmployeeId(emp.getId());
         updateById(entity);
+
+        // 更新审批记录状态为已入职
+        ApprovalRecord record = approvalRecordMapper.selectById(entity.getRecordId());
+        if (record != null) {
+            record.setStatus("ONBOARDED");
+            record.setFinishedAt(new Date());
+            approvalRecordMapper.updateById(record);
+        }
 
         insertMutationLog(entity, emp.getId(), "APPROVED", hireDate);
 
@@ -226,6 +275,75 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void revokeOnboarding(Long id, Long hrEmployeeId) {
+        HrOnboarding entity = getById(id);
+        ThrowUtils.throwIf(entity == null, ErrorCode.NOT_FOUND_ERROR);
+        ThrowUtils.throwIf(entity.getRecordId() == null, ErrorCode.OPERATION_ERROR, "该申请未提交审批");
+
+        ApprovalRecord record = approvalService.getById(entity.getRecordId());
+        ThrowUtils.throwIf(record == null || !"APPROVING".equals(record.getStatus()),
+                ErrorCode.OPERATION_ERROR, "只有审批中的申请可撤回");
+        ThrowUtils.throwIf(record.getCurrentStep() == null || record.getCurrentStep() > 1,
+                ErrorCode.OPERATION_ERROR, "仅第一级审批前可撤回");
+
+        // 删除审批明细
+        approvalDetailMapper.delete(new LambdaQueryWrapper<ApprovalDetail>()
+                .eq(ApprovalDetail::getRecordId, record.getId()));
+        // 删除审批记录（否则唯一键 uk_business 冲突，无法重新提交）
+        approvalRecordMapper.deleteById(record.getId());
+
+        update(new LambdaUpdateWrapper<HrOnboarding>()
+                .set(HrOnboarding::getRecordId, null)
+                .set(HrOnboarding::getFlowId, null)
+                .eq(HrOnboarding::getId, id));
+        log.info("入职申请已撤回: id={}, name={}", entity.getId(), entity.getCandidateName());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateHireDate(Long id, Date newHireDate, Long hrEmployeeId) {
+        ThrowUtils.throwIf(newHireDate == null, ErrorCode.PARAMS_ERROR, "入职日期不能为空");
+        HrOnboarding entity = getById(id);
+        ThrowUtils.throwIf(entity == null, ErrorCode.NOT_FOUND_ERROR);
+        ThrowUtils.throwIf(entity.getRecordId() == null, ErrorCode.OPERATION_ERROR, "该申请未提交审批");
+
+        ApprovalRecord record = approvalService.getById(entity.getRecordId());
+        ThrowUtils.throwIf(record == null || !"APPROVED".equals(record.getStatus()),
+                ErrorCode.OPERATION_ERROR, "只有审批通过的申请可修改入职日期");
+
+        entity.setHireDate(newHireDate);
+        updateById(entity);
+        log.info("入职日期已修改: id={}, name={}, hireDate={}", entity.getId(), entity.getCandidateName(), newHireDate);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void resubmitOnboarding(Long id, Long hrEmployeeId) {
+        HrOnboarding entity = getById(id);
+        ThrowUtils.throwIf(entity == null, ErrorCode.NOT_FOUND_ERROR);
+        ThrowUtils.throwIf(entity.getRecordId() == null, ErrorCode.OPERATION_ERROR, "该申请未提交审批");
+
+        ApprovalRecord record = approvalService.getById(entity.getRecordId());
+        ThrowUtils.throwIf(record == null || !"REJECTED".equals(record.getStatus()),
+                ErrorCode.OPERATION_ERROR, "只有已拒绝的申请可重新发起");
+
+        // 删除旧审批明细和记录（否则唯一键 uk_business 冲突）
+        approvalDetailMapper.delete(new LambdaQueryWrapper<ApprovalDetail>()
+                .eq(ApprovalDetail::getRecordId, record.getId()));
+        approvalRecordMapper.deleteById(record.getId());
+
+        update(new LambdaUpdateWrapper<HrOnboarding>()
+                .set(HrOnboarding::getRecordId, null)
+                .set(HrOnboarding::getFlowId, null)
+                .set(HrOnboarding::getEmployeeId, null)
+                .eq(HrOnboarding::getId, id));
+
+        submitForApproval(entity.getId(), hrEmployeeId);
+        log.info("入职申请重新发起: id={}, name={}", entity.getId(), entity.getCandidateName());
+    }
+
+    @Override
     public Page<OnboardingVO> listOnboarding(String keyword, List<String> statuses, int page, int size) {
         LambdaQueryWrapper<HrOnboarding> wrapper = new LambdaQueryWrapper<HrOnboarding>()
                 .like(StringUtils.hasText(keyword), HrOnboarding::getCandidateName, keyword)
@@ -248,8 +366,23 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
         }
 
         Page<HrOnboarding> entityPage = page(new Page<>(page, size), wrapper);
-        Set<Long> deptIds = entityPage.getRecords().stream().map(HrOnboarding::getDeptId).filter(Objects::nonNull).collect(Collectors.toSet());
-        Set<Long> posIds = entityPage.getRecords().stream().map(HrOnboarding::getPositionId).filter(Objects::nonNull).collect(Collectors.toSet());
+
+        // 批量获取拒绝原因（收集所有 recordId）
+        List<Long> allRecordIds = entityPage.getRecords().stream()
+                .map(HrOnboarding::getRecordId).filter(Objects::nonNull).distinct().collect(Collectors.toList());
+        Map<Long, String> rejectionMap = new HashMap<>();
+        if (!allRecordIds.isEmpty()) {
+            List<ApprovalDetail> rejectedDetails = approvalDetailMapper.selectList(
+                    new LambdaQueryWrapper<ApprovalDetail>()
+                            .in(ApprovalDetail::getRecordId, allRecordIds)
+                            .eq(ApprovalDetail::getAction, "REJECT")
+            );
+            for (ApprovalDetail d : rejectedDetails) {
+                if (d.getComment() != null) {
+                    rejectionMap.put(d.getRecordId(), d.getComment());
+                }
+            }
+        }
 
         Page<OnboardingVO> voPage = new Page<>(entityPage.getCurrent(), entityPage.getSize(), entityPage.getTotal());
         voPage.setRecords(entityPage.getRecords().stream().map(e -> {
@@ -258,11 +391,16 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
             vo.setDeptName(getDeptName(e.getDeptId()));
             vo.setPositionName(getPosName(e.getPositionId()));
             vo.setApproverName(getEmployeeName(e.getApproverId()));
+            vo.setDirectReportId(e.getDirectReportId());
+            vo.setDirectReportName(getEmployeeName(e.getDirectReportId()));
             if (e.getRecordId() != null) {
                 ApprovalRecord record = approvalService.getById(e.getRecordId());
                 if (record != null) {
                     vo.setApprovalStatus(record.getStatus());
                     vo.setApprovalProgress(record.getCurrentStep() + "/" + record.getTotalSteps());
+                    if ("REJECTED".equals(record.getStatus())) {
+                        vo.setRejectionReason(rejectionMap.get(e.getRecordId()));
+                    }
                 }
             }
             return vo;
@@ -279,11 +417,25 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
         vo.setDeptName(getDeptName(e.getDeptId()));
         vo.setPositionName(getPosName(e.getPositionId()));
         vo.setApproverName(getEmployeeName(e.getApproverId()));
+        vo.setDirectReportId(e.getDirectReportId());
+        vo.setDirectReportName(getEmployeeName(e.getDirectReportId()));
         if (e.getRecordId() != null) {
             ApprovalRecord record = approvalService.getById(e.getRecordId());
             if (record != null) {
                 vo.setApprovalStatus(record.getStatus());
                 vo.setApprovalProgress(record.getCurrentStep() + "/" + record.getTotalSteps());
+                if ("REJECTED".equals(record.getStatus())) {
+                    ApprovalDetail rejectedDetail = approvalDetailMapper.selectOne(
+                            new LambdaQueryWrapper<ApprovalDetail>()
+                                    .eq(ApprovalDetail::getRecordId, e.getRecordId())
+                                    .eq(ApprovalDetail::getAction, "REJECT")
+                                    .orderByDesc(ApprovalDetail::getOperateTime)
+                                    .last("LIMIT 1")
+                    );
+                    if (rejectedDetail != null) {
+                        vo.setRejectionReason(rejectedDetail.getComment());
+                    }
+                }
             }
         }
         return vo;
@@ -364,6 +516,7 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
         ThrowUtils.throwIf(req.getPositionId() == null, ErrorCode.PARAMS_ERROR, "职位不能为空");
         ThrowUtils.throwIf(req.getHireDate() == null, ErrorCode.PARAMS_ERROR, "预定入职日期不能为空");
         ThrowUtils.throwIf(!StringUtils.hasText(req.getEmploymentType()), ErrorCode.PARAMS_ERROR, "录用类型不能为空");
+        ThrowUtils.throwIf(req.getDirectReportId() == null, ErrorCode.PARAMS_ERROR, "直接汇报人不能为空");
     }
 
     private String generateBusinessNo() {
@@ -603,5 +756,33 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
             BeanUtils.copyProperties(user, vo);
             return vo;
         }).collect(Collectors.toList());
+    }
+
+    @Override
+    public Map<String, Long> getStats() {
+        Map<String, Long> stats = new LinkedHashMap<>();
+
+        // 审批中/已批准/已入职/已拒绝：从 approval_record 按状态统计
+        List<ApprovalRecord> records = approvalRecordMapper.selectList(
+                new LambdaQueryWrapper<ApprovalRecord>()
+                        .eq(ApprovalRecord::getBusinessType, "ONBOARDING"));
+        Map<String, Long> statusCounts = records.stream()
+                .collect(Collectors.groupingBy(ApprovalRecord::getStatus, Collectors.counting()));
+
+        Set<Long> validRecordIds = records.stream()
+                .map(ApprovalRecord::getId).collect(Collectors.toSet());
+
+        // 草稿：recordId 为空，或指向已不存在的审批记录（孤儿 recordId）
+        long draft = lambdaQuery()
+                .and(w -> w.isNull(HrOnboarding::getRecordId)
+                        .or().notIn(!validRecordIds.isEmpty(), HrOnboarding::getRecordId, validRecordIds))
+                .count();
+        stats.put("draft", draft);
+
+        stats.put("approving", statusCounts.getOrDefault("APPROVING", 0L));
+        stats.put("approved", statusCounts.getOrDefault("APPROVED", 0L));
+        stats.put("onboarded", statusCounts.getOrDefault("ONBOARDED", 0L));
+
+        return stats;
     }
 }

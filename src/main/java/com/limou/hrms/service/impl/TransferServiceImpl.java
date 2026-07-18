@@ -69,7 +69,7 @@ public class TransferServiceImpl extends ServiceImpl<HrTransferMapper, HrTransfe
         HrTransfer entity = new HrTransfer();
         entity.setEmployeeId(request.getEmployeeId());
         entity.setTargetDeptId(request.getToDeptId());
-        entity.setTargetPositionId(request.getToPositionId() != null ? request.getToPositionId() : 0);
+        entity.setTargetPositionId(request.getToPositionId());
         entity.setToRankCode(request.getToRankCode());
         entity.setToReporterId(request.getToReporterId());
         entity.setNewBaseSalary(request.getSalaryAdjustment());
@@ -77,6 +77,8 @@ public class TransferServiceImpl extends ServiceImpl<HrTransferMapper, HrTransfe
         entity.setTransferDate(request.getEffectiveDate() != null ? request.getEffectiveDate() : new Date());
         entity.setFlowId(resolveFlowId(request.getFlowId()));
         entity.setRemark(request.getRemark());
+        entity.setWorkLocation(request.getWorkLocation());
+        entity.setEmploymentType(request.getEmploymentType());
         entity.setOperatorId(hrEmployeeId);
         entity.setBusinessNo(generateBusinessNo());
         entity.setSourceDeptId(emp.getDepartmentId() != null ? emp.getDepartmentId() : 0);
@@ -107,6 +109,7 @@ public class TransferServiceImpl extends ServiceImpl<HrTransferMapper, HrTransfe
         Map<Integer, Long> overrides = new HashMap<>();
         if (fromDeptManagerId != null) overrides.put(1, fromDeptManagerId);
         if (toDeptManagerId != null) overrides.put(2, toDeptManagerId);
+        // 节点3 (HR负责人) 不传覆盖，由 resolveApprover 动态查找HR角色用户
 
         ApprovalRecord record = approvalService.startApproval(
                 "TRANSFER", entity.getId(), hrEmployeeId, employeeName,
@@ -134,6 +137,8 @@ public class TransferServiceImpl extends ServiceImpl<HrTransferMapper, HrTransfe
         entity.setTransferDate(request.getEffectiveDate());
         entity.setFlowId(request.getFlowId());
         entity.setRemark(request.getRemark());
+        entity.setWorkLocation(request.getWorkLocation());
+        entity.setEmploymentType(request.getEmploymentType());
 
         Employee emp = employeeMapper.selectById(request.getEmployeeId());
         if (emp != null) {
@@ -319,6 +324,8 @@ public class TransferServiceImpl extends ServiceImpl<HrTransferMapper, HrTransfe
     private void validateRequest(TransferAddRequest req) {
         ThrowUtils.throwIf(req.getEmployeeId() == null, ErrorCode.PARAMS_ERROR, "员工不能为空");
         ThrowUtils.throwIf(req.getToDeptId() == null, ErrorCode.PARAMS_ERROR, "新部门不能为空");
+        ThrowUtils.throwIf(req.getToPositionId() == null, ErrorCode.PARAMS_ERROR, "新职位不能为空");
+        ThrowUtils.throwIf(!StringUtils.hasText(req.getEmploymentType()), ErrorCode.PARAMS_ERROR, "入职类型不能为空");
         ThrowUtils.throwIf(!StringUtils.hasText(req.getReason()), ErrorCode.PARAMS_ERROR, "调岗原因不能为空");
     }
 
@@ -418,5 +425,15 @@ public class TransferServiceImpl extends ServiceImpl<HrTransferMapper, HrTransfe
             log.warn("JSON序列化失败", e);
             return "{}";
         }
+    }
+
+    @Override
+    public Map<String, Long> getStats() {
+        Map<String, Long> stats = new LinkedHashMap<>();
+        stats.put("draft", lambdaQuery().eq(HrTransfer::getStatus, "DRAFT").count());
+        stats.put("approving", lambdaQuery().eq(HrTransfer::getStatus, "APPROVING").count());
+        stats.put("approved", lambdaQuery().eq(HrTransfer::getStatus, "APPROVED").count());
+        stats.put("effective", lambdaQuery().eq(HrTransfer::getStatus, "EFFECTIVE").count());
+        return stats;
     }
 }

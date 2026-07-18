@@ -13,6 +13,12 @@ public class AttendanceVO implements Serializable {
     /** 记录ID */
     private Long id;
 
+    /** 员工姓名 */
+    private String employeeName;
+
+    /** 部门名称 */
+    private String deptName;
+
     /** 考勤日期 */
     private Date attendanceDate;
 

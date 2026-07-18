@@ -187,7 +187,17 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
             for (ApprovalDetail detail : details) {
                 LeaveProgressVO.ProgressNode node = new LeaveProgressVO.ProgressNode();
                 node.setNodeName(detail.getNodeName());
-                node.setOperatorName(detail.getApproverName());
+
+                // 优先用detail存的名字，没有则按approverId查，再没有则用limou兜底
+                String operatorName = detail.getApproverName();
+                if (operatorName == null && detail.getApproverId() != null) {
+                    Employee approver = employeeService.getById(detail.getApproverId());
+                    operatorName = approver != null ? approver.getEmployeeName() : null;
+                }
+                if (operatorName == null) {
+                    operatorName = "limou";
+                }
+                node.setOperatorName(operatorName);
                 node.setOperateTime(detail.getOperateTime());
                 node.setComment(detail.getComment());
 

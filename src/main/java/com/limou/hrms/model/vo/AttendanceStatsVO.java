@@ -30,5 +30,14 @@ public class AttendanceStatsVO implements Serializable {
 
     private Double attendanceRate;
 
+    /** 加班时长(小时) */
+    private Double overtimeHours;
+
+    /** 年假余额(天) */
+    private Double annualLeaveBalance;
+
+    /** 请假天数汇总 */
+    private Integer totalLeaveDays;
+
     private static final long serialVersionUID = 1L;
 }

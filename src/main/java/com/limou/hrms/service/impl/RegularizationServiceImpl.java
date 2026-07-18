@@ -111,9 +111,19 @@ public class RegularizationServiceImpl extends ServiceImpl<HrRegularizationMappe
         Employee emp = employeeMapper.selectById(entity.getEmployeeId());
         String employeeName = emp != null ? emp.getEmployeeName() : "";
 
+        Long deptId = emp != null ? emp.getDepartmentId() : null;
+        Long deptManagerId = null;
+        if (deptId != null) {
+            Department dept = departmentMapper.selectById(deptId);
+            deptManagerId = dept != null ? dept.getManagerId() : null;
+        }
+        Map<Integer, Long> overrides = new HashMap<>();
+        if (deptManagerId != null) overrides.put(1, deptManagerId); // 节点1: 部门负责人
+        // 节点2 (HR负责人) 不传覆盖，由 resolveApprover 动态查找HR角色用户
+
         ApprovalRecord record = approvalService.startApproval(
                 "REGULARIZATION", entity.getId(), hrEmployeeId, employeeName,
-                emp != null ? emp.getDepartmentId() : null);
+                deptId, overrides);
         entity.setRecordId(record.getId());
         entity.setFlowId(record.getFlowId());
         entity.setStatus("APPROVING");
@@ -438,5 +448,15 @@ public class RegularizationServiceImpl extends ServiceImpl<HrRegularizationMappe
             log.warn("JSON序列化失败", e);
             return "{}";
         }
+    }
+
+    @Override
+    public Map<String, Long> getStats() {
+        Map<String, Long> stats = new LinkedHashMap<>();
+        stats.put("draft", lambdaQuery().eq(HrRegularization::getStatus, "DRAFT").count());
+        stats.put("assessing", lambdaQuery().eq(HrRegularization::getStatus, "PENDING_ASSESSMENT").count());
+        stats.put("approving", lambdaQuery().eq(HrRegularization::getStatus, "APPROVING").count());
+        stats.put("approved", lambdaQuery().eq(HrRegularization::getStatus, "APPROVED").count());
+        return stats;
     }
 }
