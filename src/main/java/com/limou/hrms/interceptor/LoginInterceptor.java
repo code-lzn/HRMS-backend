@@ -60,12 +60,7 @@ public class LoginInterceptor implements HandlerInterceptor {
             throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR, "密码已修改，请重新登录");
         }
 
-        // 从数据库获取最新用户信息（保证角色等字段为最新值）
-        User latestUser = userService.getById(currentUser.getId());
-        if (latestUser == null) {
-            throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
-        }
-        UserContext.set(latestUser);
+        UserContext.set(currentUser);
         return true;
     }
 

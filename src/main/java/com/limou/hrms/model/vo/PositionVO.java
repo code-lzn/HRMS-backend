@@ -40,6 +40,11 @@ public class PositionVO implements Serializable {
 
     private Integer defaultProbationMonths;
 
+    /**
+     * 该职位在职员工数
+     */
+    private Integer employeeCount;
+
     private String description;
 
     private LocalDateTime createTime;

@@ -51,14 +51,14 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
 
     private final DataScopeContext dataScopeContext;
 
-    private static final int MAX_DEPTH = 5;
+    private static final int MAX_DEPTH = 4;
 
     // ==================== 创建部门 ====================
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Department createDepartment(DepartmentCreateRequest dto, User loginUser) {
-        checkNameUnique(dto.getName(), null);
+        checkNameUnique(dto.getName(), dto.getParentId(), null);
         checkCodeUnique(dto.getCode(), null);
         checkSortOrderUnique(dto.getParentId(), dto.getSortOrder(), null);
         Department parent = validateParentAndDepth(dto.getParentId());
@@ -82,21 +82,18 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
     public Department updateDepartment(Long id, DepartmentUpdateRequest dto, User loginUser) {
         Department existDept = getUndeletedDeptOrThrow(id);
 
-        if (StringUtils.hasText(dto.getName())) {
-            checkNameUnique(dto.getName(), id);
-        }
-        if (StringUtils.hasText(dto.getCode())) {
-            checkCodeUnique(dto.getCode(), id);
-        }
+        // 父部门变更（用于后续同名/同序号校验）
+        Long effectiveParentId = existDept.getParentId();
         if (dto.getParentId() != null && !dto.getParentId().equals(existDept.getParentId())) {
             checkNotCircularRef(id, dto.getParentId());
             Department newParent = getUndeletedDeptOrThrow(dto.getParentId());
+            effectiveParentId = dto.getParentId();
 
             // 最深子节点移动后不能超过最大层级
             int newRootLevel = newParent.getLevel() + 1;
             int levelDiff = newRootLevel - existDept.getLevel();
             int maxDescLevel = getMaxDescendantLevel(id);
-            if (maxDescLevel + levelDiff >= MAX_DEPTH) {
+            if (maxDescLevel + levelDiff > MAX_DEPTH) {
                 throw new BusinessException(ErrorCode.DEPARTMENT_MAX_DEPTH_EXCEEDED);
             }
 
@@ -106,8 +103,14 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
             }
             existDept.setLevel(newRootLevel);
         }
+        if (StringUtils.hasText(dto.getName())) {
+            checkNameUnique(dto.getName(), effectiveParentId, id);
+        }
+        if (StringUtils.hasText(dto.getCode())) {
+            checkCodeUnique(dto.getCode(), id);
+        }
         if (dto.getSortOrder() != null) {
-            Long effectiveParentId = dto.getParentId() != null ? dto.getParentId() : existDept.getParentId();
+            effectiveParentId = dto.getParentId() != null ? dto.getParentId() : existDept.getParentId();
             checkSortOrderUnique(effectiveParentId, dto.getSortOrder(), id);
         }
         if (dto.getManagerId() != null) {
@@ -342,8 +345,10 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
         return dept;
     }
 
-    private void checkNameUnique(String name, Long excludeId) {
-        LambdaQueryWrapper<Department> query = Wrappers.<Department>lambdaQuery().eq(Department::getName, name);
+    private void checkNameUnique(String name, Long parentId, Long excludeId) {
+        LambdaQueryWrapper<Department> query = Wrappers.<Department>lambdaQuery()
+                .eq(Department::getName, name)
+                .eq(Department::getParentId, parentId);
         if (excludeId != null) {
             query.ne(Department::getId, excludeId);
         }

@@ -15,6 +15,7 @@ import com.limou.hrms.mapper.UserMapper;
 import com.limou.hrms.model.dto.user.UserQueryRequest;
 import com.limou.hrms.model.entity.LoginLog;
 import com.limou.hrms.model.entity.User;
+import com.limou.hrms.context.UserContext;
 import com.limou.hrms.model.enums.UserRoleEnum;
 import com.limou.hrms.model.vo.LoginUserVO;
 import com.limou.hrms.model.vo.UserVO;
@@ -181,13 +182,17 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
      */
     @Override
     public User getLoginUser(HttpServletRequest request) {
-        // 先判断是否已登录
+        // 优先从 UserContext 获取（LoginInterceptor 已查过数据库）
+        User contextUser = UserContext.getCurrentUser();
+        if (contextUser != null) {
+            return contextUser;
+        }
+        // 兜底：从 session + DB 查询
         Object userObj = request.getSession().getAttribute(USER_LOGIN_STATE);
         User currentUser = (User) userObj;
         if (currentUser == null || currentUser.getId() == null) {
             throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
         }
-        // 从数据库查询（追求性能的话可以注释，直接走缓存）
         long userId = currentUser.getId();
         currentUser = this.getById(userId);
         if (currentUser == null) {
@@ -204,13 +209,17 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
      */
     @Override
     public User getLoginUserPermitNull(HttpServletRequest request) {
-        // 先判断是否已登录
+        // 优先从 UserContext 获取（LoginInterceptor 已查过数据库）
+        User contextUser = UserContext.getCurrentUser();
+        if (contextUser != null) {
+            return contextUser;
+        }
+        // 兜底：从 session + DB 查询
         Object userObj = request.getSession().getAttribute(USER_LOGIN_STATE);
         User currentUser = (User) userObj;
         if (currentUser == null || currentUser.getId() == null) {
             return null;
         }
-        // 从数据库查询（追求性能的话可以注释，直接走缓存）
         long userId = currentUser.getId();
         return this.getById(userId);
     }
