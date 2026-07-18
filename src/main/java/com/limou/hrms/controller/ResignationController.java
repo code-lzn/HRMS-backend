@@ -80,4 +80,12 @@ public class ResignationController {
         resignationService.cancel(id);
         return ResultUtils.success(null);
     }
+
+    @PostMapping("/{id}/confirm")
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
+    public BaseResponse<?> confirmResignation(@PathVariable Long id) {
+        ThrowUtils.throwIf(id == null || id <= 0, ErrorCode.PARAMS_ERROR);
+        resignationService.confirmResignation(id);
+        return ResultUtils.success(null);
+    }
 }

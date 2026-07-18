@@ -15,6 +15,7 @@ import com.limou.hrms.model.vo.OnboardingListVO;
 import com.limou.hrms.service.OnboardingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 
 import javax.validation.Valid;
@@ -86,7 +87,7 @@ public class OnboardingController {
 
     @PostMapping("/{id}/confirm-join")
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
-    public BaseResponse<?> confirmJoin(@PathVariable Long id, @RequestParam LocalDate actualHireDate) {
+    public BaseResponse<?> confirmJoin(@PathVariable Long id, @RequestParam @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate actualHireDate) {
         ThrowUtils.throwIf(id == null || id <= 0, ErrorCode.PARAMS_ERROR);
         onboardingService.confirmJoin(id, actualHireDate);
         return ResultUtils.success(null);

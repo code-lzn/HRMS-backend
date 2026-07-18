@@ -9,4 +9,5 @@ import lombok.EqualsAndHashCode;
 public class ResignationQuery extends PageRequest {
     private Integer status;
     private Long employeeId;
+    private String keyword;
 }

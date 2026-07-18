@@ -284,15 +284,25 @@ public class OnboardingServiceImpl
         // 1. 生成工号
         String employeeNo = generateEmployeeNo(app.getDepartmentId());
 
-        // 2. 写入 employee 表
+        // 2. 先创建系统账号（账号=手机号，随机密码），因为 employee 表需要 user_id
+        String initialPassword = generateRandomPassword();
+        User user = new User();
+        user.setUserAccount(app.getPhone());
+        user.setUserPassword(DigestUtils.md5DigestAsHex(("user" + initialPassword).getBytes()));
+        user.setUserName(app.getName());
+        user.setUserRole(UserRoleEnum.USER.getValue());
+        userMapper.insert(user);
+
+        // 3. 写入 employee 表（含 user_id）
         Employee employee = new Employee();
+        employee.setUserId(user.getId());
         employee.setEmployeeNo(employeeNo);
         employee.setStatus(EmployeeStatus.PROBATION.getValue());
         employee.setHireDate(app.getExpectedHireDate());
         employee.setHireType(app.getHireType());
         employeeMapper.insert(employee);
 
-        // 3. 写入 personal_info（身份证号 AES 加密）
+        // 4. 写入 personal_info（身份证号 AES 加密）
         EmployeePersonalInfo personalInfo = new EmployeePersonalInfo();
         personalInfo.setEmployeeId(employee.getId());
         personalInfo.setName(app.getName());
@@ -302,7 +312,7 @@ public class OnboardingServiceImpl
         personalInfo.setIdCard(app.getIdCard());
         personalInfoMapper.insert(personalInfo);
 
-        // 4. 写入 work_info
+        // 5. 写入 work_info
         EmployeeWorkInfo workInfo = new EmployeeWorkInfo();
         workInfo.setEmployeeId(employee.getId());
         workInfo.setDepartmentId(app.getDepartmentId());
@@ -310,25 +320,12 @@ public class OnboardingServiceImpl
         workInfo.setDirectReportId(app.getDirectReportId());
         workInfoMapper.insert(workInfo);
 
-        // 5. 创建系统账号（账号=手机号，随机密码）
-        String initialPassword = generateRandomPassword();
-        User user = new User();
-        user.setUserAccount(app.getPhone());
-        user.setUserPassword(DigestUtils.md5DigestAsHex(("user" + initialPassword).getBytes()));
-        user.setUserName(app.getName());
-        user.setUserRole(UserRoleEnum.USER.getValue());
-        userMapper.insert(user);
-
-        // 关联用户ID到员工
-        employee.setUserId(user.getId());
-        employeeMapper.updateById(employee);
-
         // 6. 更新入职申请
         app.setEmployeeId(employee.getId());
         app.setStatus(OnboardingStatus.APPROVED.getCode());
         onboardingMapper.updateById(app);
 
-        log.info("入职审批通过后处理完成: 申请表id={}, employeeId={}, employeeNo={}", bizId, employee.getId(), employeeNo);
+        log.info("入职审批通过后处理完成: 申请表id={}, employeeId={}, employeeNo={}, 初始密码={}", bizId, employee.getId(), employeeNo, initialPassword);
     }
 
     @Override
@@ -496,6 +493,9 @@ public class OnboardingServiceImpl
             OnboardingStatus statusEnum = OnboardingStatus.fromCode(app.getStatus());
             vo.setStatusDesc(statusEnum != null ? statusEnum.getDesc() : "");
             vo.setApplicantName(approverResolver.getEmployeeName(app.getApplicantId()));
+            vo.setHireType(app.getHireType());
+            String[] hireTypes = {"", "全职", "兼职", "实习"};
+            vo.setHireTypeDesc(app.getHireType() != null && app.getHireType() > 0 && app.getHireType() < hireTypes.length ? hireTypes[app.getHireType()] : "");
             vo.setCreateTime(app.getCreateTime());
             return vo;
         }).collect(Collectors.toList());

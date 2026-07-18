@@ -1,10 +1,11 @@
 package com.limou.hrms.config;
 
-import org.springframework.boot.autoconfigure.cache.RedisCacheManagerBuilderCustomizer;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
+import org.springframework.data.redis.cache.RedisCacheManager;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
 
 import java.time.Duration;
 
@@ -17,7 +18,7 @@ public class RedisCacheConfig {
 
     /** 待办红点数量缓存 TTL：30 秒 */
     private static final Duration PENDING_COUNT_TTL = Duration.ofSeconds(30);
-    /** 委托路由缓存 TTL：60 秒（委托期间敏感，需要较频繁刷新） */
+    /** 委托路由缓存 TTL：60 秒 */
     private static final Duration DELEGATE_ROUTING_TTL = Duration.ofSeconds(60);
     /** 部门负责人缓存 TTL：30 分钟 */
     private static final Duration DEPT_MANAGER_TTL = Duration.ofMinutes(30);
@@ -27,17 +28,15 @@ public class RedisCacheConfig {
     private static final Duration APPROVAL_NODE_CONFIG_TTL = Duration.ofHours(1);
 
     @Bean
-    public RedisCacheManagerBuilderCustomizer cacheTtlCustomizer() {
-        return builder -> builder
-                .withCacheConfiguration("pendingCount",
-                        RedisCacheConfiguration.defaultCacheConfig().entryTtl(PENDING_COUNT_TTL))
-                .withCacheConfiguration("delegateRouting",
-                        RedisCacheConfiguration.defaultCacheConfig().entryTtl(DELEGATE_ROUTING_TTL))
-                .withCacheConfiguration("deptManager",
-                        RedisCacheConfiguration.defaultCacheConfig().entryTtl(DEPT_MANAGER_TTL))
-                .withCacheConfiguration("hrApprover",
-                        RedisCacheConfiguration.defaultCacheConfig().entryTtl(HR_APPROVER_TTL))
-                .withCacheConfiguration("approvalNodeConfig",
-                        RedisCacheConfiguration.defaultCacheConfig().entryTtl(APPROVAL_NODE_CONFIG_TTL));
+    public RedisCacheManager cacheManager(RedisConnectionFactory connectionFactory) {
+        RedisCacheConfiguration defaultConfig = RedisCacheConfiguration.defaultCacheConfig();
+        return RedisCacheManager.builder(connectionFactory)
+                .cacheDefaults(defaultConfig)
+                .withCacheConfiguration("pendingCount", defaultConfig.entryTtl(PENDING_COUNT_TTL))
+                .withCacheConfiguration("delegateRouting", defaultConfig.entryTtl(DELEGATE_ROUTING_TTL))
+                .withCacheConfiguration("deptManager", defaultConfig.entryTtl(DEPT_MANAGER_TTL))
+                .withCacheConfiguration("hrApprover", defaultConfig.entryTtl(HR_APPROVER_TTL))
+                .withCacheConfiguration("approvalNodeConfig", defaultConfig.entryTtl(APPROVAL_NODE_CONFIG_TTL))
+                .build();
     }
 }

@@ -169,6 +169,24 @@ public class ResignationServiceImpl
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void confirmResignation(Long id) {
+        ResignationApplication app = getAppOrThrow(id);
+        if (app.getStatus() != ResignationStatus.APPROVED.getCode()) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "仅待离职状态可确认");
+        }
+        app.setStatus(ResignationStatus.RESIGNED.getCode());
+        resignationMapper.updateById(app);
+        // 更新员工状态为已离职
+        Employee employee = employeeMapper.selectById(app.getEmployeeId());
+        if (employee != null) {
+            employee.setStatus(EmployeeStatus.RESIGNED.getValue());
+            employeeMapper.updateById(employee);
+        }
+        log.info("离职已确认: 表单id={}, employeeId={}", id, app.getEmployeeId());
+    }
+
+    @Override
     public Page<ResignationListVO> list(ResignationQuery query) {
         switch (dataScopeContext.getApprovalScope()) {
             case ALL: return queryAllList(query);
@@ -257,6 +275,13 @@ public class ResignationServiceImpl
         QueryWrapper<ResignationApplication> qw = new QueryWrapper<>();
         if (query.getStatus() != null) qw.eq("status", query.getStatus());
         if (query.getEmployeeId() != null) qw.eq("employee_id", query.getEmployeeId());
+        if (StringUtils.isNotBlank(query.getKeyword())) {
+            qw.and(w -> w
+                .inSql("employee_id", "SELECT e.id FROM employee e " +
+                    "INNER JOIN employee_personal_info pi ON pi.employee_id = e.id " +
+                    "WHERE pi.name LIKE '%" + query.getKeyword() + "%' " +
+                    "OR e.employee_no LIKE '%" + query.getKeyword() + "%'"));
+        }
         return qw;
     }
 
