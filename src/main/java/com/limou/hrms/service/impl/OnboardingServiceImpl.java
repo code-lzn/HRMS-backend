@@ -158,6 +158,7 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
         user.setUserPassword(DigestUtils.md5DigestAsHex((SALT + "12345678").getBytes()));
         user.setUserName(entity.getCandidateName());
         user.setRoleId(roleId);
+        user.setEmployeeId(emp.getId());
         userMapper.insert(user);
 
         emp.setUserId(user.getId());
