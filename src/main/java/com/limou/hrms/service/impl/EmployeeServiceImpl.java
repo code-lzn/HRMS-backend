@@ -9,6 +9,7 @@ import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.mapper.*;
 import com.limou.hrms.model.dto.employee.EmployeeCreateRequest;
 import com.limou.hrms.model.dto.employee.EmployeeQueryRequest;
+import com.limou.hrms.model.dto.employee.EmployeeUpdateRequest;
 import com.limou.hrms.model.entity.*;
 import com.limou.hrms.model.enums.EmployeeStatus;
 import com.limou.hrms.model.enums.UserRoleEnum;
@@ -83,7 +84,8 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
     );
 
     private static final List<String> ADMIN_HR_EDITABLE = Arrays.asList(
-            "email", "birthday", "registeredAddress", "currentAddress",
+            "name", "gender", "phone", "email", "birthday",
+            "registeredAddress", "currentAddress",
             "emergencyContactName", "emergencyContactPhone"
     );
 
@@ -375,18 +377,57 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
         return result;
     }
 
+    // ==================== 导出员工 ====================
+
+    @Override
+    public List<EmployeeListVO> exportEmployees(EmployeeQueryRequest query, User loginUser) {
+        UserRoleEnum role = UserRoleEnum.getEnumByValue(loginUser.getUserRole());
+        List<Long> deptIds = null;
+        Long selfEmployeeId = null;
+
+        switch (role) {
+            case ADMIN:
+            case HR:
+                break;
+            case DEPT_HEAD:
+                deptIds = resolveManagedDeptIds(loginUser);
+                if (deptIds == null || deptIds.isEmpty()) {
+                    return Collections.emptyList();
+                }
+                break;
+            case USER:
+                Employee selfEmp = this.lambdaQuery()
+                        .eq(Employee::getUserId, loginUser.getId())
+                        .one();
+                selfEmployeeId = selfEmp != null ? selfEmp.getId() : -1L;
+                break;
+            default:
+                throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
+        }
+
+        List<EmployeeListVO> list = this.baseMapper.selectEmployeeList(
+                query.getKeyword(),
+                query.getDepartmentIds() != null ? Arrays.asList(query.getDepartmentIds()) : null,
+                query.getPositionIds() != null ? Arrays.asList(query.getPositionIds()) : null,
+                query.getStatuses() != null ? Arrays.asList(query.getStatuses()) : null,
+                query.getJobLevels() != null ? Arrays.asList(query.getJobLevels()) : null,
+                query.getHireDateStart() != null ? query.getHireDateStart().toString() : null,
+                query.getHireDateEnd() != null ? query.getHireDateEnd().toString() : null,
+                deptIds,
+                selfEmployeeId);
+
+        // 填充状态描述
+        for (EmployeeListVO vo : list) {
+            vo.setStatusDesc(resolveStatusDesc(vo.getStatus()));
+        }
+        return list;
+    }
+
     // ==================== 更新员工档案 ====================
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public EmployeeUpdateVO updateEmployee(Long id, Map<String, Object> fields, User loginUser) {
-        if (fields == null || fields.isEmpty()) {
-            return EmployeeUpdateVO.builder()
-                    .updatedFields(Collections.emptyList())
-                    .flowRequiredFields(Collections.emptyList())
-                    .build();
-        }
-
+    public EmployeeUpdateVO updateEmployee(Long id, EmployeeUpdateRequest dto, User loginUser) {
         // 1. 查询员工
         Employee employee = this.lambdaQuery().eq(Employee::getId, id).one();
         if (employee == null) {
@@ -419,111 +460,48 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "员工个人信息不存在");
         }
 
-        boolean personalInfoChanged = false;
-
         // 5. 逐字段校验并更新
-        for (Map.Entry<String, Object> entry : fields.entrySet()) {
-            String fieldName = entry.getKey();
-            Object newValue = entry.getValue();
-
-            if (!editableFields.contains(fieldName)) {
-                flowRequiredFields.add(fieldName);
-                continue;
-            }
-
-            String oldValueStr = null;
-            String newValueStr = null;
-
-            switch (fieldName) {
-                case "name":
-                    oldValueStr = personalInfo.getName();
-                    newValueStr = newValue != null ? newValue.toString() : null;
-                    personalInfo.setName(newValueStr);
-                    personalInfoChanged = true;
-                    updatedFields.add(fieldName);
-                    break;
-                case "gender":
-                    oldValueStr = personalInfo.getGender() != null
-                            ? personalInfo.getGender().toString() : null;
-                    newValueStr = newValue != null ? newValue.toString() : null;
-                    personalInfo.setGender(newValue != null
-                            ? Integer.valueOf(newValue.toString()) : null);
-                    personalInfoChanged = true;
-                    updatedFields.add(fieldName);
-                    break;
-                case "phone":
-                    oldValueStr = personalInfo.getPhone();
-                    newValueStr = newValue != null ? newValue.toString() : null;
-                    personalInfo.setPhone(newValueStr);
-                    personalInfoChanged = true;
-                    updatedFields.add(fieldName);
-                    break;
-                case "email":
-                    oldValueStr = personalInfo.getEmail();
-                    newValueStr = newValue != null ? newValue.toString() : null;
-                    personalInfo.setEmail(newValueStr);
-                    personalInfoChanged = true;
-                    updatedFields.add(fieldName);
-                    break;
-                case "birthday":
-                    oldValueStr = personalInfo.getBirthday() != null
-                            ? personalInfo.getBirthday().toString() : null;
-                    newValueStr = newValue != null ? newValue.toString() : null;
-                    personalInfo.setBirthday(newValue != null
-                            ? LocalDate.parse(newValue.toString()) : null);
-                    personalInfoChanged = true;
-                    updatedFields.add(fieldName);
-                    break;
-                case "registeredAddress":
-                    oldValueStr = personalInfo.getRegisteredAddress();
-                    newValueStr = newValue != null ? newValue.toString() : null;
-                    personalInfo.setRegisteredAddress(newValueStr);
-                    personalInfoChanged = true;
-                    updatedFields.add(fieldName);
-                    break;
-                case "currentAddress":
-                    oldValueStr = personalInfo.getCurrentAddress();
-                    newValueStr = newValue != null ? newValue.toString() : null;
-                    personalInfo.setCurrentAddress(newValueStr);
-                    personalInfoChanged = true;
-                    updatedFields.add(fieldName);
-                    break;
-                case "emergencyContactName":
-                    oldValueStr = personalInfo.getEmergencyContactName();
-                    newValueStr = newValue != null ? newValue.toString() : null;
-                    personalInfo.setEmergencyContactName(newValueStr);
-                    personalInfoChanged = true;
-                    updatedFields.add(fieldName);
-                    break;
-                case "emergencyContactPhone":
-                    oldValueStr = personalInfo.getEmergencyContactPhone();
-                    newValueStr = newValue != null ? newValue.toString() : null;
-                    personalInfo.setEmergencyContactPhone(newValueStr);
-                    personalInfoChanged = true;
-                    updatedFields.add(fieldName);
-                    break;
-                default:
-                    // 未知字段，跳过
-                    break;
-            }
-
-            // 记变更日志
-            if (updatedFields.contains(fieldName)) {
-                EmployeeChangeLog changeLog = EmployeeChangeLog.builder()
-                        .employeeId(id)
-                        .fieldName(fieldName)
-                        .oldValue(oldValueStr)
-                        .newValue(newValueStr)
-                        .changeType("DIRECT_EDIT")
-                        .operatorId(loginUser.getId())
-                        .createTime(LocalDateTime.now())
-                        .build();
-                employeeChangeLogMapper.insert(changeLog);
-            }
-        }
+        updateFieldIfNotNull("name", dto.getName(), editableFields,
+                personalInfo::getName, personalInfo::setName,
+                updatedFields, flowRequiredFields,
+                id, loginUser.getId());
+        updateFieldIfNotNull("gender", dto.getGender(), editableFields,
+                () -> personalInfo.getGender() != null ? personalInfo.getGender().toString() : null,
+                v -> personalInfo.setGender(v != null ? Integer.valueOf(v) : null),
+                updatedFields, flowRequiredFields,
+                id, loginUser.getId());
+        updateFieldIfNotNull("phone", dto.getPhone(), editableFields,
+                personalInfo::getPhone, personalInfo::setPhone,
+                updatedFields, flowRequiredFields,
+                id, loginUser.getId());
+        updateFieldIfNotNull("email", dto.getEmail(), editableFields,
+                personalInfo::getEmail, personalInfo::setEmail,
+                updatedFields, flowRequiredFields,
+                id, loginUser.getId());
+        updateFieldIfNotNull("birthday", dto.getBirthday(), editableFields,
+                () -> personalInfo.getBirthday() != null ? personalInfo.getBirthday().toString() : null,
+                v -> personalInfo.setBirthday(v),
+                updatedFields, flowRequiredFields,
+                id, loginUser.getId());
+        updateFieldIfNotNull("registeredAddress", dto.getRegisteredAddress(), editableFields,
+                personalInfo::getRegisteredAddress, personalInfo::setRegisteredAddress,
+                updatedFields, flowRequiredFields,
+                id, loginUser.getId());
+        updateFieldIfNotNull("currentAddress", dto.getCurrentAddress(), editableFields,
+                personalInfo::getCurrentAddress, personalInfo::setCurrentAddress,
+                updatedFields, flowRequiredFields,
+                id, loginUser.getId());
+        updateFieldIfNotNull("emergencyContactName", dto.getEmergencyContactName(), editableFields,
+                personalInfo::getEmergencyContactName, personalInfo::setEmergencyContactName,
+                updatedFields, flowRequiredFields,
+                id, loginUser.getId());
+        updateFieldIfNotNull("emergencyContactPhone", dto.getEmergencyContactPhone(), editableFields,
+                personalInfo::getEmergencyContactPhone, personalInfo::setEmergencyContactPhone,
+                updatedFields, flowRequiredFields,
+                id, loginUser.getId());
 
         // 6. 保存个人信息变更
-        if (personalInfoChanged) {
+        if (!updatedFields.isEmpty()) {
             personalInfoMapper.updateById(personalInfo);
         }
 
@@ -531,6 +509,41 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
                 .updatedFields(updatedFields)
                 .flowRequiredFields(flowRequiredFields)
                 .build();
+    }
+
+    /**
+     * 字段更新辅助：新值不为 null 时校验权限并更新，为 null 时不处理（保留原值）
+     */
+    private <T> void updateFieldIfNotNull(String fieldName, T newValue,
+                                           Set<String> editableFields,
+                                           java.util.function.Supplier<String> oldValueSupplier,
+                                           java.util.function.Consumer<T> setter,
+                                           List<String> updatedFields,
+                                           List<String> flowRequiredFields,
+                                           Long employeeId, Long operatorId) {
+        if (newValue == null) {
+            return;
+        }
+        if (!editableFields.contains(fieldName)) {
+            flowRequiredFields.add(fieldName);
+            return;
+        }
+        String oldValueStr = oldValueSupplier.get();
+        String newValueStr = newValue.toString();
+        setter.accept(newValue);
+        updatedFields.add(fieldName);
+
+        // 记变更日志
+        EmployeeChangeLog changeLog = EmployeeChangeLog.builder()
+                .employeeId(employeeId)
+                .fieldName(fieldName)
+                .oldValue(oldValueStr)
+                .newValue(newValueStr)
+                .changeType("DIRECT_EDIT")
+                .operatorId(operatorId)
+                .createTime(LocalDateTime.now())
+                .build();
+        employeeChangeLogMapper.insert(changeLog);
     }
 
     // ==================== 私有方法 ====================

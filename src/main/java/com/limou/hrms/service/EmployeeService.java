@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.limou.hrms.model.dto.employee.EmployeeCreateRequest;
 import com.limou.hrms.model.dto.employee.EmployeeQueryRequest;
+import com.limou.hrms.model.dto.employee.EmployeeUpdateRequest;
 import com.limou.hrms.model.entity.Employee;
 import com.limou.hrms.model.entity.User;
 import com.limou.hrms.model.vo.EmployeeCreateVO;
@@ -62,14 +63,21 @@ public interface EmployeeService extends IService<Employee> {
     /**
      * 更新员工档案（逐字段权限校验）
      * <p>
-     * 请求体为平铺的可选字段 Map，不传的字段保持原值、传 null 清空。
-     * 后端根据当前角色 editableFields 逐字段校验：
-     * 允许的直接更新并记变更日志，不允许的加入 flowRequiredFields。
+     * DTO 中 null 字段不更新、传值则更新，后端按角色 editableFields 逐字段校验。
      *
      * @param id        员工ID
-     * @param fields    要更新的字段 Map（key=字段名, value=新值或null）
+     * @param dto       更新请求（所有字段可选）
      * @param loginUser 当前登录用户
      * @return updatedFields + flowRequiredFields
      */
-    EmployeeUpdateVO updateEmployee(Long id, Map<String, Object> fields, User loginUser);
+    EmployeeUpdateVO updateEmployee(Long id, EmployeeUpdateRequest dto, User loginUser);
+
+    /**
+     * 导出员工档案列表为 Excel
+     *
+     * @param query     筛选条件
+     * @param loginUser 当前登录用户
+     * @return 员工列表数据（含状态描述）
+     */
+    List<EmployeeListVO> exportEmployees(EmployeeQueryRequest query, User loginUser);
 }

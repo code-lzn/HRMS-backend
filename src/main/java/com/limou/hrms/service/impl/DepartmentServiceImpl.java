@@ -12,6 +12,7 @@ import com.limou.hrms.mapper.DepartmentMapper;
 import com.limou.hrms.mapper.EmployeeMapper;
 import com.limou.hrms.mapper.EmployeePersonalInfoMapper;
 import com.limou.hrms.mapper.EmployeeWorkInfoMapper;
+import com.limou.hrms.mapper.UserMapper;
 import com.limou.hrms.model.dto.department.DepartmentCreateRequest;
 import com.limou.hrms.model.dto.department.DepartmentQueryRequest;
 import com.limou.hrms.model.dto.department.DepartmentUpdateRequest;
@@ -22,6 +23,7 @@ import com.limou.hrms.model.entity.EmployeePersonalInfo;
 import com.limou.hrms.model.entity.EmployeeWorkInfo;
 import com.limou.hrms.model.entity.User;
 import com.limou.hrms.model.enums.EmployeeStatus;
+import com.limou.hrms.model.enums.UserRoleEnum;
 import com.limou.hrms.model.vo.DepartmentTreeNode;
 import com.limou.hrms.model.vo.DepartmentVO;
 import com.limou.hrms.service.DepartmentService;
@@ -48,6 +50,8 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
     private final EmployeeWorkInfoMapper employeeWorkInfoMapper;
 
     private final EmployeePersonalInfoMapper employeePersonalInfoMapper;
+
+    private final UserMapper userMapper;
 
     private final DataScopeContext dataScopeContext;
 
@@ -395,12 +399,21 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
 
     private void validateManagerActive(Long managerId) {
         if (managerId == null) return;
-        long count = employeeMapper.selectCount(
+        Employee employee = employeeMapper.selectOne(
                 Wrappers.<Employee>lambdaQuery()
                         .eq(Employee::getId, managerId)
                         .in(Employee::getStatus, EmployeeStatus.getActiveValues()));
-        if (count == 0) {
+        if (employee == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "部门负责人不存在或非在职状态");
+        }
+        // 校验角色：只有普通员工和部门负责人可以担任部门负责人
+        User managerUser = userMapper.selectById(employee.getUserId());
+        if (managerUser == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "部门负责人关联的账号不存在");
+        }
+        UserRoleEnum role = UserRoleEnum.getEnumByValue(managerUser.getUserRole());
+        if (role != UserRoleEnum.USER && role != UserRoleEnum.DEPT_HEAD) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "只有普通员工或部门负责人可以担任部门负责人，HR、管理员、财务专员不可以");
         }
     }
 
