@@ -12,6 +12,7 @@ import com.limou.hrms.model.dto.profile.LeaveQueryDTO;
 import com.limou.hrms.model.dto.profile.PasswordChangeDTO;
 import com.limou.hrms.model.dto.profile.PhoneChangeDTO;
 import com.limou.hrms.model.dto.profile.PhoneUnbindDTO;
+import com.limou.hrms.model.dto.employee.EmployeeUpdateRequest;
 import com.limou.hrms.model.dto.profile.ProfileUpdateDTO;
 import com.limou.hrms.model.entity.*;
 import com.limou.hrms.model.enums.ApprovalBizType;
@@ -146,14 +147,14 @@ class ProfileServiceTest {
         ProfileUpdateDTO dto = new ProfileUpdateDTO();
         dto.setEmail("new@test.com"); dto.setAddress("新地址");
         profileService.updateProfile(loginUser, dto);
-        verify(employeeService).updateEmployee(eq(EMPLOYEE_ID), anyMap(), eq(loginUser));
+        verify(employeeService).updateEmployee(eq(EMPLOYEE_ID), any(EmployeeUpdateRequest.class), eq(loginUser));
     }
 
     /** 所有字段均为 null 时不应触发更新 */
     @Test
     void updateProfile_emptyFields_shouldNoop() {
         profileService.updateProfile(loginUser, new ProfileUpdateDTO());
-        verify(employeeService, never()).updateEmployee(anyLong(), anyMap(), any());
+        verify(employeeService, never()).updateEmployee(anyLong(), any(EmployeeUpdateRequest.class), any());
     }
 
     // ==================== 我的考勤 ====================
