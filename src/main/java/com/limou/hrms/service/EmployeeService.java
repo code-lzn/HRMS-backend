@@ -61,6 +61,11 @@ public interface EmployeeService extends IService<Employee> {
     Page<EmployeeListVO> listEmployees(EmployeeQueryRequest query, User loginUser);
 
     /**
+     * 员工快速搜索（委托/转交等场景，无数据隔离，仅返回 id+name+position）
+     */
+    List<Map<String, Object>> searchEmployees(String keyword);
+
+    /**
      * 更新员工档案（逐字段权限校验）
      * <p>
      * DTO 中 null 字段不更新、传值则更新，后端按角色 editableFields 逐字段校验。

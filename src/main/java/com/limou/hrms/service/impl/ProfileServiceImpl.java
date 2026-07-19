@@ -9,6 +9,7 @@ import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.mapper.*;
 import com.limou.hrms.model.dto.attendance.ClockRequest;
 import com.limou.hrms.model.dto.profile.LeaveQueryDTO;
+import com.limou.hrms.model.query.LeaveQuery;
 import com.limou.hrms.model.dto.profile.PasswordChangeDTO;
 import com.limou.hrms.model.dto.profile.PhoneChangeDTO;
 import com.limou.hrms.model.dto.profile.PhoneUnbindDTO;
@@ -215,18 +216,17 @@ public class ProfileServiceImpl implements ProfileService {
 
     @Override
     public Page<LeaveRequestVO> getMyLeaves(User loginUser, LeaveQueryDTO query) {
-        Long employeeId = dataScopeContext.getCurrentEmployeeId();
-        int page = query.getPage() != null ? query.getPage() : 1;
-        int size = query.getSize() != null ? query.getSize() : 20;
-
-        return leaveService.queryRequests(employeeId, null, query.getStatus(), null, null, page, size);
+        LeaveQuery lq = new LeaveQuery();
+        lq.setStatus(query.getStatus());
+        lq.setCurrent(query.getPage() != null ? query.getPage() : 1);
+        lq.setPageSize(query.getSize() != null ? query.getSize() : 20);
+        return leaveService.queryRequests(lq);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void cancelLeave(User loginUser, Long leaveId) {
-        Long employeeId = dataScopeContext.getCurrentEmployeeId();
-        leaveService.cancelLeaveRequest(leaveId, employeeId);
+        leaveService.cancel(leaveId);
     }
 
     // ==================== 我的薪资 ====================

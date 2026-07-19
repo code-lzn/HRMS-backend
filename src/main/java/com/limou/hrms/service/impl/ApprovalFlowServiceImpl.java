@@ -767,12 +767,24 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
         return map;
     }
 
-    /** 请假申请：补员工姓名 */
+    /** 请假申请：补员工姓名、请假类型描述、时间格式化 */
     private Map<String, Object> enrichLeave(LeaveRequest app) {
         if (app == null) return Collections.emptyMap();
         Map<String, Object> map = beanToMap(app);
         if (app.getEmployeeId() != null) {
             map.put("employeeName", approverResolver.getEmployeeName(app.getEmployeeId()));
+        }
+        // 请假类型描述
+        if (app.getLeaveType() != null) {
+            String[] types = {"", "年假", "病假", "事假", "婚假", "产假", "丧假", "调休"};
+            map.put("leaveTypeDesc", app.getLeaveType() > 0 && app.getLeaveType() < types.length ? types[app.getLeaveType()] : "");
+        }
+        // 时间格式化为空格分隔（替代 ISO 的 T）
+        if (app.getStartTime() != null) {
+            map.put("startTime", app.getStartTime().toString().replace("T", " "));
+        }
+        if (app.getEndTime() != null) {
+            map.put("endTime", app.getEndTime().toString().replace("T", " "));
         }
         return map;
     }

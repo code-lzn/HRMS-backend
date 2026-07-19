@@ -1,6 +1,7 @@
 package com.limou.hrms.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -350,7 +351,10 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
                 }
                 break;
             case USER:
-                // 仅本人
+                // 仅本人，除非 all=true（委托审批等场景需搜全员）
+                if (Boolean.TRUE.equals(query.getAll())) {
+                    break;
+                }
                 Employee selfEmp = this.lambdaQuery()
                         .eq(Employee::getUserId, loginUser.getId())
                         .one();
@@ -424,6 +428,39 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
             vo.setStatusDesc(resolveStatusDesc(vo.getStatus()));
         }
         return list;
+    }
+
+    // ==================== 员工快速搜索 ====================
+
+    @Override
+    public List<Map<String, Object>> searchEmployees(String keyword) {
+        if (keyword == null || keyword.trim().isEmpty()) return Collections.emptyList();
+        List<Employee> emps = this.lambdaQuery()
+                .list()
+                .stream()
+                .filter(e -> e.getIsDeleted() == null || e.getIsDeleted() == 0)
+                .collect(Collectors.toList());
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Employee e : emps) {
+            EmployeePersonalInfo info = personalInfoMapper.selectOne(
+                    new QueryWrapper<EmployeePersonalInfo>().eq("employee_id", e.getId()).last("LIMIT 1"));
+            String name = info != null ? info.getName() : "";
+            if (!name.contains(keyword) && !e.getEmployeeNo().contains(keyword)) continue;
+            EmployeeWorkInfo wi = workInfoMapper.selectOne(
+                    new QueryWrapper<EmployeeWorkInfo>().eq("employee_id", e.getId()).last("LIMIT 1"));
+            String posName = "";
+            if (wi != null && wi.getPositionId() != null) {
+                Position pos = positionService.getById(wi.getPositionId());
+                posName = pos != null ? pos.getName() : "";
+            }
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("id", e.getId());
+            map.put("name", name);
+            map.put("positionName", posName);
+            result.add(map);
+            if (result.size() >= 20) break;
+        }
+        return result;
     }
 
     // ==================== 更新员工档案 ====================

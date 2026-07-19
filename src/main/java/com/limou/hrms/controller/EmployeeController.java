@@ -109,6 +109,16 @@ public class EmployeeController {
     }
 
     /**
+     * 员工快速搜索（委托审批/转交等场景，所有已登录用户可用，无数据隔离）
+     */
+    @GetMapping("/search")
+    @AuthCheck
+    public BaseResponse<List<Map<String, Object>>> searchEmployees(@RequestParam String keyword) {
+        List<Map<String, Object>> list = employeeService.searchEmployees(keyword);
+        return ResultUtils.success(list);
+    }
+
+    /**
      * 获取员工档案详情
      * <p>
      * 按角色自动脱敏敏感字段、控制薪资信息可见性。

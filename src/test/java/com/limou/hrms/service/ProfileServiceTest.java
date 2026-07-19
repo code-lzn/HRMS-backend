@@ -9,6 +9,7 @@ import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.mapper.*;
 import com.limou.hrms.model.dto.attendance.ClockRequest;
 import com.limou.hrms.model.dto.profile.LeaveQueryDTO;
+import com.limou.hrms.model.query.LeaveQuery;
 import com.limou.hrms.model.dto.profile.PasswordChangeDTO;
 import com.limou.hrms.model.dto.profile.PhoneChangeDTO;
 import com.limou.hrms.model.dto.profile.PhoneUnbindDTO;
@@ -196,15 +197,15 @@ class ProfileServiceTest {
     @Test
     void getMyLeaves_shouldDelegate() {
         Page<LeaveRequestVO> expected = new Page<>(1, 20);
-        when(leaveService.queryRequests(eq(EMPLOYEE_ID), isNull(), isNull(), isNull(), isNull(), eq(1), eq(20))).thenReturn(expected);
+        when(leaveService.queryRequests(any(LeaveQuery.class))).thenReturn(expected);
         assertSame(expected, profileService.getMyLeaves(loginUser, new LeaveQueryDTO()));
     }
 
-    /** 取消请假：委托 LeaveService.cancelLeaveRequest() */
+    /** 取消请假：委托 LeaveService.cancel() */
     @Test
     void cancelLeave_shouldDelegate() {
         profileService.cancelLeave(loginUser, 10L);
-        verify(leaveService).cancelLeaveRequest(10L, EMPLOYEE_ID);
+        verify(leaveService).cancel(10L);
     }
 
     // ==================== 我的薪资 ====================
