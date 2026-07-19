@@ -12,6 +12,7 @@ import com.limou.hrms.model.dto.profile.LeaveQueryDTO;
 import com.limou.hrms.model.dto.profile.PasswordChangeDTO;
 import com.limou.hrms.model.dto.profile.PhoneChangeDTO;
 import com.limou.hrms.model.dto.profile.PhoneUnbindDTO;
+import com.limou.hrms.model.dto.employee.EmployeeUpdateRequest;
 import com.limou.hrms.model.dto.profile.ProfileUpdateDTO;
 import com.limou.hrms.model.dto.salary.PayslipVerifyRequest;
 import com.limou.hrms.model.entity.*;
@@ -140,42 +141,47 @@ public class ProfileServiceImpl implements ProfileService {
     public void updateProfile(User loginUser, ProfileUpdateDTO dto) {
         Long employeeId = dataScopeContext.getCurrentEmployeeId();
 
-        Map<String, Object> fields = new HashMap<>();
+        EmployeeUpdateRequest req = new EmployeeUpdateRequest();
+        boolean hasField = false;
         if (dto.getEmail() != null) {
             if (!EMAIL_PATTERN.matcher(dto.getEmail()).matches()) {
                 log.error("员工ID为{}更新邮箱时，邮箱格式错误", employeeId);
                 throw new BusinessException(ErrorCode.PARAMS_ERROR, "邮箱格式不正确");
             }
-            fields.put(ProfileConfig.API_TO_DB_FIELD.get("email"), dto.getEmail());
+            req.setEmail(dto.getEmail());
+            hasField = true;
         }
         if (dto.getAddress() != null) {
             if (dto.getAddress().length() > 256) {
                 log.error("员工ID为{}更新地址时，地址长度超过256个字符", employeeId);
                 throw new BusinessException(ErrorCode.PARAMS_ERROR, "地址长度不能超过256个字符");
             }
-            fields.put(ProfileConfig.API_TO_DB_FIELD.get("address"), dto.getAddress());
+            req.setCurrentAddress(dto.getAddress());
+            hasField = true;
         }
         if (dto.getEmergencyContact() != null) {
             if (dto.getEmergencyContact().length() > 32) {
                 log.error("员工ID为{}更新紧急联系人姓名时，姓名长度超过32个字符", employeeId);
                 throw new BusinessException(ErrorCode.PARAMS_ERROR, "紧急联系人姓名长度不能超过32个字符");
             }
-            fields.put(ProfileConfig.API_TO_DB_FIELD.get("emergencyContact"), dto.getEmergencyContact());
+            req.setEmergencyContactName(dto.getEmergencyContact());
+            hasField = true;
         }
         if (dto.getEmergencyPhone() != null) {
             if (!PHONE_PATTERN.matcher(dto.getEmergencyPhone()).matches()) {
                 log.error("员工ID为{}更新紧急联系人电话时，电话格式错误", employeeId);
                 throw new BusinessException(ErrorCode.PARAMS_ERROR, "紧急联系人电话格式不正确");
             }
-            fields.put(ProfileConfig.API_TO_DB_FIELD.get("emergencyPhone"), dto.getEmergencyPhone());
+            req.setEmergencyContactPhone(dto.getEmergencyPhone());
+            hasField = true;
         }
 
-        if (fields.isEmpty()) {
+        if (!hasField) {
             return;
         }
 
-        employeeService.updateEmployee(employeeId, fields, loginUser);
-        log.info("员工 {} 更新了个人档案字段: {}", employeeId, fields.keySet());
+        employeeService.updateEmployee(employeeId, req, loginUser);
+        log.info("员工 {} 更新了个人档案", employeeId);
     }
 
     // ==================== 我的考勤 ====================
