@@ -46,7 +46,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ProfileServiceImpl implements ProfileService {
 
-    private static final String SALT = "limou";
+    private static final String SALT = "pwd";
     private static final Pattern PASSWORD_PATTERN = Pattern.compile("^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).{8,}$");
     private static final Pattern PHONE_PATTERN = Pattern.compile("^1[3-9]\\d{9}$");
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
@@ -298,6 +298,23 @@ public class ProfileServiceImpl implements ProfileService {
         stringRedisTemplate.opsForValue().increment(versionKey);
 
         log.info("用户 {} 修改了密码，已递增密码版本号，其他设备将被强制下线", loginUser.getId());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void resetPassword(User loginUser, String newPassword, String confirmPassword) {
+        if (!newPassword.equals(confirmPassword)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "两次输入的新密码不一致");
+        }
+        if (!PASSWORD_PATTERN.matcher(newPassword).matches()) {
+            throw new BusinessException(ErrorCode.NEW_PASSWORD_WEAK);
+        }
+        User user = userMapper.selectById(loginUser.getId());
+        String newEncrypted = DigestUtils.md5DigestAsHex((SALT + newPassword).getBytes());
+        user.setUserPassword(newEncrypted);
+        user.setPwdReset(0); // 清除首次登录标记
+        userMapper.updateById(user);
+        log.info("用户 {} 首次登录重置密码成功", loginUser.getId());
     }
 
     /**

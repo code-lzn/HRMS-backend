@@ -6,6 +6,8 @@ import com.limou.hrms.context.UserContext;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.model.entity.User;
 import com.limou.hrms.service.UserService;
+import com.limou.hrms.utils.JwtUtils;
+import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -25,6 +27,9 @@ import javax.servlet.http.HttpSession;
  * <p>
  * 注意：此拦截器仅负责"登录态校验"，不校验角色权限。
  * 角色权限由 {@link com.limou.hrms.annotation.AuthCheck} AOP 负责。
+ *
+ * <p>双模认证：优先从 Authorization 头读取 JWT Token，
+ * Token 无效或不存在时回退到 Session 方式（兼容旧版）。
  */
 @Slf4j
 @Component
@@ -33,6 +38,7 @@ public class LoginInterceptor implements HandlerInterceptor {
 
     private final UserService userService;
     private final StringRedisTemplate stringRedisTemplate;
+    private final JwtUtils jwtUtils;
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
@@ -40,7 +46,25 @@ public class LoginInterceptor implements HandlerInterceptor {
         if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
             return true;
         }
-        // 从 session 获取登录用户
+
+        // ---- 1. 优先从 Authorization 头读取 JWT Token ----
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            String token = authHeader.substring(7);
+            Claims claims = jwtUtils.parseToken(token);
+            if (claims != null) {
+                // JWT 有效，构造轻量 User 对象放入 UserContext
+                User jwtUser = new User();
+                jwtUser.setId(claims.get("userId", Long.class));
+                jwtUser.setUserName(claims.get("userName", String.class));
+                jwtUser.setUserRole(claims.get("userRole", String.class));
+                UserContext.set(jwtUser);
+                return true;
+            }
+            // JWT 无效，继续尝试 Session 方式（不直接抛异常）
+        }
+
+        // ---- 2. 回退：从 Session 获取登录用户（兼容旧版） ----
         HttpSession session = request.getSession();
         Object userObj = session.getAttribute(UserConstant.USER_LOGIN_STATE);
         User currentUser = (User) userObj;

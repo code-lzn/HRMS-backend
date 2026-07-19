@@ -37,6 +37,11 @@ public class LoginUserVO implements Serializable {
     private String userRole;
 
     /**
+     * 是否需要重置密码（1=首次登录需强制修改密码）
+     */
+    private Integer pwdReset;
+
+    /**
      * 创建时间
      */
     private Date createTime;
@@ -45,6 +50,11 @@ public class LoginUserVO implements Serializable {
      * 更新时间
      */
     private Date updateTime;
+
+    /**
+     * JWT Token（多标签页独立登录用）
+     */
+    private String token;
 
     private static final long serialVersionUID = 1L;
 }

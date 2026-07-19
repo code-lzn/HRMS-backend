@@ -47,13 +47,16 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     /**
      * 盐值，混淆密码
      */
-    public static final String SALT = "limou";
+    public static final String SALT = "pwd";
 
     @Resource
     private LoginLogMapper loginLogMapper;
 
     @Resource
     private StringRedisTemplate stringRedisTemplate;
+
+    @Resource
+    private com.limou.hrms.utils.JwtUtils jwtUtils;
 
     /** 密码版本号 Redis Key */
     public static final String PWD_VERSION_KEY = "pwd:version:%d";
@@ -139,7 +142,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         session.setAttribute(PWD_VERSION_ATTR, version);
         // 记录登录成功日志
         recordLoginLog(user.getId(), request, 1);
-        return this.getLoginUserVO(user);
+        LoginUserVO loginUserVO = this.getLoginUserVO(user);
+        // 生成 JWT Token，使前端可多标签页独立登录
+        loginUserVO.setToken(jwtUtils.generateToken(user.getId(), user.getUserName(), user.getUserRole()));
+        return loginUserVO;
     }
 
 //    @Override

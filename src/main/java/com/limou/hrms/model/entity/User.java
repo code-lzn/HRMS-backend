@@ -35,6 +35,9 @@ public class User implements Serializable {
 
     private String userRole;
 
+    /** 首次登录是否需要重置密码：0=否 1=是 */
+    private Integer pwdReset;
+
     private Date createTime;
 
     private Date updateTime;

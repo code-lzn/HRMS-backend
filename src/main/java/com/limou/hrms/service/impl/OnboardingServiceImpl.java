@@ -25,7 +25,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
-import java.security.SecureRandom;
+
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -284,13 +284,13 @@ public class OnboardingServiceImpl
         // 1. 生成工号
         String employeeNo = generateEmployeeNo(app.getDepartmentId());
 
-        // 2. 先创建系统账号（账号=手机号，随机密码），因为 employee 表需要 user_id
-        String initialPassword = generateRandomPassword();
+        // 2. 先创建系统账号（账号=手机号，初始密码 12345678，首次登录强制修改）
         User user = new User();
         user.setUserAccount(app.getPhone());
-        user.setUserPassword(DigestUtils.md5DigestAsHex(("user" + initialPassword).getBytes()));
+        user.setUserPassword(DigestUtils.md5DigestAsHex(("pwd" + "12345678").getBytes()));
         user.setUserName(app.getName());
         user.setUserRole(UserRoleEnum.USER.getValue());
+        user.setPwdReset(1); // 首次登录强制修改密码
         userMapper.insert(user);
 
         // 3. 写入 employee 表（含 user_id）
@@ -325,7 +325,7 @@ public class OnboardingServiceImpl
         app.setStatus(OnboardingStatus.APPROVED.getCode());
         onboardingMapper.updateById(app);
 
-        log.info("入职审批通过后处理完成: 申请表id={}, employeeId={}, employeeNo={}, 初始密码={}", bizId, employee.getId(), employeeNo, initialPassword);
+        log.info("入职审批通过后处理完成: 申请表id={}, employeeId={}, employeeNo={}, 初始密码=12345678", bizId, employee.getId(), employeeNo);
     }
 
     @Override
@@ -415,10 +415,6 @@ public class OnboardingServiceImpl
 
     @Override
     public boolean isPhoneAvailable(String phone, Long excludeId) {
-        // 检查 employee 表
-        Long empCount = employeeMapper.selectCount(
-                new QueryWrapper<Employee>().eq("phone", phone).last("LIMIT 1"));
-        if (empCount != null && empCount > 0) return false;
         // 检查 employee_personal_info 表
         Long piCount = personalInfoMapper.selectCount(
                 new QueryWrapper<EmployeePersonalInfo>().eq("phone", phone).last("LIMIT 1"));
@@ -572,14 +568,4 @@ public class OnboardingServiceImpl
         }
     }
 
-    private static final String PASSWORD_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    private static final SecureRandom RANDOM = new SecureRandom();
-
-    private String generateRandomPassword() {
-        StringBuilder sb = new StringBuilder(8);
-        for (int i = 0; i < 8; i++) {
-            sb.append(PASSWORD_CHARS.charAt(RANDOM.nextInt(PASSWORD_CHARS.length())));
-        }
-        return sb.toString();
-    }
 }

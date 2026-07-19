@@ -79,6 +79,11 @@ public interface ProfileService {
     void changePassword(User loginUser, PasswordChangeDTO dto);
 
     /**
+     * 首次登录强制重置密码（无需旧密码），重置成功后清除 pwdReset 标记
+     */
+    void resetPassword(User loginUser, String newPassword, String confirmPassword);
+
+    /**
      * 发送手机验证码（修改手机号前调用）
      */
     void sendPhoneVerifyCode(User loginUser, String phone);

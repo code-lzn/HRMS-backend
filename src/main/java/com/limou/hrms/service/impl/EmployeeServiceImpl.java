@@ -49,7 +49,7 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
     private final EmployeeChangeLogMapper employeeChangeLogMapper;
     private final AesUtil aesUtil;
 
-    private static final String SALT = "limou";
+    private static final String SALT = "pwd";
     private static final String PASSWORD_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
     private static final int PASSWORD_LENGTH = 8;
     private static final SecureRandom RANDOM = new SecureRandom();

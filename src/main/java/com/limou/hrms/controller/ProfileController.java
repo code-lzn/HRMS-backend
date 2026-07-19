@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 个人中心 Controller
@@ -151,6 +152,19 @@ public class ProfileController {
     public BaseResponse<Boolean> changePassword(@RequestBody PasswordChangeDTO dto) {
         User loginUser = UserContext.getCurrentUser();
         profileService.changePassword(loginUser, dto);
+        return ResultUtils.success(true);
+    }
+
+    /**
+     * 首次登录强制重置密码（无需旧密码）
+     */
+    @PutMapping("/reset-password")
+    @AuthCheck
+    public BaseResponse<Boolean> resetPassword(@RequestBody Map<String, String> body) {
+        String newPassword = body.get("newPassword");
+        String confirmPassword = body.get("confirmPassword");
+        User loginUser = UserContext.getCurrentUser();
+        profileService.resetPassword(loginUser, newPassword, confirmPassword);
         return ResultUtils.success(true);
     }
 
