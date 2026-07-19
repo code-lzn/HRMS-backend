@@ -52,7 +52,7 @@ public class SalaryDetailServiceImpl extends ServiceImpl<SalaryDetailMapper, Sal
     /** 最大失败次数 */
     private static final int MAX_FAILURES = 3;
 
-    private static final String SALT = "pwd";
+    private static final String SALT = "limou";
 
     @Resource
     private SalaryBatchMapper salaryBatchMapper;

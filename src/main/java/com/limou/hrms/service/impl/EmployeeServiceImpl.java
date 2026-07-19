@@ -50,7 +50,7 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
     private final EmployeeChangeLogMapper employeeChangeLogMapper;
     private final AesUtil aesUtil;
 
-    private static final String SALT = "pwd";
+    private static final String SALT = "limou";
     private static final String PASSWORD_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
     private static final int PASSWORD_LENGTH = 8;
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -340,7 +340,10 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
                 // 全量，不设限制
                 break;
             case DEPT_HEAD:
-                // 仅本部门及下属
+                // 仅本部门及下属，除非 all=true（委托审批等场景需搜全员）
+                if (Boolean.TRUE.equals(query.getAll())) {
+                    break;
+                }
                 deptIds = resolveManagedDeptIds(loginUser);
                 if (deptIds == null || deptIds.isEmpty()) {
                     return new Page<>(query.getCurrent(), query.getPageSize(), 0);
@@ -749,17 +752,46 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
         Employee deptHeadEmp = this.lambdaQuery()
                 .eq(Employee::getUserId, loginUser.getId())
                 .one();
-        if (deptHeadEmp == null) return Collections.emptyList();
+        if (deptHeadEmp == null) {
+            log.warn("部门主管 userId={} 无对应 employee 记录，尝试通过部门 managerId 查找", loginUser.getId());
+            return resolveDeptIdsByManagerId(loginUser.getId());
+        }
         EmployeeWorkInfo headWorkInfo = workInfoMapper.selectOne(
                 Wrappers.<EmployeeWorkInfo>lambdaQuery()
                         .eq(EmployeeWorkInfo::getEmployeeId, deptHeadEmp.getId()));
-        if (headWorkInfo == null) return Collections.emptyList();
+        if (headWorkInfo == null) {
+            log.warn("部门主管 employeeId={} 无对应 work_info 记录，尝试通过部门 managerId 查找", deptHeadEmp.getId());
+            return resolveDeptIdsByManagerId(loginUser.getId());
+        }
         Long managedDeptId = headWorkInfo.getDepartmentId();
 
         List<Department> allDepts = departmentService.list();
         Set<Long> deptIds = new HashSet<>();
         deptIds.add(managedDeptId);
         collectChildDeptIds(allDepts, managedDeptId, deptIds);
+        return new ArrayList<>(deptIds);
+    }
+
+    /**
+     * 通过 user 关联的 employee 再查 Department.managerId，
+     * 适配只有 user 记录没有 employee/work_info 的部门主管
+     */
+    private List<Long> resolveDeptIdsByManagerId(Long userId) {
+        // 找到该 user 对应的所有 employee 记录
+        List<Employee> emps = this.lambdaQuery()
+                .eq(Employee::getUserId, userId)
+                .list();
+        if (emps.isEmpty()) return Collections.emptyList();
+        List<Long> empIds = emps.stream().map(Employee::getId).collect(Collectors.toList());
+        // 查所有部门，找到 managerId 在 empIds 中的
+        List<Department> allDepts = departmentService.list();
+        Set<Long> deptIds = new HashSet<>();
+        for (Department d : allDepts) {
+            if (d.getManagerId() != null && empIds.contains(d.getManagerId())) {
+                deptIds.add(d.getId());
+                collectChildDeptIds(allDepts, d.getId(), deptIds);
+            }
+        }
         return new ArrayList<>(deptIds);
     }
 

@@ -6,8 +6,14 @@ import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.constant.DataScopeContext;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.mapper.ApprovalDelegateMapper;
+import com.limou.hrms.mapper.EmployeeMapper;
+import com.limou.hrms.mapper.EmployeePersonalInfoMapper;
+import com.limou.hrms.mapper.EmployeeWorkInfoMapper;
 import com.limou.hrms.model.dto.approval.DelegateSettingDTO;
 import com.limou.hrms.model.entity.ApprovalDelegate;
+import com.limou.hrms.model.entity.Employee;
+import com.limou.hrms.model.entity.EmployeePersonalInfo;
+import com.limou.hrms.model.entity.EmployeeWorkInfo;
 import com.limou.hrms.model.vo.MyDelegatesVO;
 import com.limou.hrms.service.ApprovalDelegateService;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +35,12 @@ public class ApprovalDelegateServiceImpl extends ServiceImpl<ApprovalDelegateMap
 
     @Resource
     private ApprovalDelegateMapper approvalDelegateMapper;
+    @Resource
+    private EmployeeMapper employeeMapper;
+    @Resource
+    private EmployeePersonalInfoMapper personalInfoMapper;
+    @Resource
+    private EmployeeWorkInfoMapper workInfoMapper;
     @Resource
     private DataScopeContext dataScopeContext;
     @Resource
@@ -97,15 +109,42 @@ public class ApprovalDelegateServiceImpl extends ServiceImpl<ApprovalDelegateMap
 
     @Override
     public MyDelegatesVO getMyDelegates() {
-        Long userId = resolveCurrentEmployeeId();
+        Long empId = resolveCurrentEmployeeId();
         MyDelegatesVO result = new MyDelegatesVO();
         // asDelegator: 我委托别人
-        result.setAsDelegator(approvalDelegateMapper.selectList(
-                new QueryWrapper<ApprovalDelegate>().eq("delegator_id", userId).eq("enabled", 1)));
+        List<ApprovalDelegate> asDelegator = approvalDelegateMapper.selectList(
+                new QueryWrapper<ApprovalDelegate>().eq("delegator_id", empId).eq("enabled", 1));
+        enrichDelegateNames(asDelegator);
+        result.setAsDelegator(asDelegator);
         // asDelegate: 别人委托我
-        result.setAsDelegate(approvalDelegateMapper.selectList(
-                new QueryWrapper<ApprovalDelegate>().eq("delegate_id", userId).eq("enabled", 1)));
+        List<ApprovalDelegate> asDelegate = approvalDelegateMapper.selectList(
+                new QueryWrapper<ApprovalDelegate>().eq("delegate_id", empId).eq("enabled", 1));
+        enrichDelegateNames(asDelegate);
+        result.setAsDelegate(asDelegate);
         return result;
+    }
+
+    /** 根据 delegateId/delegatorId 填充姓名和职位 */
+    private void enrichDelegateNames(List<ApprovalDelegate> list) {
+        for (ApprovalDelegate d : list) {
+            // 被委托人
+            Employee emp = employeeMapper.selectById(d.getDelegateId());
+            if (emp != null) {
+                EmployeePersonalInfo info = personalInfoMapper.selectOne(
+                        new QueryWrapper<EmployeePersonalInfo>().eq("employee_id", emp.getId()).last("LIMIT 1"));
+                if (info != null) d.setDelegateName(info.getName());
+                EmployeeWorkInfo wi = workInfoMapper.selectOne(
+                        new QueryWrapper<EmployeeWorkInfo>().eq("employee_id", emp.getId()).last("LIMIT 1"));
+                if (wi != null) d.setDelegatePosition(wi.getJobLevel());
+            }
+            // 委托人
+            Employee delegatorEmp = employeeMapper.selectById(d.getDelegatorId());
+            if (delegatorEmp != null) {
+                EmployeePersonalInfo info = personalInfoMapper.selectOne(
+                        new QueryWrapper<EmployeePersonalInfo>().eq("employee_id", delegatorEmp.getId()).last("LIMIT 1"));
+                if (info != null) d.setDelegatorName(info.getName());
+            }
+        }
     }
 
     @Override

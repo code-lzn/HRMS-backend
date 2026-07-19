@@ -47,7 +47,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ProfileServiceImpl implements ProfileService {
 
-    private static final String SALT = "pwd";
+    private static final String SALT = "limou";
     private static final Pattern PASSWORD_PATTERN = Pattern.compile("^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).{8,}$");
     private static final Pattern PHONE_PATTERN = Pattern.compile("^1[3-9]\\d{9}$");
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");

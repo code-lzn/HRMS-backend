@@ -287,7 +287,7 @@ public class OnboardingServiceImpl
         // 2. 先创建系统账号（账号=手机号，初始密码 12345678，首次登录强制修改）
         User user = new User();
         user.setUserAccount(app.getPhone());
-        user.setUserPassword(DigestUtils.md5DigestAsHex(("pwd" + "12345678").getBytes()));
+        user.setUserPassword(DigestUtils.md5DigestAsHex(("limou" + "12345678").getBytes()));
         user.setUserName(app.getName());
         user.setUserRole(UserRoleEnum.USER.getValue());
         user.setPwdReset(1); // 首次登录强制修改密码

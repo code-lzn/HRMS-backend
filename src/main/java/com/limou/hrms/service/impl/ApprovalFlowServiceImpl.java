@@ -338,10 +338,16 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
         int pageSize = query.getPageSize();
         int offset = Math.max(0, (query.getCurrent() - 1) * pageSize);
 
+        // 排除我委托出去的审批节点（已委托 → 原审批人不再看到）
+        String excludeDelegatedSql = "NOT EXISTS (SELECT 1 FROM approval_delegate d " +
+                "WHERE d.delegator_id = " + employeeId + " " +
+                "AND d.enabled = 1 AND NOW() BETWEEN d.start_time AND d.end_time)";
+
         long ownCount = approvalNodeMapper.selectCount(
                 new QueryWrapper<ApprovalNode>()
                         .eq("approver_id", employeeId)
-                        .eq("status", NodeStatus.PENDING.getCode()));
+                        .eq("status", NodeStatus.PENDING.getCode())
+                        .apply(excludeDelegatedSql));
 
         long delegateCount = approvalNodeMapper.selectCount(
                 new QueryWrapper<ApprovalNode>()
@@ -354,6 +360,7 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
         QueryWrapper<ApprovalNode> ownQw = new QueryWrapper<>();
         ownQw.eq("approver_id", employeeId)
              .eq("status", NodeStatus.PENDING.getCode())
+             .apply(excludeDelegatedSql)
              .orderByDesc("create_time")
              .last("LIMIT " + pageSize + " OFFSET " + offset);
 
@@ -615,9 +622,18 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
             nvo.setNodeOrder(node.getNodeOrder());
             nvo.setApproverId(node.getApproverId());
             nvo.setApproverName(approverResolver.getEmployeeName(node.getApproverId()));
-            nvo.setOriginalApproverId(node.getOriginalApproverId());
-            nvo.setOriginalApproverName(node.getOriginalApproverId() != null
-                    ? approverResolver.getEmployeeName(node.getOriginalApproverId()) : null);
+            // 查委托关系：如果审批人有活跃委托，显示原审批人→被委托人
+            Long resolvedId = approvalDelegateService.resolveApprover(node.getApproverId());
+            if (resolvedId != null && !resolvedId.equals(node.getApproverId())) {
+                nvo.setOriginalApproverId(node.getApproverId());
+                nvo.setOriginalApproverName(approverResolver.getEmployeeName(node.getApproverId()));
+                nvo.setApproverId(resolvedId);
+                nvo.setApproverName(approverResolver.getEmployeeName(resolvedId));
+            } else {
+                nvo.setOriginalApproverId(node.getOriginalApproverId());
+                nvo.setOriginalApproverName(node.getOriginalApproverId() != null
+                        ? approverResolver.getEmployeeName(node.getOriginalApproverId()) : null);
+            }
             nvo.setStatus(node.getStatus());
             NodeStatus ns = NodeStatus.fromCode(node.getStatus());
             nvo.setStatusDesc(ns != null ? ns.getDesc() : "");

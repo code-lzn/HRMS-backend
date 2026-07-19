@@ -49,5 +49,10 @@ public class EmployeeQueryRequest extends PageRequest implements Serializable {
      */
     private LocalDate hireDateEnd;
 
+    /**
+     * 是否查询全员（true 时跳过部门数据隔离，仅 dept_head 以上可用）
+     */
+    private Boolean all;
+
     private static final long serialVersionUID = 1L;
 }
