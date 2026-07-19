@@ -16,6 +16,13 @@ public interface LeaveService extends IService<Leave> {
      * 申请请假
      */
     LeaveVO apply(Long userId, Integer leaveType, String startDate, String endDate, String reason, Integer timeSlot);
+//    LeaveVO apply(Long userId, Integer leaveType, String startDate, String endDate, String reason);
+
+    /**
+     * 审批请假
+     *
+     */
+    LeaveVO approve(Long requestId, Integer result, String comment, Long approverId);
 
     /**
      * 获取我的请假记录

@@ -302,7 +302,7 @@ public class UserController {
         }
         User user = new User();
         user.setId(id);
-        user.setIsDelete(status == 1 ? 0 : 1);
+        user.setStatus(status == 1 ? 0 : 1);
         boolean result = userService.updateById(user);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
         return ResultUtils.success(true);

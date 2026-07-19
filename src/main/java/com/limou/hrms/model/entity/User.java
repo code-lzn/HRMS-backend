@@ -72,5 +72,10 @@ public class User implements Serializable {
      */
     private Integer isDelete;
 
+    /**
+     * 账号状态：1=启用, 0=禁用
+     */
+    private Integer status;
+
     private static final long serialVersionUID = 5722402489699486655L;
 }

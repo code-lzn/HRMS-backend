@@ -150,6 +150,31 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public LeaveVO approve(Long requestId, Integer result, String comment, Long approverId) {
+        Leave request = this.getById(requestId);
+        ThrowUtils.throwIf(request == null, ErrorCode.NOT_FOUND_ERROR, "请假申请不存在");
+        ThrowUtils.throwIf(!Objects.equals(request.getStatus(), ApprovalStatusEnum.PENDING.getValue()),
+                ErrorCode.APPROVAL_NOT_PENDING_ERROR);
+        Date now = new Date();
+        request.setStatus(result);
+        request.setApproverId(approverId);
+        request.setApproveTime(now);
+        request.setApproveComment(comment);
+
+        boolean updated = this.updateById(request);
+        ThrowUtils.throwIf(!updated, ErrorCode.OPERATION_ERROR, "审批失败");
+
+        // 如果拒绝，还原考勤状态
+        if (Objects.equals(result, ApprovalStatusEnum.REJECTED.getValue())) {
+            revertAttendanceForLeave(request.getEmployeeId(), request.getStartDate(), request.getEndDate());
+        }
+
+        Employee emp = employeeService.lambdaQuery().eq(Employee::getId, request.getEmployeeId()).one();
+        return convertToVO(request, emp);
+    }
+
+    @Override
     public List<LeaveVO> getMyLeaves(Long userId) {
         Employee emp = getEmployee(userId);
         List<Leave> list = this.lambdaQuery()

@@ -12,6 +12,7 @@ public enum ErrorCode {
     NO_AUTH_ERROR(40101, "无权限"),
     NOT_FOUND_ERROR(40400, "请求数据不存在"),
     FORBIDDEN_ERROR(40300, "禁止访问"),
+    ACCOUNT_DISABLED_ERROR(40301, "账号已被禁用，请联系管理员"),
     SYSTEM_ERROR(50000, "系统内部异常"),
     OPERATION_ERROR(50001, "操作失败"),
     ATTENDANCE_DUPLICATE_ERROR(50010, "今日已打卡，请勿重复打卡"),

@@ -137,6 +137,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             }
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户不存在或密码错误");
         }
+        // 检查账号是否被禁用
+        if (user.getStatus() != null && user.getStatus() == 0) {
+            throw new BusinessException(ErrorCode.ACCOUNT_DISABLED_ERROR);
+        }
         // 3. 记录用户的登录态
         request.getSession().setAttribute(USER_LOGIN_STATE, user);
         // 记录登录成功日志

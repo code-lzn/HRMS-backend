@@ -4,6 +4,7 @@ import com.limou.hrms.common.BaseResponse;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.common.ResultUtils;
 import com.limou.hrms.exception.BusinessException;
+import com.limou.hrms.model.dto.attendance.ApprovalRequest;
 import com.limou.hrms.model.dto.attendance.LeaveApplyRequest;
 import com.limou.hrms.model.entity.Employee;
 import com.limou.hrms.model.entity.User;
@@ -70,6 +71,22 @@ public class LeaveController {
                 applyRequest.getLeaveType(), applyRequest.getStartDate(),
                 applyRequest.getEndDate(), applyRequest.getReason(),
                 applyRequest.getTimeSlot());
+        return ResultUtils.success(vo);
+    }
+
+    /**
+     * 审批请假
+     *
+     */
+    @PostMapping("/approve")
+    public BaseResponse<LeaveVO> approve(@RequestBody ApprovalRequest approvalRequest,
+                                                 HttpServletRequest request) {
+        if (approvalRequest == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        User loginUser = userService.getLoginUser(request);
+        LeaveVO vo = leaveService.approve(approvalRequest.getId(),
+                approvalRequest.getResult(), approvalRequest.getComment(), loginUser.getId());
         return ResultUtils.success(vo);
     }
 
