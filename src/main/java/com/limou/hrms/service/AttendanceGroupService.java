@@ -32,4 +32,9 @@ public interface AttendanceGroupService extends IService<AttendanceGroup> {
      * 删除考勤组（逻辑删除）
      */
     void deleteAttendanceGroup(Long id);
+
+    /**
+     * 查询考勤组详情
+     */
+    AttendanceGroupVO getAttendanceGroupDetail(Long id);
 }
