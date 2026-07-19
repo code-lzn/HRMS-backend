@@ -224,12 +224,21 @@ public class AttendanceStatsServiceImpl implements AttendanceStatsService {
     }
 
     @Override
-    public AttendanceTrendVO getAttendanceTrend(Long departmentId, Integer months) {
+    public AttendanceTrendVO getAttendanceTrend(Long departmentId, Integer months, String endMonth) {
         AttendanceTrendVO vo = new AttendanceTrendVO();
         List<String> monthList = new ArrayList<>();
         List<Double> rateList = new ArrayList<>();
 
-        Calendar cal = Calendar.getInstance();
+        boolean allDepts = (departmentId == null || departmentId <= 0);
+
+        // 以 endMonth 为基准向前推 months 个月，未传则用当前月
+        Calendar cal;
+        if (endMonth != null && !endMonth.isEmpty()) {
+            cal = Calendar.getInstance();
+            cal.setTime(DateUtil.parseDate(endMonth + "-01"));
+        } else {
+            cal = Calendar.getInstance();
+        }
         for (int i = months - 1; i >= 0; i--) {
             Calendar temp = (Calendar) cal.clone();
             temp.add(Calendar.MONTH, -i);
@@ -237,11 +246,22 @@ public class AttendanceStatsServiceImpl implements AttendanceStatsService {
             monthList.add(month);
 
             List<DepartmentAttendanceStatsVO> statsList = getDepartmentStats(month);
-            DepartmentAttendanceStatsVO stats = statsList.stream()
-                    .filter(s -> s.getDepartmentId().equals(departmentId))
-                    .findFirst().orElse(null);
 
-            rateList.add(stats != null ? stats.getAttendanceRate() : 0.0);
+            double rate;
+            if (allDepts) {
+                // 全部部门：计算总体出勤率
+                int totalAttendance = statsList.stream()
+                        .mapToInt(DepartmentAttendanceStatsVO::getActualAttendanceDays).sum();
+                int totalShould = statsList.stream()
+                        .mapToInt(s -> s.getTotalWorkDays() * s.getEmployeeCount()).sum();
+                rate = totalShould > 0 ? (totalAttendance * 100.0 / totalShould) : 0;
+            } else {
+                DepartmentAttendanceStatsVO stats = statsList.stream()
+                        .filter(s -> s.getDepartmentId().equals(departmentId))
+                        .findFirst().orElse(null);
+                rate = stats != null ? stats.getAttendanceRate() : 0.0;
+            }
+            rateList.add(BigDecimal.valueOf(rate).setScale(2, RoundingMode.HALF_UP).doubleValue());
         }
 
         vo.setMonths(monthList);
@@ -250,14 +270,27 @@ public class AttendanceStatsServiceImpl implements AttendanceStatsService {
     }
 
     @Override
-    public LeaveTypeDistributionVO getLeaveTypeDistribution(String month) {
+    public LeaveTypeDistributionVO getLeaveTypeDistribution(String month, Long departmentId) {
         Date monthStart = DateUtil.parseDate(month + "-01");
         Date monthEnd = DateUtil.endOfMonth(monthStart);
+
+        // 按部门过滤：先查出部门下的员工ID
+        Set<Long> deptEmpIds = null;
+        if (departmentId != null && departmentId > 0) {
+            deptEmpIds = employeeService.lambdaQuery()
+                    .eq(Employee::getDepartmentId, departmentId)
+                    .eq(Employee::getIsDeleted, 0)
+                    .list().stream().map(Employee::getId).collect(Collectors.toSet());
+            if (deptEmpIds.isEmpty()) {
+                return new LeaveTypeDistributionVO();
+            }
+        }
 
         List<Leave> leaves = leaveService.lambdaQuery()
                 .eq(Leave::getStatus, 1)
                 .ge(Leave::getStartDate, DateUtil.formatDate(monthStart))
                 .le(Leave::getStartDate, DateUtil.formatDate(monthEnd))
+                .in(deptEmpIds != null, Leave::getEmployeeId, deptEmpIds)
                 .list();
 
         Map<Integer, Integer> typeCountMap = new HashMap<>();
@@ -287,14 +320,27 @@ public class AttendanceStatsServiceImpl implements AttendanceStatsService {
     }
 
     @Override
-    public List<AttendanceStatsVO> getLateEarlyRanking(String month) {
+    public List<AttendanceStatsVO> getLateEarlyRanking(String month, Long departmentId) {
         Date monthStart = DateUtil.parseDate(month + "-01");
         Date monthEnd = DateUtil.endOfMonth(monthStart);
+
+        // 按部门过滤
+        Set<Long> deptEmpIds = null;
+        if (departmentId != null && departmentId > 0) {
+            deptEmpIds = employeeService.lambdaQuery()
+                    .eq(Employee::getDepartmentId, departmentId)
+                    .eq(Employee::getIsDeleted, 0)
+                    .list().stream().map(Employee::getId).collect(Collectors.toSet());
+            if (deptEmpIds.isEmpty()) {
+                return Collections.emptyList();
+            }
+        }
 
         List<Attendance> records = attendanceService.lambdaQuery()
                 .ge(Attendance::getAttendanceDate, DateUtil.formatDate(monthStart))
                 .le(Attendance::getAttendanceDate, DateUtil.formatDate(monthEnd))
                 .in(Attendance::getStatus, Arrays.asList(1, 2))
+                .in(deptEmpIds != null, Attendance::getEmployeeId, deptEmpIds)
                 .list();
 
         Map<Long, Integer> lateCountMap = new HashMap<>();

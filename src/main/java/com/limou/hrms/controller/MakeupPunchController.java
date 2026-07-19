@@ -7,6 +7,7 @@ import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.model.dto.attendance.ApprovalRequest;
 import com.limou.hrms.model.dto.attendance.MakeupPunchApplyRequest;
 import com.limou.hrms.model.entity.User;
+import com.limou.hrms.model.vo.MakeupPunchProgressVO;
 import com.limou.hrms.model.vo.MakeupPunchVO;
 import com.limou.hrms.service.MakeupPunchService;
 import com.limou.hrms.service.UserService;
@@ -70,5 +71,26 @@ public class MakeupPunchController {
         User loginUser = userService.getLoginUser(request);
         List<MakeupPunchVO> list = makeupPunchService.getMyMakeupPunches(loginUser.getId());
         return ResultUtils.success(list);
+    }
+
+    /**
+     * 获取补卡审批进度
+     */
+    @GetMapping("/{id}/progress")
+    public BaseResponse<MakeupPunchProgressVO> getApprovalProgress(
+            @PathVariable Long id, HttpServletRequest request) {
+        User loginUser = userService.getLoginUser(request);
+        MakeupPunchProgressVO vo = makeupPunchService.getApprovalProgress(id, loginUser.getId());
+        return ResultUtils.success(vo);
+    }
+
+    /**
+     * 撤回补卡申请
+     */
+    @PostMapping("/cancel/{id}")
+    public BaseResponse<Boolean> cancel(@PathVariable Long id, HttpServletRequest request) {
+        User loginUser = userService.getLoginUser(request);
+        makeupPunchService.cancel(id, loginUser.getId());
+        return ResultUtils.success(true);
     }
 }

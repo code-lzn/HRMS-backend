@@ -10,11 +10,11 @@ public interface AttendanceStatsService {
 
     List<DepartmentAttendanceStatsVO> getDepartmentStats(String month);
 
-    AttendanceTrendVO getAttendanceTrend(Long departmentId, Integer months);
+    AttendanceTrendVO getAttendanceTrend(Long departmentId, Integer months, String endMonth);
 
-    LeaveTypeDistributionVO getLeaveTypeDistribution(String month);
+    LeaveTypeDistributionVO getLeaveTypeDistribution(String month, Long departmentId);
 
-    List<AttendanceStatsVO> getLateEarlyRanking(String month);
+    List<AttendanceStatsVO> getLateEarlyRanking(String month, Long departmentId);
 
     AttendanceTrendVO getPersonalTrend(Long userId, Integer months);
 

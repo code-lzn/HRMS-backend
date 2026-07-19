@@ -87,6 +87,11 @@ public class Attendance implements Serializable {
     private Double overtimeHours;
 
     /**
+     * 半天请假：0=无 1=上午请假 2=下午请假
+     */
+    private Integer halfDayLeave;
+
+    /**
      * 备注
      */
     private String remark;

@@ -68,7 +68,8 @@ public class LeaveController {
         User loginUser = userService.getLoginUser(request);
         LeaveVO vo = leaveService.apply(loginUser.getId(),
                 applyRequest.getLeaveType(), applyRequest.getStartDate(),
-                applyRequest.getEndDate(), applyRequest.getReason());
+                applyRequest.getEndDate(), applyRequest.getReason(),
+                applyRequest.getTimeSlot());
         return ResultUtils.success(vo);
     }
 

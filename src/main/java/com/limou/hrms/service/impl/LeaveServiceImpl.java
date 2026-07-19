@@ -18,6 +18,7 @@ import com.limou.hrms.model.enums.BusinessTypeEnum;
 import com.limou.hrms.model.enums.LeaveFlowEnum;
 import com.limou.hrms.model.enums.LeaveTypeEnum;
 import com.limou.hrms.model.enums.ProgressNodeStatusEnum;
+import com.limou.hrms.model.enums.PunchTypeEnum;
 import com.limou.hrms.model.entity.ApprovalFlow;
 import com.limou.hrms.model.vo.LeaveBalanceVO;
 import com.limou.hrms.model.vo.LeaveProgressVO;
@@ -79,15 +80,23 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public LeaveVO apply(Long userId, Integer leaveType, String startDate, String endDate, String reason) {
+    public LeaveVO apply(Long userId, Integer leaveType, String startDate, String endDate,
+                         String reason, Integer timeSlot) {
         Employee emp = getEmployee(userId);
         Date start = DateUtil.parseDate(startDate);
         Date end = DateUtil.parseDate(endDate);
 
         ThrowUtils.throwIf(start.after(end), ErrorCode.PARAMS_ERROR, "开始日期不能晚于结束日期");
 
-        // 计算请假天数（基于工作时间 9:00-18:00，最少0.5天）
-        double days = calculateLeaveDays(start, end);
+        int slot = timeSlot != null ? timeSlot : 0;
+        // 半天请假：强制起止日期为同一天
+        if (slot != 0) {
+            ThrowUtils.throwIf(!DateUtil.formatDate(start).equals(DateUtil.formatDate(end)),
+                    ErrorCode.PARAMS_ERROR, "半天请假起止日期必须为同一天");
+        }
+
+        // 计算请假天数（基于工作时间 9:00-18:00，半天=0.5，最少0.5天）
+        double days = slot != 0 ? 0.5 : calculateLeaveDays(start, end);
 
         // 年假/病假/调休校验余额
         checkLeaveBalance(emp.getId(), leaveType, BigDecimal.valueOf(days));
@@ -112,6 +121,7 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
         request.setStartDate(start);
         request.setEndDate(end);
         request.setTotalDays(BigDecimal.valueOf(days));
+        request.setTimeSlot(slot);
         request.setReason(reason);
         request.setApproverId(approverId);
         request.setStatus(ApprovalStatusEnum.PENDING.getValue());
@@ -133,8 +143,8 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
         approvalService.startApprovalByFlowId(flow.getId(), BusinessTypeEnum.LEAVE.getValue(),
                 request.getId(), emp.getId(), emp.getEmployeeName());
 
-        // 同步更新考勤记录状态为"请假"
-        updateAttendanceForLeave(emp.getId(), start, end);
+        // 同步更新考勤记录状态
+        updateAttendanceForLeave(emp.getId(), start, end, slot);
 
         return convertToVO(request, emp);
     }
@@ -339,7 +349,7 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
     }
 
     /**
-     * 计算请假天数，仅统计工作时间 (9:00-18:00) 内的重叠小时数
+     * 计算请假天数，仅统计工作日在工作时间 (9:00-18:00) 内的重叠小时数
      */
     private double calculateLeaveDays(Date start, Date end) {
         final int WORK_START = AttendanceConstant.DEFAULT_WORK_START_HOUR; // 9
@@ -353,6 +363,13 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
 
         while (!cursor.getTime().after(endDate)) {
             Date dayStart = cursor.getTime();
+
+            // 跳过非工作日（周末+节假日）
+            if (!holidayConfigService.isWorkDay(dayStart)) {
+                cursor.add(Calendar.DAY_OF_MONTH, 1);
+                continue;
+            }
+
             Date dayEnd = DateUtil.endOfDay(dayStart);
 
             // 当天的工作时间段
@@ -372,6 +389,9 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
             cursor.add(Calendar.DAY_OF_MONTH, 1);
         }
 
+        if (totalWorkMinutes == 0) {
+            return 0;
+        }
         double days = totalWorkMinutes / 60.0 / WORK_HOURS_PER_DAY;
         return Math.max(days, 0.5);
     }
@@ -384,16 +404,19 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
         vo.setLeaveTypeText(leaveType != null ? leaveType.getText() : "未知");
         ApprovalStatusEnum status = ApprovalStatusEnum.getEnumByValue(request.getStatus());
         vo.setStatusText(status != null ? status.getText() : "未知");
+        vo.setTimeSlot(request.getTimeSlot());
+        if (request.getTimeSlot() != null) {
+            vo.setTimeSlotText(request.getTimeSlot() == 1 ? "上午" : request.getTimeSlot() == 2 ? "下午" : "全天");
+        }
         return vo;
     }
 
     /**
      * 请假通过后，更新考勤记录状态为"请假"
      */
-    private void updateAttendanceForLeave(Long employeeId, Date start, Date end) {
+    private void updateAttendanceForLeave(Long employeeId, Date start, Date end, int timeSlot) {
         Date cursor = start;
         while (!cursor.after(end)) {
-            // 非工作日跳过
             if (!holidayConfigService.isWorkDay(cursor)) {
                 cursor = DateUtil.offsetDay(cursor, 1);
                 continue;
@@ -407,12 +430,21 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
                 record = new Attendance();
                 record.setEmployeeId(employeeId);
                 record.setAttendanceDate(DateUtil.parseDate(dateStr));
-                record.setStatus(AttendanceStatusEnum.LEAVE.getValue());
-                attendanceService.save(record);
-            } else {
-                record.setStatus(AttendanceStatusEnum.LEAVE.getValue());
-                attendanceService.updateById(record);
+                record.setPunchInType(PunchTypeEnum.WEB.getValue());
+                record.setPunchOutType(PunchTypeEnum.WEB.getValue());
             }
+
+            if (timeSlot != 0) {
+                // 半天请假：不覆盖已有打卡状态，设置 halfDayLeave 标记
+                record.setHalfDayLeave(timeSlot);
+                if (record.getStatus() == null || !Objects.equals(record.getStatus(), AttendanceStatusEnum.LATE.getValue())) {
+                    record.setStatus(AttendanceStatusEnum.NORMAL.getValue());
+                }
+            } else {
+                // 全天请假：标记为请假
+                record.setStatus(AttendanceStatusEnum.LEAVE.getValue());
+            }
+            attendanceService.saveOrUpdate(record);
             cursor = DateUtil.offsetDay(cursor, 1);
         }
     }
@@ -428,14 +460,18 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
                     .eq(Attendance::getEmployeeId, employeeId)
                     .eq(Attendance::getAttendanceDate, DateUtil.parseDate(dateStr))
                     .one();
-            if (record != null && Objects.equals(record.getStatus(), AttendanceStatusEnum.LEAVE.getValue())) {
-                if (record.getPunchInTime() != null || record.getPunchOutTime() != null) {
-                    // 有打卡记录：还原为正常
-                    record.setStatus(AttendanceStatusEnum.NORMAL.getValue());
+            if (record != null) {
+                // 清除半天请假标记
+                if (record.getHalfDayLeave() != null && record.getHalfDayLeave() != 0) {
+                    record.setHalfDayLeave(0);
                     attendanceService.updateById(record);
-                } else {
-                    // 无打卡记录：该记录是请假时创建的，直接删除
-                    attendanceService.removeById(record.getId());
+                } else if (Objects.equals(record.getStatus(), AttendanceStatusEnum.LEAVE.getValue())) {
+                    if (record.getPunchInTime() != null || record.getPunchOutTime() != null) {
+                        record.setStatus(AttendanceStatusEnum.NORMAL.getValue());
+                        attendanceService.updateById(record);
+                    } else {
+                        attendanceService.removeById(record.getId());
+                    }
                 }
             }
             cursor = DateUtil.offsetDay(cursor, 1);

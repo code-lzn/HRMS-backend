@@ -18,6 +18,7 @@ import com.limou.hrms.model.enums.DataScopeEnum;
 import com.limou.hrms.model.enums.LeaveTypeEnum;
 import com.limou.hrms.model.vo.HRAttendanceVO;
 import com.limou.hrms.model.vo.PageResult;
+import com.limou.hrms.service.AttendanceGroupService;
 import com.limou.hrms.service.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -51,6 +52,9 @@ public class HRAttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Atten
 
     @Resource
     private UserService userService;
+
+    @Resource
+    private AttendanceGroupService attendanceGroupService;
 
     @Override
     public PageResult<HRAttendanceVO> queryAttendance(HRAttendanceQueryRequest request, HttpServletRequest httpRequest) {
@@ -230,10 +234,32 @@ public class HRAttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Atten
             return;
         }
 
+        // 获取员工考勤组规则
+        AttendanceGroup group = attendanceGroupService.getGroupByEmployeeId(record.getEmployeeId());
+        int workStartHour = AttendanceConstant.DEFAULT_WORK_START_HOUR;
+        int workEndHour = AttendanceConstant.DEFAULT_WORK_END_HOUR;
+        int lateGrace = AttendanceConstant.LATE_GRACE_MINUTES;
+        int earlyGrace = AttendanceConstant.LATE_GRACE_MINUTES;
+
+        if (group != null) {
+            if (group.getWorkStartTime() != null) {
+                workStartHour = DateUtil.hour(group.getWorkStartTime(), true);
+            }
+            if (group.getWorkEndTime() != null) {
+                workEndHour = DateUtil.hour(group.getWorkEndTime(), true);
+            }
+            if (group.getLateThreshold() != null) {
+                lateGrace = group.getLateThreshold();
+            }
+            if (group.getEarlyThreshold() != null) {
+                earlyGrace = group.getEarlyThreshold();
+            }
+        }
+
         if (record.getPunchInTime() != null) {
             int punchInHour = DateUtil.hour(record.getPunchInTime(), true);
             int punchInMinute = DateUtil.minute(record.getPunchInTime());
-            int thresholdMinutes = AttendanceConstant.DEFAULT_WORK_START_HOUR * 60 + AttendanceConstant.LATE_GRACE_MINUTES;
+            int thresholdMinutes = workStartHour * 60 + lateGrace;
             int punchInTotalMinutes = punchInHour * 60 + punchInMinute;
 
             if (punchInTotalMinutes > thresholdMinutes) {
@@ -244,10 +270,10 @@ public class HRAttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Atten
         if (record.getPunchOutTime() != null) {
             int punchOutHour = DateUtil.hour(record.getPunchOutTime(), true);
             int punchOutMinute = DateUtil.minute(record.getPunchOutTime());
-            int workEndMinutes = AttendanceConstant.DEFAULT_WORK_END_HOUR * 60;
+            int workEndMinutes = workEndHour * 60;
             int punchOutTotalMinutes = punchOutHour * 60 + punchOutMinute;
 
-            if (punchOutTotalMinutes < workEndMinutes) {
+            if (punchOutTotalMinutes < workEndMinutes - earlyGrace) {
                 record.setEarlyMinutes(workEndMinutes - punchOutTotalMinutes);
             } else if (punchOutTotalMinutes > workEndMinutes) {
                 record.setOvertimeHours((punchOutTotalMinutes - workEndMinutes) / 60.0);

@@ -66,6 +66,9 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
         Date now = new Date();
         String today = DateUtil.formatDate(now);
 
+        // 休息日打卡：无论何时打卡都记为休息
+        boolean isWorkDay = holidayConfigService.isWorkDay(now);
+
         // 查今天的打卡记录
         Attendance record = this.lambdaQuery()
                 .eq(Attendance::getEmployeeId, emp.getId())
@@ -80,10 +83,29 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
             record.setEmployeeId(emp.getId());
             record.setUserId(userId);
             record.setAttendanceDate(DateUtil.parseDate(today));
-            record.setStatus(AttendanceStatusEnum.NORMAL.getValue());
+            record.setStatus(isWorkDay ? AttendanceStatusEnum.NORMAL.getValue()
+                                       : AttendanceStatusEnum.REST.getValue());
             record.setPunchInType(PunchTypeEnum.WEB.getValue());
             record.setPunchOutType(PunchTypeEnum.WEB.getValue());
         }
+
+        // 休息日：直接记录打卡时间，状态保持 REST，不判断迟到/早退
+        if (!isWorkDay) {
+            if (isPunchIn) {
+                record.setPunchInTime(now);
+                record.setPunchInLocation(location);
+            } else {
+                record.setPunchOutTime(now);
+                record.setPunchOutLocation(location);
+            }
+            record.setStatus(AttendanceStatusEnum.REST.getValue());
+            boolean saved = this.saveOrUpdate(record);
+            ThrowUtils.throwIf(!saved, ErrorCode.OPERATION_ERROR, "打卡失败");
+            return convertToVO(record, emp);
+        }
+
+        // 工作日：正常判断迟到/早退
+        AttendanceGroup group = attendanceGroupService.getGroupByEmployeeId(emp.getId());
 
         if (isPunchIn) {
             ThrowUtils.throwIf(record.getPunchInTime() != null,
@@ -91,20 +113,22 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
             record.setPunchInTime(now);
             record.setPunchInLocation(location);
 
-            // 获取员工考勤组，使用组内规则判断迟到
-            AttendanceGroup group = attendanceGroupService.getGroupByEmployeeId(emp.getId());
-            int workStartHour = AttendanceConstant.DEFAULT_WORK_START_HOUR;
-            int lateGrace = AttendanceConstant.LATE_GRACE_MINUTES;
-            if (group != null && group.getWorkStartTime() != null) {
-                workStartHour = DateUtil.hour(group.getWorkStartTime(), true);
-                lateGrace = group.getLateThreshold() != null ? group.getLateThreshold() : lateGrace;
-            }
+            // 上午请假：跳过迟到判断
+            boolean isAmLeave = record.getHalfDayLeave() != null && record.getHalfDayLeave() == 1;
+            if (!isAmLeave) {
+                int workStartHour = AttendanceConstant.DEFAULT_WORK_START_HOUR;
+                int lateGrace = AttendanceConstant.LATE_GRACE_MINUTES;
+                if (group != null && group.getWorkStartTime() != null) {
+                    workStartHour = DateUtil.hour(group.getWorkStartTime(), true);
+                    lateGrace = group.getLateThreshold() != null ? group.getLateThreshold() : lateGrace;
+                }
 
-            int hour = DateUtil.hour(now, true);
-            int minute = DateUtil.minute(now);
-            int thresholdMinutes = workStartHour * 60 + lateGrace;
-            if (hour * 60 + minute > thresholdMinutes) {
-                record.setStatus(AttendanceStatusEnum.LATE.getValue());
+                int hour = DateUtil.hour(now, true);
+                int minute = DateUtil.minute(now);
+                int thresholdMinutes = workStartHour * 60 + lateGrace;
+                if (hour * 60 + minute > thresholdMinutes) {
+                    record.setStatus(AttendanceStatusEnum.LATE.getValue());
+                }
             }
         } else {
             ThrowUtils.throwIf(record.getPunchOutTime() != null,
@@ -112,31 +136,30 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
             record.setPunchOutTime(now);
             record.setPunchOutLocation(location);
 
-            // 获取考勤组规则判断早退
-            AttendanceGroup group = attendanceGroupService.getGroupByEmployeeId(emp.getId());
-            int workEndHour = AttendanceConstant.DEFAULT_WORK_END_HOUR;
-            int earlyThreshold = AttendanceConstant.LATE_GRACE_MINUTES;
-            if (group != null && group.getWorkEndTime() != null) {
-                workEndHour = DateUtil.hour(group.getWorkEndTime(), true);
-                earlyThreshold = group.getEarlyThreshold() != null ? group.getEarlyThreshold() : earlyThreshold;
-            }
-
-            int hour = DateUtil.hour(now, true);
-            int minute = DateUtil.minute(now);
-            int earlyMinutes = workEndHour * 60 - (hour * 60 + minute);
-
-            if (earlyMinutes > earlyThreshold) {
-                // 早退：下班时间比规定时间早，且超过阈值
-                record.setEarlyMinutes(earlyMinutes);
-                // 如果已经迟到，保持迟到状态（叠加违规取首次违规）
-                if (!Objects.equals(record.getStatus(), AttendanceStatusEnum.LATE.getValue())) {
-                    record.setStatus(AttendanceStatusEnum.LEAVE_EARLY.getValue());
+            // 下午请假：跳过早退判断
+            boolean isPmLeave = record.getHalfDayLeave() != null && record.getHalfDayLeave() == 2;
+            if (!isPmLeave) {
+                int workEndHour = AttendanceConstant.DEFAULT_WORK_END_HOUR;
+                int earlyThreshold = AttendanceConstant.LATE_GRACE_MINUTES;
+                if (group != null && group.getWorkEndTime() != null) {
+                    workEndHour = DateUtil.hour(group.getWorkEndTime(), true);
+                    earlyThreshold = group.getEarlyThreshold() != null ? group.getEarlyThreshold() : earlyThreshold;
                 }
-            } else {
-                // 正常下班：保持原有状态（迟到仍然是迟到，正常则保持正常）
-                if (!Objects.equals(record.getStatus(), AttendanceStatusEnum.LATE.getValue())
-                        && !Objects.equals(record.getStatus(), AttendanceStatusEnum.LEAVE_EARLY.getValue())) {
-                    record.setStatus(AttendanceStatusEnum.NORMAL.getValue());
+
+                int hour = DateUtil.hour(now, true);
+                int minute = DateUtil.minute(now);
+                int earlyMinutes = workEndHour * 60 - (hour * 60 + minute);
+
+                if (earlyMinutes > earlyThreshold) {
+                    record.setEarlyMinutes(earlyMinutes);
+                    if (!Objects.equals(record.getStatus(), AttendanceStatusEnum.LATE.getValue())) {
+                        record.setStatus(AttendanceStatusEnum.LEAVE_EARLY.getValue());
+                    }
+                } else {
+                    if (!Objects.equals(record.getStatus(), AttendanceStatusEnum.LATE.getValue())
+                            && !Objects.equals(record.getStatus(), AttendanceStatusEnum.LEAVE_EARLY.getValue())) {
+                        record.setStatus(AttendanceStatusEnum.NORMAL.getValue());
+                    }
                 }
             }
         }
@@ -181,8 +204,10 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
                 case 0: vo.setNormalDays(vo.getNormalDays() + 1); break;
                 case 1: vo.setLateDays(vo.getLateDays() + 1); break;
                 case 4: vo.setLeaveDays(vo.getLeaveDays() + 1); break;
-                // 缺卡---可以进行补卡
+                // 缺卡/上班缺卡/下班缺卡 — 可以进行补卡
                 case 3:
+                case 6:
+                case 7:
                     vo.setMissingDays(vo.getMissingDays() + 1);
                     makeupDates.add(dateStr);
                     break;
@@ -325,28 +350,54 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
             boolean hasIn = r.getPunchInTime() != null;
             boolean hasOut = r.getPunchOutTime() != null;
 
+            // 半天请假：不按缺卡处理对应的半段
+            Integer halfDay = r.getHalfDayLeave();
+            boolean isAmLeave = halfDay != null && halfDay == 1;
+            boolean isPmLeave = halfDay != null && halfDay == 2;
+
             if (!hasIn && !hasOut) {
-                // 全天未打卡 → 旷工
-                if (!Objects.equals(r.getStatus(), AttendanceStatusEnum.ABSENT.getValue())) {
-                    r.setStatus(AttendanceStatusEnum.ABSENT.getValue());
+                if (isAmLeave || isPmLeave) {
+                    // 半天请假但全天未打卡：仍按旷工处理
+                    if (!Objects.equals(r.getStatus(), AttendanceStatusEnum.ABSENT.getValue())) {
+                        r.setStatus(AttendanceStatusEnum.ABSENT.getValue());
+                        r.setUpdateTime(new Date());
+                        this.updateById(r);
+                        updated++;
+                    }
+                } else {
+                    if (!Objects.equals(r.getStatus(), AttendanceStatusEnum.ABSENT.getValue())) {
+                        r.setStatus(AttendanceStatusEnum.ABSENT.getValue());
+                        r.setUpdateTime(new Date());
+                        this.updateById(r);
+                        updated++;
+                    }
+                }
+            } else if (hasIn && !hasOut) {
+                // 下午请假：下班缺卡属正常
+                if (isPmLeave) {
+                    r.setStatus(AttendanceStatusEnum.NORMAL.getValue());
+                    r.setUpdateTime(new Date());
+                    this.updateById(r);
+                } else {
+                    r.setStatus(AttendanceStatusEnum.MISS_OUT.getValue());
                     r.setUpdateTime(new Date());
                     this.updateById(r);
                     updated++;
+                    createAnomalyApproval(r);
                 }
-            } else if (hasIn && !hasOut) {
-                // 上班打卡了但下班没打卡 → 下班缺卡
-                r.setStatus(AttendanceStatusEnum.MISS_OUT.getValue());
-                r.setUpdateTime(new Date());
-                this.updateById(r);
-                updated++;
-                createAnomalyApproval(r);
             } else if (!hasIn && hasOut) {
-                // 下班打卡了但上班没打卡 → 上班缺卡
-                r.setStatus(AttendanceStatusEnum.MISS_IN.getValue());
-                r.setUpdateTime(new Date());
-                this.updateById(r);
-                updated++;
-                createAnomalyApproval(r);
+                // 上午请假：上班缺卡属正常
+                if (isAmLeave) {
+                    r.setStatus(AttendanceStatusEnum.NORMAL.getValue());
+                    r.setUpdateTime(new Date());
+                    this.updateById(r);
+                } else {
+                    r.setStatus(AttendanceStatusEnum.MISS_IN.getValue());
+                    r.setUpdateTime(new Date());
+                    this.updateById(r);
+                    updated++;
+                    createAnomalyApproval(r);
+                }
             }
         }
 

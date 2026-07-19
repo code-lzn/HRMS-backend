@@ -67,6 +67,9 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
     private MakeupPunchMapper makeupPunchMapper;
 
     @Resource
+    private com.limou.hrms.mapper.OvertimeRecordMapper overtimeRecordMapper;
+
+    @Resource
     @Lazy
     private OnboardingService onboardingService;
 
@@ -576,6 +579,15 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
                 log.info("业务类型 [{}] 审批完成，businessId={}, status={}",
                         bizType.getText(), record.getBusinessId(), targetStatus);
                 break;
+            case OVERTIME: {
+                OvertimeRecord overtime = overtimeRecordMapper.selectById(record.getBusinessId());
+                if (overtime != null) {
+                    overtime.setStatus(targetStatus);
+                    overtime.setApproveTime(now);
+                    overtimeRecordMapper.updateById(overtime);
+                }
+                break;
+            }
         }
     }
 

@@ -35,6 +35,12 @@ public class LeaveVO implements Serializable {
     /** 请假天数 */
     private BigDecimal totalDays;
 
+    /** 时段：0=全天 1=上午 2=下午 */
+    private Integer timeSlot;
+
+    /** 时段文本 */
+    private String timeSlotText;
+
     /** 请假原因 */
     private String reason;
 

@@ -43,22 +43,25 @@ public class AttendanceStatsController {
     @GetMapping("/trend")
     public BaseResponse<AttendanceTrendVO> getAttendanceTrend(
             @RequestParam Long departmentId,
-            @RequestParam(defaultValue = "6") Integer months) {
-        AttendanceTrendVO vo = attendanceStatsService.getAttendanceTrend(departmentId, months);
+            @RequestParam(defaultValue = "6") Integer months,
+            @RequestParam(required = false) String endMonth) {
+        AttendanceTrendVO vo = attendanceStatsService.getAttendanceTrend(departmentId, months, endMonth);
         return ResultUtils.success(vo);
     }
 
     @GetMapping("/leave-distribution")
     public BaseResponse<LeaveTypeDistributionVO> getLeaveTypeDistribution(
-            @RequestParam String month) {
-        LeaveTypeDistributionVO vo = attendanceStatsService.getLeaveTypeDistribution(month);
+            @RequestParam String month,
+            @RequestParam(required = false) Long departmentId) {
+        LeaveTypeDistributionVO vo = attendanceStatsService.getLeaveTypeDistribution(month, departmentId);
         return ResultUtils.success(vo);
     }
 
     @GetMapping("/late-early-ranking")
     public BaseResponse<List<AttendanceStatsVO>> getLateEarlyRanking(
-            @RequestParam String month) {
-        List<AttendanceStatsVO> list = attendanceStatsService.getLateEarlyRanking(month);
+            @RequestParam String month,
+            @RequestParam(required = false) Long departmentId) {
+        List<AttendanceStatsVO> list = attendanceStatsService.getLateEarlyRanking(month, departmentId);
         return ResultUtils.success(list);
     }
 

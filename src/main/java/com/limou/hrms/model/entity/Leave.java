@@ -53,6 +53,11 @@ public class Leave implements Serializable {
     private BigDecimal totalDays;
 
     /**
+     * 时段：0=全天 1=上午 2=下午
+     */
+    private Integer timeSlot;
+
+    /**
      * 请假原因
      */
     private String reason;

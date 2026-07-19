@@ -24,9 +24,9 @@ public class AttendanceScheduledTask {
     private HolidayConfigService holidayConfigService;
 
     /**
-     * 每个工作日 9:05 生成当日考勤记录（未打卡员工标记为迟到）
+     * 每天 9:05 生成当日考勤记录（由 isWorkDay 判断是否真的需要生成）
      */
-    @Scheduled(cron = "0 5 9 * * MON-FRI")
+    @Scheduled(cron = "0 5 9 * * *")
     public void generateDailyAttendanceRecords() {
         Date now = new Date();
         if (!holidayConfigService.isWorkDay(now)) {
@@ -43,9 +43,9 @@ public class AttendanceScheduledTask {
     }
 
     /**
-     * 每个工作日 18:30 日终评估（缺卡标记、异常上报审批）
+     * 每天 18:30 日终评估（由 isWorkDay 判断是否真的需要评估）
      */
-    @Scheduled(cron = "0 30 18 * * MON-FRI")
+    @Scheduled(cron = "0 30 18 * * *")
     public void evaluateEndOfDayAttendance() {
         Date now = new Date();
         if (!holidayConfigService.isWorkDay(now)) {
@@ -64,7 +64,7 @@ public class AttendanceScheduledTask {
     /**
      * 每 30 分钟同步考勤异常审批结果（拒绝的恢复为正常）
      */
-    @Scheduled(cron = "0 */30 9-18 * * MON-FRI")
+    @Scheduled(cron = "0 */30 9-18 * * *")
     public void syncAnomalyApprovals() {
         try {
             int count = attendanceService.syncAnomalyApprovals();

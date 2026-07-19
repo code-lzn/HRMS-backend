@@ -19,7 +19,8 @@ public enum BusinessTypeEnum {
     LEAVE("LEAVE", "请假审批"),
     PATCH_CLOCK("PATCH_CLOCK", "补卡审批"),
     ATTENDANCE_ANOMALY("ATTENDANCE_ANOMALY", "考勤异常审批"),
-    SALARY_BATCH("SALARY_BATCH", "薪资批次审批");
+    SALARY_BATCH("SALARY_BATCH", "薪资批次审批"),
+    OVERTIME("OVERTIME", "加班审批");
 
     private final String value;
 

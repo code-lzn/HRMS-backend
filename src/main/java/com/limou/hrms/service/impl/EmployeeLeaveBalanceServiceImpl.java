@@ -3,13 +3,11 @@ package com.limou.hrms.service.impl;
 import cn.hutool.core.date.DateUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.limou.hrms.common.ErrorCode;
-import com.limou.hrms.exception.BusinessException;
-import com.limou.hrms.mapper.AttendanceMapper;
 import com.limou.hrms.mapper.EmployeeLeaveBalanceMapper;
-import com.limou.hrms.model.entity.Attendance;
+import com.limou.hrms.mapper.OvertimeRecordMapper;
 import com.limou.hrms.model.entity.Employee;
 import com.limou.hrms.model.entity.EmployeeLeaveBalance;
+import com.limou.hrms.model.entity.OvertimeRecord;
 import com.limou.hrms.model.vo.LeaveBalanceVO;
 import com.limou.hrms.service.EmployeeLeaveBalanceService;
 import com.limou.hrms.service.EmployeeService;
@@ -33,7 +31,7 @@ public class EmployeeLeaveBalanceServiceImpl extends ServiceImpl<EmployeeLeaveBa
     private EmployeeService employeeService;
 
     @Resource
-    private AttendanceMapper attendanceMapper;
+    private OvertimeRecordMapper overtimeRecordMapper;
 
     @Override
     public LeaveBalanceVO getCurrentYearBalance(Long employeeId) {
@@ -145,11 +143,9 @@ public class EmployeeLeaveBalanceServiceImpl extends ServiceImpl<EmployeeLeaveBa
     }
 
     /**
-     * 计算调休余额：加班时长 1:1 转换，有效期 = 加班当月及次月
+     * 计算调休余额：从已审批的加班记录累加，有效期 = 加班当月及次月
      */
     private BigDecimal calculateCompensatoryLeaveDays(Long employeeId) {
-        Calendar now = Calendar.getInstance();
-        // 有效期起算：上月 1 号
         Calendar validStart = Calendar.getInstance();
         validStart.set(Calendar.DAY_OF_MONTH, 1);
         validStart.add(Calendar.MONTH, -1);
@@ -160,17 +156,17 @@ public class EmployeeLeaveBalanceServiceImpl extends ServiceImpl<EmployeeLeaveBa
 
         String startDate = DateUtil.formatDate(validStart.getTime());
 
-        List<Attendance> overtimeRecords = attendanceMapper.selectList(
-                new LambdaQueryWrapper<Attendance>()
-                        .eq(Attendance::getEmployeeId, employeeId)
-                        .ge(Attendance::getAttendanceDate, startDate)
-                        .gt(Attendance::getOvertimeHours, 0)
+        List<OvertimeRecord> approvedOvertimes = overtimeRecordMapper.selectList(
+                new LambdaQueryWrapper<OvertimeRecord>()
+                        .eq(OvertimeRecord::getEmployeeId, employeeId)
+                        .eq(OvertimeRecord::getStatus, 1)
+                        .ge(OvertimeRecord::getOvertimeDate, startDate)
         );
 
         double total = 0;
-        for (Attendance r : overtimeRecords) {
+        for (OvertimeRecord r : approvedOvertimes) {
             if (r.getOvertimeHours() != null) {
-                total += r.getOvertimeHours();
+                total += r.getOvertimeHours().doubleValue();
             }
         }
 

@@ -15,7 +15,7 @@ public interface LeaveService extends IService<Leave> {
     /**
      * 申请请假
      */
-    LeaveVO apply(Long userId, Integer leaveType, String startDate, String endDate, String reason);
+    LeaveVO apply(Long userId, Integer leaveType, String startDate, String endDate, String reason, Integer timeSlot);
 
     /**
      * 获取我的请假记录

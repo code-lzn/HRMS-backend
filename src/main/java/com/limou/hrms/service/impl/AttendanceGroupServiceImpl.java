@@ -143,7 +143,7 @@ public class AttendanceGroupServiceImpl extends ServiceImpl<AttendanceGroupMappe
         AttendanceGroupEmployee groupEmployee = groupEmployeeMapper.selectOne(new LambdaQueryWrapper<AttendanceGroupEmployee>()
                 .eq(AttendanceGroupEmployee::getEmployeeId, employeeId));
         if (groupEmployee == null) {
-            return this.lambdaQuery().eq(AttendanceGroup::getStatus, 1).one();
+            return this.lambdaQuery().eq(AttendanceGroup::getStatus, 1).last("LIMIT 1").one();
         }
         return this.getById(groupEmployee.getGroupId());
     }
@@ -203,6 +203,10 @@ public class AttendanceGroupServiceImpl extends ServiceImpl<AttendanceGroupMappe
 
     private Date parseTimeString(String time) {
         if (time == null || time.isEmpty()) return null;
+        // 兼容前端传 "1970-01-01 09:30:00" 格式，只取时间部分
+        if (time.contains(" ")) {
+            time = time.split(" ")[1];
+        }
         // 统一补全为 HH:mm:ss 格式
         String[] parts = time.trim().split(":");
         if (parts.length == 2) {
