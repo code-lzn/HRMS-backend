@@ -67,6 +67,17 @@ public class AttendanceGroupController {
     }
 
     /**
+     * GET /api/attendance/groups/{id} — 查询考勤组详情
+     */
+    @GetMapping("/{id}")
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.DEPT_HEAD_ROLE})
+    public BaseResponse<AttendanceGroupVO> getAttendanceGroupDetail(@PathVariable Long id) {
+        log.info("{} 查询考勤组详情, id={}", UserContext.getCurrentUser(), id);
+        AttendanceGroupVO vo = attendanceGroupService.getAttendanceGroupDetail(id);
+        return ResultUtils.success(vo);
+    }
+
+    /**
      * DELETE /api/attendance/groups/{id} — 删除考勤组（逻辑删除，需先清空规则）
      */
     @DeleteMapping("/{id}")
