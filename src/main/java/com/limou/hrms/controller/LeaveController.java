@@ -98,8 +98,15 @@ public class LeaveController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
         log.info("{} 查询请假申请列表", UserContext.getCurrentUser());
-        Page<LeaveRequestVO> result = leaveService.queryRequests(
-                employeeId, leaveType, status, startDate, endDate, page, size);
+        LeaveQuery query = new LeaveQuery();
+        query.setEmployeeId(employeeId);
+        query.setLeaveType(leaveType);
+        query.setStatus(status);
+        query.setStartDate(startDate);
+        query.setEndDate(endDate);
+        query.setCurrent(page);
+        query.setPageSize(size);
+        Page<LeaveRequestVO> result = leaveService.queryRequests(query);
         return ResultUtils.success(result);
     }
 
