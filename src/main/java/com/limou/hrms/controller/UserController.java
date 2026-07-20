@@ -292,7 +292,7 @@ public class UserController {
      * 修改用户状态（启用/禁用，基于逻辑删除）
      *
      * @param id     用户ID
-     * @param status 状态：1=启用, 0=禁用
+     * @param status 状态：0=启用, 1=禁用
      */
     @PostMapping("/update/status")
     @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
@@ -302,7 +302,7 @@ public class UserController {
         }
         User user = new User();
         user.setId(id);
-        user.setStatus(status == 1 ? 0 : 1);
+        user.setStatus(status);
         boolean result = userService.updateById(user);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
         return ResultUtils.success(true);
