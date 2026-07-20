@@ -192,11 +192,32 @@ public class AttendanceServiceImpl implements AttendanceService, ApprovalCallbac
         Map<Long, String> empNameMap = loadEmpNameMap(empIds);
         Map<Long, String> deptNameMap = loadDeptNameMap(empIds);
 
+        // 批量查考勤组（用于弹性班展示核心时间）
+        Set<Long> groupIds = page.getRecords().stream()
+                .map(AttendanceRecord::getAttendanceGroupId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, AttendanceGroup> groupMap = loadGroupMap(groupIds);
+
         List<AttendanceRecordVO> voList = page.getRecords().stream().map(r -> {
             AttendanceRecordVO vo = new AttendanceRecordVO();
             BeanUtils.copyProperties(r, vo);
-            if (r.getScheduledStartTime() != null) vo.setScheduledStartTime(r.getScheduledStartTime().toString());
-            if (r.getScheduledEndTime() != null) vo.setScheduledEndTime(r.getScheduledEndTime().toString());
+
+            AttendanceGroup group = groupMap.get(r.getAttendanceGroupId());
+            boolean isFlex = group != null && group.getShiftType() != null && group.getShiftType() == 2;
+            vo.setShiftType(group != null ? group.getShiftType() : null);
+
+            if (isFlex && group.getCoreStartTime() != null) {
+                vo.setScheduledStartTime(group.getCoreStartTime().toString());
+            } else if (r.getScheduledStartTime() != null) {
+                vo.setScheduledStartTime(r.getScheduledStartTime().toString());
+            }
+            if (isFlex && group.getCoreEndTime() != null) {
+                vo.setScheduledEndTime(group.getCoreEndTime().toString());
+            } else if (r.getScheduledEndTime() != null) {
+                vo.setScheduledEndTime(r.getScheduledEndTime().toString());
+            }
+
             vo.setEmployeeName(empNameMap.getOrDefault(r.getEmployeeId(), ""));
             vo.setDepartmentName(deptNameMap.getOrDefault(r.getEmployeeId(), ""));
             vo.setStartStatusDesc(getStartStatusDesc(r.getStartStatus()));
@@ -231,6 +252,12 @@ public class AttendanceServiceImpl implements AttendanceService, ApprovalCallbac
                 .collect(Collectors.toMap(EmployeeWorkInfo::getEmployeeId, EmployeeWorkInfo::getDepartmentId, (a, b) -> a));
         return empIds.stream()
                 .collect(Collectors.toMap(id -> id, id -> deptNameMap.getOrDefault(empDeptMap.get(id), "")));
+    }
+
+    private Map<Long, AttendanceGroup> loadGroupMap(Set<Long> groupIds) {
+        if (groupIds.isEmpty()) return Collections.emptyMap();
+        return attendanceGroupMapper.selectBatchIds(groupIds).stream()
+                .collect(Collectors.toMap(AttendanceGroup::getId, g -> g));
     }
 
     // ==================== 日历视图 ====================
