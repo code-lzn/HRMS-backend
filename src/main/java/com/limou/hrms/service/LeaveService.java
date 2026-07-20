@@ -7,6 +7,8 @@ import com.limou.hrms.model.query.LeaveQuery;
 import com.limou.hrms.model.vo.LeaveBalanceVO;
 import com.limou.hrms.model.vo.LeaveRequestVO;
 
+import java.time.LocalDate;
+
 /**
  * 请假服务
  */

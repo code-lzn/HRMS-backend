@@ -96,32 +96,50 @@ public class AttendanceServiceImpl implements AttendanceService, ApprovalCallbac
         result.setAttendanceDate(today);
         result.setClockType(clockType);
 
+        boolean isFlex = group.getShiftType() != null && group.getShiftType() == 2;
+
         if (clockType == 1) {
             // 上班打卡
             if (record.getActualStartTime() != null) {
                 throw new BusinessException(ErrorCode.OPERATION_ERROR, "已完成上班打卡，无需重复打卡");
             }
             record.setActualStartTime(now);
-            int status = judgeStartStatus(now, group.getStartTime(), group.getLateThreshold());
+            int status;
+            if (isFlex) {
+                status = judgeFlexStartStatus(now, group.getFlexStartTime(), group.getFlexEndTime(),
+                        group.getLateThreshold());
+            } else {
+                status = judgeStartStatus(now, group.getStartTime(), group.getLateThreshold());
+            }
             record.setStartStatus(status);
 
             result.setActualTime(now);
             result.setStatus(status);
             result.setStatusDesc(getStartStatusDesc(status));
-            result.setScheduledTime(group.getStartTime().toString());
+            result.setScheduledTime(isFlex ? group.getFlexStartTime().toString() : group.getStartTime().toString());
         } else {
             // 下班打卡
             if (record.getActualEndTime() != null) {
                 throw new BusinessException(ErrorCode.OPERATION_ERROR, "已完成下班打卡，无需重复打卡");
             }
             record.setActualEndTime(now);
-            int status = judgeEndStatus(now, group.getEndTime(), group.getEarlyLeaveThreshold());
+            int status;
+            if (isFlex) {
+                LocalDateTime startTime = record.getActualStartTime();
+                if (startTime == null) {
+                    throw new BusinessException(ErrorCode.OPERATION_ERROR, "未找到上班打卡记录");
+                }
+                java.math.BigDecimal workHours = group.getWorkHours() != null ? group.getWorkHours() : new java.math.BigDecimal("8");
+                status = judgeFlexEndStatus(startTime, now, workHours, group.getEarlyLeaveThreshold());
+            } else {
+                status = judgeEndStatus(now, group.getEndTime(), group.getEarlyLeaveThreshold());
+            }
             record.setEndStatus(status);
 
             result.setActualTime(now);
             result.setStatus(status);
             result.setStatusDesc(getEndStatusDesc(status));
-            result.setScheduledTime(group.getEndTime().toString());
+            result.setScheduledTime(isFlex ? group.getFlexEndTime().toString() : group.getEndTime().toString());
         }
 
         result.setClockTypeDesc(clockType == 1 ? "上班打卡" : "下班打卡");
@@ -624,7 +642,7 @@ public class AttendanceServiceImpl implements AttendanceService, ApprovalCallbac
     }
 
     /**
-     * 下班卡状态判定
+     * 下班卡状态判定（固定班/排班制）
      */
     private int judgeEndStatus(LocalDateTime actualTime, LocalTime scheduledTime, Integer earlyLeaveThreshold) {
         if (earlyLeaveThreshold == null) earlyLeaveThreshold = 15;
@@ -634,6 +652,47 @@ public class AttendanceServiceImpl implements AttendanceService, ApprovalCallbac
         if (!actual.isBefore(scheduledTime)) {
             return 1; // 正常
         } else if (!actual.isBefore(earlyLine)) {
+            return 2; // 早退
+        } else {
+            return 3; // 旷工半天
+        }
+    }
+
+    /**
+     * 弹性班上��卡判定：在 flexStartTime ~ flexEndTime 内打卡为正常
+     */
+    private int judgeFlexStartStatus(LocalDateTime actualTime, LocalTime flexStartTime, LocalTime flexEndTime,
+                                      Integer lateThreshold) {
+        if (flexStartTime == null || flexEndTime == null) return 1; // 未配置弹性时间则默认正常
+        if (lateThreshold == null) lateThreshold = 15;
+        LocalTime actual = actualTime.toLocalTime();
+        LocalTime lateLine = flexEndTime.plusMinutes(lateThreshold);
+
+        if (actual.isBefore(flexStartTime)) {
+            return 1; // 提前打卡视为正常
+        } else if (!actual.isAfter(flexEndTime)) {
+            return 1; // 弹性窗口内正常
+        } else if (!actual.isAfter(lateLine)) {
+            return 2; // 超过弹性窗口但在阈值内 → 迟到
+        } else {
+            return 3; // 旷工半天
+        }
+    }
+
+    /**
+     * 弹性班下班判定：按实际工作时长判定
+     */
+    private int judgeFlexEndStatus(LocalDateTime startTime, LocalDateTime endTime,
+                                    java.math.BigDecimal workHours, Integer earlyLeaveThreshold) {
+        if (workHours == null) workHours = new java.math.BigDecimal("8");
+        if (earlyLeaveThreshold == null) earlyLeaveThreshold = 15;
+        // 扣午休 1 小时
+        long actualMinutes = java.time.Duration.between(startTime, endTime).toMinutes() - 60;
+        long requiredMinutes = workHours.multiply(new java.math.BigDecimal("60")).longValue();
+
+        if (actualMinutes >= requiredMinutes) {
+            return 1; // 正常
+        } else if (actualMinutes >= requiredMinutes - earlyLeaveThreshold) {
             return 2; // 早退
         } else {
             return 3; // 旷工半天

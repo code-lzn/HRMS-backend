@@ -30,9 +30,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -53,6 +55,7 @@ public class LeaveServiceImpl
     private final EmployeePersonalInfoMapper employeePersonalInfoMapper;
     private final DepartmentService departmentService;
     private final WorkCalendarMapper workCalendarMapper;
+    private final EmployeeMapper employeeMapper;
     private final DataScopeContext dataScopeContext;
 
     private static final Set<Integer> ATTACHMENT_REQUIRED_TYPES = new HashSet<>(Arrays.asList(2, 4, 5));
@@ -253,6 +256,11 @@ public class LeaveServiceImpl
             }
         }
 
+        // 默认排除草稿和已取消状态（前端明确传 status 参数时则不过滤）
+        if (query.getStatus() == null) {
+            wrapper.notIn("status", 1, 5);
+        }
+
         // 关键字搜索（员工姓名）
         if (StringUtils.isNotBlank(query.getKeyword())) {
             wrapper.inSql("employee_id",
@@ -378,6 +386,34 @@ public class LeaveServiceImpl
                 Wrappers.<EmployeeLeaveBalance>lambdaQuery()
                         .eq(EmployeeLeaveBalance::getEmployeeId, employeeId)
                         .eq(EmployeeLeaveBalance::getYear, year));
+
+        // 年假：自动计算（按工龄+入职月份折算）
+        Employee employee = employeeMapper.selectById(employeeId);
+        if (employee != null && employee.getHireDate() != null) {
+            BigDecimal annualDays = calcAnnualLeaveDays(employee, year);
+            EmployeeLeaveBalance annualBalance = balances.stream()
+                    .filter(b -> b.getLeaveType() == 1)
+                    .findFirst().orElse(null);
+
+            if (annualBalance == null) {
+                annualBalance = new EmployeeLeaveBalance();
+                annualBalance.setEmployeeId(employeeId);
+                annualBalance.setYear(year);
+                annualBalance.setLeaveType(1);
+                annualBalance.setTotalDays(annualDays);
+                annualBalance.setUsedDays(BigDecimal.ZERO);
+                annualBalance.setRemainingDays(annualDays);
+                if (isSelf) {
+                    leaveBalanceMapper.insert(annualBalance);
+                }
+                balances.add(annualBalance);
+            } else if (isSelf && annualBalance.getTotalDays().compareTo(annualDays) != 0) {
+                BigDecimal delta = annualDays.subtract(annualBalance.getTotalDays());
+                annualBalance.setTotalDays(annualDays);
+                annualBalance.setRemainingDays(annualBalance.getRemainingDays().add(delta));
+                leaveBalanceMapper.updateById(annualBalance);
+            }
+        }
 
         List<BalanceItem> items = balances.stream().map(b -> {
             BalanceItem item = new BalanceItem();
@@ -524,6 +560,48 @@ public class LeaveServiceImpl
 
     private boolean isAfternoon(LocalDateTime time) {
         return time.toLocalTime().isAfter(LocalTime.NOON);
+    }
+
+    // ==================== 年假计算 ====================
+
+    /**
+     * 按工龄 + 入职月份折算计算年假天数
+     */
+    private BigDecimal calcAnnualLeaveDays(Employee employee, int year) {
+        LocalDate hireDate = employee.getHireDate();
+        // 计算到该年1月1日的工龄
+        long tenureYears = ChronoUnit.YEARS.between(hireDate, LocalDate.of(year, 1, 1));
+
+        int baseDays;
+        if (tenureYears >= 20) {
+            baseDays = 15;
+        } else if (tenureYears >= 10) {
+            baseDays = 10;
+        } else if (tenureYears >= 1) {
+            baseDays = 5;
+        } else {
+            // 入职不满1年（当年入职），按剩余月份折算
+            int joinYear = hireDate.getYear();
+            if (joinYear < year) {
+                baseDays = 5;
+            } else {
+                int joinMonth = hireDate.getMonthValue();
+                int remainingMonths = 12 - joinMonth + 1;
+                return BigDecimal.valueOf(5L * remainingMonths)
+                        .divide(BigDecimal.valueOf(12), 1, RoundingMode.HALF_UP);
+            }
+        }
+
+        // 入职月份 > 1 月，当年按比例折算
+        int joinMonth = hireDate.getMonthValue();
+        int joinYearVal = hireDate.getYear();
+        if (joinYearVal < year && joinMonth > 1) {
+            int fullMonths = 12 - joinMonth + 1;
+            return BigDecimal.valueOf(baseDays * fullMonths)
+                    .divide(BigDecimal.valueOf(12), 1, RoundingMode.HALF_UP);
+        }
+
+        return BigDecimal.valueOf(baseDays);
     }
 
     private String joinIds(Set<Long> ids) {

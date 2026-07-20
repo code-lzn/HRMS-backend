@@ -82,6 +82,11 @@ public class AttendanceGroup implements Serializable {
      */
     private LocalTime coreEndTime;
 
+    /**
+     * 每日必须工作时长（小时），仅弹性班使用，支持小数如 8.5，默认 8
+     */
+    private java.math.BigDecimal workHours;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 

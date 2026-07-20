@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.limou.hrms.annotation.AuthCheck;
 import com.limou.hrms.common.BaseResponse;
 import com.limou.hrms.common.ResultUtils;
+import com.limou.hrms.constant.DataScopeContext;
+import com.limou.hrms.constant.UserConstant;
 import com.limou.hrms.context.UserContext;
 import com.limou.hrms.model.dto.leave.LeaveCreateDTO;
 import com.limou.hrms.model.dto.leave.LeaveUpdateDTO;
@@ -13,12 +15,14 @@ import com.limou.hrms.model.vo.LeaveRequestVO;
 import com.limou.hrms.service.LeaveService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 
 import javax.validation.Valid;
+import java.time.LocalDate;
 
 /**
- * 请假管理控制器 — 请假 CRUD + 假期余额
+ * 请假管理控制器 — 请假申请 / 假期余额
  */
 @RestController
 @RequestMapping("/leave")
@@ -28,6 +32,11 @@ public class LeaveController {
 
     private final LeaveService leaveService;
 
+    private final DataScopeContext dataScopeContext;
+
+    /**
+     * GET /api/leave/requests — 查询请假申请列表（分页 + 数据权限）
+     */
     // ==================== 请假 CRUD ====================
 
     /** 创建请假申请（草稿，可一键提交） */
@@ -79,25 +88,35 @@ public class LeaveController {
 
     /** 请假列表（分页 + 关键字搜索 + 数据权限） */
     @GetMapping("/requests")
-    @AuthCheck
-    public BaseResponse<Page<LeaveRequestVO>> queryRequests(LeaveQuery query) {
-        log.info("{} 查询请假列表, keyword={}", UserContext.getCurrentUser(), query.getKeyword());
-        Page<LeaveRequestVO> result = leaveService.queryRequests(query);
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.DEPT_HEAD_ROLE, UserConstant.DEFAULT_ROLE})
+    public BaseResponse<Page<LeaveRequestVO>> queryRequests(
+            @RequestParam(required = false) Long employeeId,
+            @RequestParam(required = false) Integer leaveType,
+            @RequestParam(required = false) Integer status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        log.info("{} 查询请假申请列表", UserContext.getCurrentUser());
+        Page<LeaveRequestVO> result = leaveService.queryRequests(
+                employeeId, leaveType, status, startDate, endDate, page, size);
         return ResultUtils.success(result);
     }
 
-    /** 请假详情 */
+    /**
+     * GET /api/leave/requests/{id} — 查询请假申请详情（含权限校验）
+     */
     @GetMapping("/requests/{id}")
-    @AuthCheck
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.DEPT_HEAD_ROLE, UserConstant.DEFAULT_ROLE})
     public BaseResponse<LeaveRequestVO> getRequestDetail(@PathVariable Long id) {
-        log.info("{} 查询请假详情, id={}", UserContext.getCurrentUser(), id);
+        log.info("{} 查询请假申请详情, id={}", UserContext.getCurrentUser(), id);
         LeaveRequestVO vo = leaveService.getRequestDetail(id);
         return ResultUtils.success(vo);
     }
 
     /** 假期余额 */
     @GetMapping("/balances")
-    @AuthCheck
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.DEPT_HEAD_ROLE, UserConstant.DEFAULT_ROLE})
     public BaseResponse<LeaveBalanceVO> getBalances(
             @RequestParam(required = false) Long employeeId,
             @RequestParam(required = false) Integer year) {
@@ -105,4 +124,5 @@ public class LeaveController {
         LeaveBalanceVO vo = leaveService.getBalances(employeeId, year);
         return ResultUtils.success(vo);
     }
+
 }
