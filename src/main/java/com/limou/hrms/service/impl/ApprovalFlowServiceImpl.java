@@ -1,6 +1,7 @@
 package com.limou.hrms.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.limou.hrms.builder.ApprovalNodeBuilder;
@@ -75,6 +76,23 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ApprovalInstance createInstance(ApprovalBizType bizType, Long bizId, Long applicantId) {
+        // 0. 检查是否存在已撤回的实例，有则复用（避免 uk_biz 唯一键冲突）
+        ApprovalInstance exist = approvalInstanceMapper.selectOne(
+                Wrappers.<ApprovalInstance>lambdaQuery()
+                        .eq(ApprovalInstance::getBizType, bizType.getCode())
+                        .eq(ApprovalInstance::getBizId, bizId)
+                        .last("LIMIT 1"));
+        if (exist != null) {
+            // 删除旧节点，重置状态为 PENDING
+            approvalNodeMapper.delete(
+                    Wrappers.<ApprovalNode>lambdaQuery()
+                            .eq(ApprovalNode::getInstanceId, exist.getId()));
+            exist.setStatus(ApprovalStatus.PENDING.getCode());
+            exist.setCurrentNodeOrder(1);
+            exist.setCreateTime(LocalDateTime.now());
+            approvalInstanceMapper.updateById(exist);
+        }
+
         // 1. 查 Builder 构建节点链
         ApprovalNodeBuilder builder = builderFactory.getBuilder(bizType);
         List<ApprovalNode> nodes = builder.build(bizId, applicantId);
@@ -83,16 +101,22 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
         String applicantName = approverResolver.getEmployeeName(applicantId);
         String title = applicantName + "的" + bizType.getDesc();
 
-        // 3. 保存审批实例
-        ApprovalInstance instance = new ApprovalInstance();
-        instance.setBizType(bizType.getCode());
-        instance.setBizId(bizId);
-        instance.setTitle(title);
-        instance.setStatus(ApprovalStatus.PENDING.getCode());
-        instance.setApplicantId(applicantId);
-        instance.setCurrentNodeOrder(1);
-        instance.setCreateTime(LocalDateTime.now());
-        approvalInstanceMapper.insert(instance);
+        // 3. 保存审批实例（复用或新建）
+        ApprovalInstance instance;
+        if (exist != null) {
+            instance = exist;
+        } else {
+            instance = new ApprovalInstance();
+            instance.setBizType(bizType.getCode());
+            instance.setBizId(bizId);
+            instance.setTitle(title);
+            instance.setStatus(ApprovalStatus.PENDING.getCode());
+            instance.setApplicantId(applicantId);
+            instance.setCurrentNodeOrder(1);
+            instance.setCreateTime(LocalDateTime.now());
+            approvalInstanceMapper.insert(instance);
+        }
+        instance.setTitle(title); // 标题可能变化
 
         // 4. 批量保存节点，绑定 instanceId
         for (int i = 0; i < nodes.size(); i++) {
@@ -378,7 +402,7 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
         return result;
     }
 
-    /** 全平台待办 */
+    /** 全平台待办（admin/hr） */
     private Page<PendingItemVO> getAllPendingList(ApprovalQuery query) {
         Long employeeId = resolveCurrentEmployeeId();
         Page<ApprovalNode> nodePage = approvalNodeMapper.selectPage(
@@ -387,21 +411,23 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
                         .eq("status", NodeStatus.PENDING.getCode())
                         .orderByDesc("create_time"));
 
-        // 计算当前用户可操作的节点集合
-        Set<Long> actionableNodeIds = new HashSet<>();
-        for (ApprovalNode node : nodePage.getRecords()) {
-            if (canActOnNode(node, employeeId)) {
-                actionableNodeIds.add(node.getId());
-            }
-        }
+        // admin/hr 可操作任意节点
+        Set<Long> actionableNodeIds = nodePage.getRecords().stream()
+                .map(ApprovalNode::getId)
+                .collect(Collectors.toSet());
 
         List<PendingItemVO> records = buildPendingVOs(nodePage.getRecords(), new HashSet<>(), actionableNodeIds);
+        // 按 instanceId 去重，确保同个审批只出现一次
+        Set<Long> seen = new HashSet<>();
+        records = records.stream()
+                .filter(r -> seen.add(r.getInstanceId()))
+                .collect(Collectors.toList());
         if (StringUtils.isNotBlank(query.getBizType())) {
             records = records.stream()
                     .filter(r -> query.getBizType().equals(r.getBizType()))
                     .collect(Collectors.toList());
         }
-        Page<PendingItemVO> result = new Page<>(nodePage.getCurrent(), nodePage.getSize(), nodePage.getTotal());
+        Page<PendingItemVO> result = new Page<>(nodePage.getCurrent(), nodePage.getSize(), records.size());
         result.setRecords(records);
         return result;
     }
