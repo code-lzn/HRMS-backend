@@ -382,7 +382,7 @@ public class OnboardingServiceImpl
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "部门不存在");
         }
         String deptCode = dept.getCode();
-        String shortCode = deptCode.length() == 2 ? deptCode : deptCode.substring(deptCode.length() - 2);
+        String shortCode = deptCode.length() <= 2 ? String.format("%2s", deptCode).replace(' ', '0') : deptCode.substring(deptCode.length() - 2);
         int year = LocalDate.now().getYear();
 
         String lockKey = (year + "_" + shortCode).intern();
@@ -411,7 +411,7 @@ public class OnboardingServiceImpl
         Department dept = departmentMapper.selectById(departmentId);
         if (dept == null) throw new BusinessException(ErrorCode.PARAMS_ERROR, "部门不存在");
         String deptCode = dept.getCode();
-        String shortCode = deptCode.length() == 2 ? deptCode : deptCode.substring(deptCode.length() - 2);
+        String shortCode = deptCode.length() <= 2 ? String.format("%2s", deptCode).replace(' ', '0') : deptCode.substring(deptCode.length() - 2);
         int year = LocalDate.now().getYear();
         // 查询当前最大序号，预览不消耗
         QueryWrapper<EmployeeNoSequence> query = new QueryWrapper<>();

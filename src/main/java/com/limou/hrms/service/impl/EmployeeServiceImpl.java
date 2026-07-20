@@ -601,7 +601,7 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "部门编码格式不正确，工号生成失败");
         }
         // 取部门编码后2位
-        String shortCode = deptCode.length() == 2 ? deptCode : deptCode.substring(deptCode.length() - 2);
+        String shortCode = deptCode.length() <= 2 ? String.format("%2s", deptCode).replace(' ', '0') : deptCode.substring(deptCode.length() - 2);
         int year = LocalDate.now().getYear();
 
         String lockKey = (year + "_" + shortCode).intern();
