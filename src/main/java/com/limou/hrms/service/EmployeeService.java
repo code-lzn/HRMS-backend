@@ -6,12 +6,17 @@ import com.limou.hrms.model.dto.employee.*;
 import com.limou.hrms.model.entity.Employee;
 import com.limou.hrms.model.vo.*;
 
+import java.util.List;
+
 public interface EmployeeService extends IService<Employee> {
 
     // ==================== 员工档案管理 ====================
 
     /** 员工列表（分页 + 高级搜索） */
     Page<EmployeeVO> listEmployees(EmployeeQueryRequest request, Long userId);
+
+    /** 导出员工列表为 Excel */
+    List<EmployeeExcelVO> exportEmployees(EmployeeQueryRequest request, Long userId);
 
     /** 员工详情 */
     EmployeeDetailVO getDetail(Long id, Long userId);

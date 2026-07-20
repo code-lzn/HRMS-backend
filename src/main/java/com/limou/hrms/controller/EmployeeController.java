@@ -15,15 +15,21 @@ import com.limou.hrms.model.entity.User;
 import com.limou.hrms.model.vo.EmpProfileVO;
 import com.limou.hrms.model.vo.EmployeeChangeLogVO;
 import com.limou.hrms.model.vo.EmployeeDetailVO;
+import com.limou.hrms.model.vo.EmployeeExcelVO;
 import com.limou.hrms.model.vo.EmployeeVO;
 import com.limou.hrms.service.EmployeeService;
 import com.limou.hrms.service.UserService;
+import com.limou.hrms.utils.ExcelUtils;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -74,6 +80,20 @@ public class EmployeeController {
         Page<EmployeeVO> result = employeeService.listEmployees(request, loginUser.getId());
         return ResultUtils.success(result);
     }
+
+    /**
+     * 导出员工列表为 Excel
+     */
+    @GetMapping("/export")
+    public void exportEmployees(EmployeeQueryRequest request,
+                                 HttpServletRequest httpRequest,
+                                 HttpServletResponse response) {
+        User loginUser = userService.getLoginUser(httpRequest);
+        List<EmployeeExcelVO> data = employeeService.exportEmployees(request, loginUser.getId());
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+        ExcelUtils.export(response, "员工列表_" + timestamp, "员工信息", data, EmployeeExcelVO.class);
+    }
+
     /**
      * 员工详情
      */

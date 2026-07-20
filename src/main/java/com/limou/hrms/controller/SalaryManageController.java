@@ -10,12 +10,16 @@ import com.limou.hrms.model.dto.salary.*;
 import com.limou.hrms.model.entity.*;
 import com.limou.hrms.model.vo.*;
 import com.limou.hrms.service.*;
+import com.limou.hrms.utils.ExcelUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 /**
@@ -202,6 +206,18 @@ public class SalaryManageController {
                                                             @RequestParam(defaultValue = "1") long current,
                                                             @RequestParam(defaultValue = "20") long size) {
         return ResultUtils.success(salaryBizService.previewBatch(id, current, size));
+    }
+
+    /**
+     * 导出批次核算明细为 Excel
+     */
+    @GetMapping("/batches/{id}/export")
+    public void exportBatch(@PathVariable Long id, HttpServletResponse response) {
+        List<SalaryDetailExcelVO> data = salaryBizService.exportBatch(id);
+        SalaryBatchVO batch = salaryBizService.getBatchDetail(id);
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+        String fileName = "薪资核算_" + batch.getSalaryMonth() + "_" + timestamp;
+        ExcelUtils.export(response, fileName, "薪资明细", data, SalaryDetailExcelVO.class);
     }
 
     @GetMapping("/batches/{id}/anomalies")

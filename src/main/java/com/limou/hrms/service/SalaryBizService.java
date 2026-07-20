@@ -51,6 +51,11 @@ public interface SalaryBizService {
     List<SalaryDetailVO> getAnomalies(Long batchId);
 
     /**
+     * 导出批次核算明细为 Excel
+     */
+    List<SalaryDetailExcelVO> exportBatch(Long batchId);
+
+    /**
      * 手动调整单条明细
      */
     void adjustDetail(Long batchId, Long employeeId, java.math.BigDecimal manualAdjust,
