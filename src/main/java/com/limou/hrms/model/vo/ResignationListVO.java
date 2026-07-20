@@ -12,6 +12,8 @@ public class ResignationListVO {
     private String employeeName;
     private String employeeNo;
     private String departmentName;
+    private String positionName;
+    private String handoverToName;
     private LocalDate resignationDate;
     private Integer resignationType;
     private String resignationTypeDesc;

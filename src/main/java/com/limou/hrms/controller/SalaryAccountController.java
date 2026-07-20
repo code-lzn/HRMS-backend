@@ -1,8 +1,10 @@
 package com.limou.hrms.controller;
 
+import com.limou.hrms.annotation.AuthCheck;
 import com.limou.hrms.common.BaseResponse;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.common.ResultUtils;
+import com.limou.hrms.constant.UserConstant;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.model.dto.salary.SalaryAccountAddRequest;
 import com.limou.hrms.model.dto.salary.SalaryAccountQueryRequest;
@@ -37,6 +39,7 @@ public class SalaryAccountController {
     private SalaryAccountService salaryAccountService;
 
     @GetMapping
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE})
     public BaseResponse<List<SalaryAccountVO>> listAccounts(SalaryAccountQueryRequest request) {
         if (request == null) {
             request = new SalaryAccountQueryRequest();
@@ -46,6 +49,7 @@ public class SalaryAccountController {
     }
 
     @GetMapping("/{id}")
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE})
     public BaseResponse<SalaryAccountVO> getAccount(@PathVariable Long id) {
         if (id == null || id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -55,6 +59,7 @@ public class SalaryAccountController {
     }
 
     @PostMapping
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
     public BaseResponse<Long> createAccount(@RequestBody SalaryAccountAddRequest request) {
         if (request == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -64,6 +69,7 @@ public class SalaryAccountController {
     }
 
     @PutMapping("/{id}")
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
     public BaseResponse<Boolean> updateAccount(
             @PathVariable Long id,
             @RequestBody SalaryAccountUpdateRequest request) {
@@ -76,6 +82,7 @@ public class SalaryAccountController {
     }
 
     @DeleteMapping("/{id}")
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
     public BaseResponse<Boolean> deleteAccount(@PathVariable Long id) {
         if (id == null || id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -87,6 +94,8 @@ public class SalaryAccountController {
     // ==================== 工资项目管理 ====================
 
     @GetMapping("/{id}/items")
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE})
+
     public BaseResponse<List<SalaryItemVO>> listItems(@PathVariable Long id) {
         if (id == null || id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -96,6 +105,7 @@ public class SalaryAccountController {
     }
 
     @PostMapping("/{id}/items")
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
     public BaseResponse<Long> addItem(
             @PathVariable Long id,
             @RequestBody SalaryItemAddRequest request) {
@@ -107,6 +117,7 @@ public class SalaryAccountController {
     }
 
     @PutMapping("/items/{itemId}")
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
     public BaseResponse<Boolean> updateItem(
             @PathVariable Long itemId,
             @RequestBody SalaryItemUpdateRequest request) {
@@ -119,6 +130,7 @@ public class SalaryAccountController {
     }
 
     @DeleteMapping("/items/{itemId}")
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
     public BaseResponse<Boolean> deleteItem(@PathVariable Long itemId) {
         if (itemId == null || itemId <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -128,6 +140,7 @@ public class SalaryAccountController {
     }
 
     @PutMapping("/{id}/items/sort")
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
     public BaseResponse<Boolean> sortItems(
             @PathVariable Long id,
             @RequestBody SalaryItemSortRequest request) {

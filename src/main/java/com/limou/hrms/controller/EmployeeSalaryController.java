@@ -1,8 +1,10 @@
 package com.limou.hrms.controller;
 
+import com.limou.hrms.annotation.AuthCheck;
 import com.limou.hrms.common.BaseResponse;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.common.ResultUtils;
+import com.limou.hrms.constant.UserConstant;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.model.dto.salary.EmployeeSalaryUpdateRequest;
 import com.limou.hrms.model.entity.User;
@@ -36,6 +38,7 @@ public class EmployeeSalaryController {
     private UserService userService;
 
     @GetMapping("/{employeeId}")
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE, UserConstant.DEFAULT_ROLE})
     public BaseResponse<EmployeeSalaryVO> getEmployeeSalary(
             @PathVariable Long employeeId) {
         if (employeeId == null || employeeId <= 0) {
@@ -46,6 +49,7 @@ public class EmployeeSalaryController {
     }
 
     @PutMapping("/{employeeId}")
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
     public BaseResponse<Boolean> updateEmployeeSalary(
             @PathVariable Long employeeId,
             @RequestBody EmployeeSalaryUpdateRequest request,
@@ -59,6 +63,7 @@ public class EmployeeSalaryController {
     }
 
     @GetMapping("/{employeeId}/history")
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE, UserConstant.DEFAULT_ROLE})
     public BaseResponse<List<SalaryChangeHistoryVO>> getSalaryHistory(
             @PathVariable Long employeeId) {
         if (employeeId == null || employeeId <= 0) {

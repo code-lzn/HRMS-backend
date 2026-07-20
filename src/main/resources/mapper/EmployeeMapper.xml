@@ -26,12 +26,14 @@
             p.name AS positionName,
             ewi.job_level AS jobLevel,
             e.status,
-            e.hire_date AS hireDate
+            e.hire_date AS hireDate,
+            dr.name AS directReportName
         FROM employee e
         LEFT JOIN employee_personal_info epi ON e.id = epi.employee_id
         LEFT JOIN employee_work_info ewi ON e.id = ewi.employee_id
         LEFT JOIN department d ON ewi.department_id = d.id
         LEFT JOIN position p ON ewi.position_id = p.id
+        LEFT JOIN employee_personal_info dr ON ewi.direct_report_id = dr.employee_id
         WHERE e.is_deleted = 0
         <if test="keyword != null and keyword != ''">
             AND (epi.name LIKE CONCAT('%', #{keyword}, '%')
@@ -91,12 +93,14 @@
             p.name AS positionName,
             ewi.job_level AS jobLevel,
             e.status,
-            e.hire_date AS hireDate
+            e.hire_date AS hireDate,
+            dr.name AS directReportName
         FROM employee e
         LEFT JOIN employee_personal_info epi ON e.id = epi.employee_id
         LEFT JOIN employee_work_info ewi ON e.id = ewi.employee_id
         LEFT JOIN department d ON ewi.department_id = d.id
         LEFT JOIN position p ON ewi.position_id = p.id
+        LEFT JOIN employee_personal_info dr ON ewi.direct_report_id = dr.employee_id
         WHERE e.is_deleted = 0
         <if test="keyword != null and keyword != ''">
             AND (epi.name LIKE CONCAT('%', #{keyword}, '%')

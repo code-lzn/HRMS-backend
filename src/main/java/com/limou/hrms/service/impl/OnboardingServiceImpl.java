@@ -318,6 +318,14 @@ public class OnboardingServiceImpl
         workInfo.setDepartmentId(app.getDepartmentId());
         workInfo.setPositionId(app.getPositionId());
         workInfo.setDirectReportId(app.getDirectReportId());
+        // 默认职级：取职位职级范围的最低级
+        if (app.getPositionId() != null) {
+            Position position = positionMapper.selectById(app.getPositionId());
+            if (position != null && position.getLevelMin() != null) {
+                String prefix = position.getLevelPrefix() != null ? position.getLevelPrefix() : "P";
+                workInfo.setJobLevel(prefix + position.getLevelMin());
+            }
+        }
         workInfoMapper.insert(workInfo);
 
         // 6. 更新入职申请
