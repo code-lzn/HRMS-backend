@@ -61,9 +61,6 @@ public class EmployeeSalaryServiceImpl extends ServiceImpl<EmployeeSalaryMapper,
     @Resource
     private DataScopeContext dataScopeContext;
 
-    @Resource
-    private EmployeeMapper employeeMapper;
-
     @Override
     public EmployeeSalaryVO getEmployeeSalary(Long employeeId) {
         checkSalaryDataScope(employeeId);

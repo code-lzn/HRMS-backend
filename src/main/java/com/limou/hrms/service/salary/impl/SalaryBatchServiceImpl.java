@@ -14,6 +14,7 @@ import com.limou.hrms.mapper.SalaryDetailMapper;
 import com.limou.hrms.mapper.SalaryItemMapper;
 import com.limou.hrms.model.dto.salary.SalaryBatchCreateRequest;
 import com.limou.hrms.model.dto.salary.SalaryBatchQueryRequest;
+import com.limou.hrms.model.dto.salary.SalaryBatchRejectRequest;
 import com.limou.hrms.model.dto.salary.SalaryDetailAdjustRequest;
 import com.limou.hrms.model.dto.salary.SalaryDetailQueryRequest;
 import com.limou.hrms.model.entity.EmployeeSalary;
@@ -306,6 +307,37 @@ public class SalaryBatchServiceImpl extends ServiceImpl<SalaryBatchMapper, Salar
         this.updateById(batch);
 
         log.info("薪资批次已提交审批: batchId={}, applicantId={}", batchId, applicantId);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void approve(Long batchId) {
+        SalaryBatch batch = this.getById(batchId);
+        if (batch == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "批次不存在");
+        }
+        if (batch.getStatus() != BatchStatusEnum.APPROVING.getValue()) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "仅审批中状态的批次可以审批通过");
+        }
+        batch.setStatus(BatchStatusEnum.APPROVED.getValue());
+        this.updateById(batch);
+        log.info("薪资批次审批通过: batchId={}", batchId);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void reject(Long batchId, SalaryBatchRejectRequest request) {
+        SalaryBatch batch = this.getById(batchId);
+        if (batch == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "批次不存在");
+        }
+        if (batch.getStatus() != BatchStatusEnum.APPROVING.getValue()) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "仅审批中状态的批次可以驳回");
+        }
+        batch.setStatus(BatchStatusEnum.REJECTED.getValue());
+        this.updateById(batch);
+        log.info("薪资批次审批驳回: batchId={}, reason={}", batchId,
+                request != null ? request.getReason() : null);
     }
 
     // ==================== 审批回调 ====================
