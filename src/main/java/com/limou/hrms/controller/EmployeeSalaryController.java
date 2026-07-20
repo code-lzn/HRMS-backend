@@ -12,9 +12,6 @@ import com.limou.hrms.model.vo.salary.EmployeeSalaryVO;
 import com.limou.hrms.model.vo.salary.SalaryChangeHistoryVO;
 import com.limou.hrms.service.UserService;
 import com.limou.hrms.service.salary.EmployeeSalaryService;
-import io.swagger.annotations.Api;
-import io.swagger.annotations.ApiOperation;
-import io.swagger.annotations.ApiParam;
 import java.util.List;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
@@ -29,9 +26,8 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 员工薪资档案 Controller
  */
-@Api(tags = "员工薪资档案")
 @RestController
-@RequestMapping("/v1/employee-salaries")
+@RequestMapping("/employee-salaries")
 @Slf4j
 public class EmployeeSalaryController {
 
@@ -41,11 +37,10 @@ public class EmployeeSalaryController {
     @Resource
     private UserService userService;
 
-    @ApiOperation("获取员工当前有效薪资档案")
     @GetMapping("/{employeeId}")
     @AuthCheck(mustRole = {UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE, UserConstant.DEFAULT_ROLE})
     public BaseResponse<EmployeeSalaryVO> getEmployeeSalary(
-            @ApiParam("员工ID") @PathVariable Long employeeId) {
+            @PathVariable Long employeeId) {
         if (employeeId == null || employeeId <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
@@ -53,11 +48,10 @@ public class EmployeeSalaryController {
         return ResultUtils.success(vo);
     }
 
-    @ApiOperation("更新员工薪资档案（自动记录调薪历史）")
     @PutMapping("/{employeeId}")
     @AuthCheck(mustRole = {UserConstant.HR_ROLE})
     public BaseResponse<Boolean> updateEmployeeSalary(
-            @ApiParam("员工ID") @PathVariable Long employeeId,
+            @PathVariable Long employeeId,
             @RequestBody EmployeeSalaryUpdateRequest request,
             HttpServletRequest httpRequest) {
         if (request == null || employeeId == null) {
@@ -68,11 +62,10 @@ public class EmployeeSalaryController {
         return ResultUtils.success(true);
     }
 
-    @ApiOperation("获取员工调薪历史")
     @GetMapping("/{employeeId}/history")
     @AuthCheck(mustRole = {UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE, UserConstant.DEFAULT_ROLE})
     public BaseResponse<List<SalaryChangeHistoryVO>> getSalaryHistory(
-            @ApiParam("员工ID") @PathVariable Long employeeId) {
+            @PathVariable Long employeeId) {
         if (employeeId == null || employeeId <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }

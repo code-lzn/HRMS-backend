@@ -26,7 +26,7 @@ import java.util.Map;
  * 职位管理控制器 — CRUD + 序列枚举
  */
 @RestController
-@RequestMapping("/api/v1/positions")
+@RequestMapping("/positions")
 @Slf4j
 @RequiredArgsConstructor
 public class PositionController {
@@ -34,7 +34,7 @@ public class PositionController {
     private final PositionService positionService;
 
     /**
-     * GET /api/v1/positions/sequences — 获取职位序列 + 职级配置枚举
+     * GET /api/positions/sequences — 获取职位序列 + 职级配置枚举
      */
     @GetMapping("/sequences")
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
@@ -45,7 +45,7 @@ public class PositionController {
     }
 
     /**
-     * GET /api/v1/positions — 查询职位列表（分页 + 模糊搜索）
+     * GET /api/positions — 查询职位列表（分页 + 模糊搜索）
      */
     @GetMapping
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
@@ -56,7 +56,7 @@ public class PositionController {
     }
 
     /**
-     * GET /api/v1/positions/{id} — 查询职位详情
+     * GET /api/positions/{id} — 查询职位详情
      */
     @GetMapping("/{id}")
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
@@ -70,7 +70,7 @@ public class PositionController {
     }
 
     /**
-     * POST /api/v1/positions — 创建职位
+     * POST /api/positions — 创建职位
      */
     @PostMapping
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
@@ -81,7 +81,7 @@ public class PositionController {
     }
 
     /**
-     * PUT /api/v1/positions/{id} — 更新职位（部分更新）
+     * PUT /api/positions/{id} — 更新职位（部分更新）
      */
     @PutMapping("/{id}")
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
@@ -96,7 +96,7 @@ public class PositionController {
     }
 
     /**
-     * DELETE /api/v1/positions/{id} — 删除职位（逻辑删除，需先清空员工关联）
+     * DELETE /api/positions/{id} — 删除职位（逻辑删除，需先清空员工关联）
      */
     @DeleteMapping("/{id}")
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})

@@ -8,21 +8,29 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.constant.CommonConstant;
 import com.limou.hrms.exception.BusinessException;
+import com.limou.hrms.mapper.LoginLogMapper;
 import com.limou.hrms.mapper.UserMapper;
 import com.limou.hrms.model.dto.user.UserQueryRequest;
+import com.limou.hrms.model.entity.LoginLog;
 import com.limou.hrms.model.entity.User;
+import com.limou.hrms.context.UserContext;
 import com.limou.hrms.model.enums.UserRoleEnum;
 import com.limou.hrms.model.vo.LoginUserVO;
 import com.limou.hrms.model.vo.UserVO;
 import com.limou.hrms.service.UserService;
 import com.limou.hrms.utils.SqlUtils;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
+import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpSession;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.DigestUtils;
 
@@ -38,6 +46,20 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
      * 盐值，混淆密码
      */
     public static final String SALT = "limou";
+
+    @Resource
+    private LoginLogMapper loginLogMapper;
+
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
+
+    @Resource
+    private com.limou.hrms.utils.JwtUtils jwtUtils;
+
+    /** 密码版本号 Redis Key */
+    public static final String PWD_VERSION_KEY = "pwd:version:%d";
+    /** 密码版本号 session 属性名 */
+    public static final String PWD_VERSION_ATTR = "PASSWORD_VERSION";
 
     @Override
     public LoginUserVO userLogin(String userAccount, String userPassword, HttpServletRequest request) {
@@ -61,11 +83,28 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         // 用户不存在
         if (user == null) {
             log.info("user login failed, userAccount cannot match userPassword");
+            // 记录登录失败日志（通过 userAccount 查找 userId）
+            recordLoginLog(userAccount, request, 0);
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户不存在或密码错误");
         }
         // 3. 记录用户的登录态
-        request.getSession().setAttribute(USER_LOGIN_STATE, user);
-        return this.getLoginUserVO(user);
+        HttpSession session = request.getSession();
+        session.setAttribute(USER_LOGIN_STATE, user);
+        // 写入密码版本号（用于密码修改后强制下线）
+        String versionKey = String.format(PWD_VERSION_KEY, user.getId());
+        String version = stringRedisTemplate.opsForValue().get(versionKey);
+        if (version == null) {
+            version = "1";
+            stringRedisTemplate.opsForValue().set(versionKey, version,
+                    Duration.ofSeconds(session.getMaxInactiveInterval()));
+        }
+        session.setAttribute(PWD_VERSION_ATTR, version);
+        // 记录登录成功日志
+        recordLoginLog(user.getId(), request, 1);
+        LoginUserVO loginUserVO = this.getLoginUserVO(user);
+        // 生成 JWT Token，使前端可多标签页独立登录
+        loginUserVO.setToken(jwtUtils.generateToken(user.getId(), user.getUserName(), user.getUserRole()));
+        return loginUserVO;
     }
 
 //    @Override
@@ -108,13 +147,17 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
      */
     @Override
     public User getLoginUser(HttpServletRequest request) {
-        // 先判断是否已登录
+        // 优先从 UserContext 获取（LoginInterceptor 已查过数据库）
+        User contextUser = UserContext.getCurrentUser();
+        if (contextUser != null) {
+            return contextUser;
+        }
+        // 兜底：从 session + DB 查询
         Object userObj = request.getSession().getAttribute(USER_LOGIN_STATE);
         User currentUser = (User) userObj;
         if (currentUser == null || currentUser.getId() == null) {
             throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
         }
-        // 从数据库查询（追求性能的话可以注释，直接走缓存）
         long userId = currentUser.getId();
         currentUser = this.getById(userId);
         if (currentUser == null) {
@@ -131,13 +174,17 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
      */
     @Override
     public User getLoginUserPermitNull(HttpServletRequest request) {
-        // 先判断是否已登录
+        // 优先从 UserContext 获取（LoginInterceptor 已查过数据库）
+        User contextUser = UserContext.getCurrentUser();
+        if (contextUser != null) {
+            return contextUser;
+        }
+        // 兜底：从 session + DB 查询
         Object userObj = request.getSession().getAttribute(USER_LOGIN_STATE);
         User currentUser = (User) userObj;
         if (currentUser == null || currentUser.getId() == null) {
             return null;
         }
-        // 从数据库查询（追求性能的话可以注释，直接走缓存）
         long userId = currentUser.getId();
         return this.getById(userId);
     }
@@ -227,5 +274,39 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         queryWrapper.orderBy(SqlUtils.validSortField(sortField), sortOrder.equals(CommonConstant.SORT_ORDER_ASC),
                 sortField);
         return queryWrapper;
+    }
+
+    /**
+     * 记录登录日志
+     */
+    private void recordLoginLog(Object userIdOrAccount, HttpServletRequest request, int result) {
+        try {
+            LoginLog loginLog = new LoginLog();
+            if (userIdOrAccount instanceof Long) {
+                loginLog.setUserId((Long) userIdOrAccount);
+            }
+            loginLog.setLoginTime(LocalDateTime.now());
+            loginLog.setIpAddress(getClientIp(request));
+            loginLog.setDevice(request.getHeader("User-Agent"));
+            loginLog.setResult(result);
+            loginLogMapper.insert(loginLog);
+        } catch (Exception e) {
+            // 日志记录失败不影响登录流程
+            log.warn("记录登录日志失败: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 获取客户端真实 IP
+     */
+    private String getClientIp(HttpServletRequest request) {
+        String ip = request.getHeader("X-Forwarded-For");
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("X-Real-IP");
+        }
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getRemoteAddr();
+        }
+        return ip;
     }
 }

@@ -12,6 +12,7 @@ import com.limou.hrms.mapper.DepartmentMapper;
 import com.limou.hrms.mapper.EmployeeMapper;
 import com.limou.hrms.mapper.EmployeePersonalInfoMapper;
 import com.limou.hrms.mapper.EmployeeWorkInfoMapper;
+import com.limou.hrms.mapper.UserMapper;
 import com.limou.hrms.model.dto.department.DepartmentCreateRequest;
 import com.limou.hrms.model.dto.department.DepartmentQueryRequest;
 import com.limou.hrms.model.dto.department.DepartmentUpdateRequest;
@@ -22,6 +23,7 @@ import com.limou.hrms.model.entity.EmployeePersonalInfo;
 import com.limou.hrms.model.entity.EmployeeWorkInfo;
 import com.limou.hrms.model.entity.User;
 import com.limou.hrms.model.enums.EmployeeStatus;
+import com.limou.hrms.model.enums.UserRoleEnum;
 import com.limou.hrms.model.vo.DepartmentTreeNode;
 import com.limou.hrms.model.vo.DepartmentVO;
 import com.limou.hrms.service.DepartmentService;
@@ -49,16 +51,18 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
 
     private final EmployeePersonalInfoMapper employeePersonalInfoMapper;
 
+    private final UserMapper userMapper;
+
     private final DataScopeContext dataScopeContext;
 
-    private static final int MAX_DEPTH = 5;
+    private static final int MAX_DEPTH = 4;
 
     // ==================== 创建部门 ====================
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Department createDepartment(DepartmentCreateRequest dto, User loginUser) {
-        checkNameUnique(dto.getName(), null);
+        checkNameUnique(dto.getName(), dto.getParentId(), null);
         checkCodeUnique(dto.getCode(), null);
         checkSortOrderUnique(dto.getParentId(), dto.getSortOrder(), null);
         Department parent = validateParentAndDepth(dto.getParentId());
@@ -82,21 +86,18 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
     public Department updateDepartment(Long id, DepartmentUpdateRequest dto, User loginUser) {
         Department existDept = getUndeletedDeptOrThrow(id);
 
-        if (StringUtils.hasText(dto.getName())) {
-            checkNameUnique(dto.getName(), id);
-        }
-        if (StringUtils.hasText(dto.getCode())) {
-            checkCodeUnique(dto.getCode(), id);
-        }
+        // 父部门变更（用于后续同名/同序号校验）
+        Long effectiveParentId = existDept.getParentId();
         if (dto.getParentId() != null && !dto.getParentId().equals(existDept.getParentId())) {
             checkNotCircularRef(id, dto.getParentId());
             Department newParent = getUndeletedDeptOrThrow(dto.getParentId());
+            effectiveParentId = dto.getParentId();
 
             // 最深子节点移动后不能超过最大层级
             int newRootLevel = newParent.getLevel() + 1;
             int levelDiff = newRootLevel - existDept.getLevel();
             int maxDescLevel = getMaxDescendantLevel(id);
-            if (maxDescLevel + levelDiff >= MAX_DEPTH) {
+            if (maxDescLevel + levelDiff > MAX_DEPTH) {
                 throw new BusinessException(ErrorCode.DEPARTMENT_MAX_DEPTH_EXCEEDED);
             }
 
@@ -106,8 +107,14 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
             }
             existDept.setLevel(newRootLevel);
         }
+        if (StringUtils.hasText(dto.getName())) {
+            checkNameUnique(dto.getName(), effectiveParentId, id);
+        }
+        if (StringUtils.hasText(dto.getCode())) {
+            checkCodeUnique(dto.getCode(), id);
+        }
         if (dto.getSortOrder() != null) {
-            Long effectiveParentId = dto.getParentId() != null ? dto.getParentId() : existDept.getParentId();
+            effectiveParentId = dto.getParentId() != null ? dto.getParentId() : existDept.getParentId();
             checkSortOrderUnique(effectiveParentId, dto.getSortOrder(), id);
         }
         if (dto.getManagerId() != null) {
@@ -342,8 +349,10 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
         return dept;
     }
 
-    private void checkNameUnique(String name, Long excludeId) {
-        LambdaQueryWrapper<Department> query = Wrappers.<Department>lambdaQuery().eq(Department::getName, name);
+    private void checkNameUnique(String name, Long parentId, Long excludeId) {
+        LambdaQueryWrapper<Department> query = Wrappers.<Department>lambdaQuery()
+                .eq(Department::getName, name)
+                .eq(Department::getParentId, parentId);
         if (excludeId != null) {
             query.ne(Department::getId, excludeId);
         }
@@ -390,12 +399,21 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
 
     private void validateManagerActive(Long managerId) {
         if (managerId == null) return;
-        long count = employeeMapper.selectCount(
+        Employee employee = employeeMapper.selectOne(
                 Wrappers.<Employee>lambdaQuery()
                         .eq(Employee::getId, managerId)
                         .in(Employee::getStatus, EmployeeStatus.getActiveValues()));
-        if (count == 0) {
+        if (employee == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "部门负责人不存在或非在职状态");
+        }
+        // 校验角色：只有普通员工和部门负责人可以担任部门负责人
+        User managerUser = userMapper.selectById(employee.getUserId());
+        if (managerUser == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "部门负责人关联的账号不存在");
+        }
+        UserRoleEnum role = UserRoleEnum.getEnumByValue(managerUser.getUserRole());
+        if (role != UserRoleEnum.USER && role != UserRoleEnum.DEPT_HEAD) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "只有普通员工或部门负责人可以担任部门负责人，HR、管理员、财务专员不可以");
         }
     }
 

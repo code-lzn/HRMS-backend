@@ -91,9 +91,17 @@ public class ProbationServiceImpl
         app.setRemark(dto.getRemark());
         // 从员工档案自动带入试用期信息
         app.setProbationStartDate(employee.getHireDate());
-        if (employee.getHireDate() != null) {
-            app.setProbationStartDate(employee.getHireDate());
+        // 试用期结束日期 = 入职日期 + 试用期月数
+        EmployeeWorkInfo workInfo = workInfoMapper.selectOne(
+                new QueryWrapper<EmployeeWorkInfo>().eq("employee_id", dto.getEmployeeId()));
+        int probationMonths = 3; // 默认3个月
+        if (workInfo != null && workInfo.getPositionId() != null) {
+            Position position = positionMapper.selectById(workInfo.getPositionId());
+            if (position != null && position.getDefaultProbationMonths() != null) {
+                probationMonths = position.getDefaultProbationMonths();
+            }
         }
+        app.setProbationEndDate(employee.getHireDate().plusMonths(probationMonths));
         app.setApplicantId(dataScopeContext.getCurrentEmployeeId());
         app.setStatus(ProbationStatus.DRAFT.getCode());// 草稿
         probationMapper.insert(app);
@@ -397,6 +405,17 @@ public class ProbationServiceImpl
         }
         if (query.getEmployeeId() != null) {
             qw.eq("employee_id", query.getEmployeeId());
+        }
+        if (query.getDepartmentId() != null) {
+            qw.inSql("employee_id",
+                "SELECT w.employee_id FROM employee_work_info w WHERE w.department_id = " + query.getDepartmentId());
+        }
+        if (StringUtils.isNotBlank(query.getKeyword())) {
+            qw.and(w -> w
+                .inSql("employee_id", "SELECT e.id FROM employee e " +
+                    "INNER JOIN employee_personal_info pi ON pi.employee_id = e.id " +
+                    "WHERE pi.name LIKE '%" + query.getKeyword() + "%' " +
+                    "OR e.employee_no LIKE '%" + query.getKeyword() + "%'"));
         }
         return qw;
     }

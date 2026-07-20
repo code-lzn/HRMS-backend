@@ -19,4 +19,6 @@ public class ProbationQuery extends PageRequest {
 
     /** 部门ID筛选 */
     private Long departmentId;
+    /** 关键词搜索（员工姓名/工号） */
+    private String keyword;
 }

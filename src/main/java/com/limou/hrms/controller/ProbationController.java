@@ -15,8 +15,6 @@ import com.limou.hrms.model.vo.PendingEmployeeVO;
 import com.limou.hrms.model.vo.ProbationDetailVO;
 import com.limou.hrms.model.vo.ProbationListVO;
 import com.limou.hrms.service.ProbationService;
-import io.swagger.annotations.Api;
-import io.swagger.annotations.ApiOperation;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -27,23 +25,20 @@ import java.util.List;
 /**
  * 转正管理控制器
  */
-@Api(tags = "转正管理")
 @RestController
-@RequestMapping("/api/v1/probation")
+@RequestMapping("/probation")
 @Slf4j
 @RequiredArgsConstructor
 public class ProbationController {
 
     private final ProbationService probationService;
 
-    @ApiOperation("查询转正列表（分页 + 角色路由）")
     @GetMapping
     @AuthCheck
     public BaseResponse<Page<ProbationListVO>> list(ProbationQuery query) {
         return ResultUtils.success(probationService.list(query));
     }
 
-    @ApiOperation("获取转正详情（含审批进度）")
     @GetMapping("/{id}")
     @AuthCheck
     public BaseResponse<ProbationDetailVO> getDetail(@PathVariable Long id) {
@@ -51,14 +46,12 @@ public class ProbationController {
         return ResultUtils.success(probationService.getDetail(id));
     }
 
-    @ApiOperation("创建转正申请（保存草稿或直接提交审批）")
     @PostMapping
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
     public BaseResponse<Long> create(@Valid @RequestBody ProbationCreateDTO dto) {
         return ResultUtils.success(probationService.createApplication(dto));
     }
 
-    @ApiOperation("更新转正草稿（仅草稿状态可编辑）")
     @PutMapping("/{id}")
     @AuthCheck
     public BaseResponse<?> updateDraft(@PathVariable Long id, @RequestBody ProbationUpdateDTO dto) {
@@ -67,7 +60,6 @@ public class ProbationController {
         return ResultUtils.success(null);
     }
 
-    @ApiOperation("删除转正草稿")
     @DeleteMapping("/{id}")
     @AuthCheck
     public BaseResponse<?> deleteDraft(@PathVariable Long id) {
@@ -76,7 +68,6 @@ public class ProbationController {
         return ResultUtils.success(null);
     }
 
-    @ApiOperation("提交转正审批（草稿→审批中）")
     @PostMapping("/{id}/submit")
     @AuthCheck
     public BaseResponse<?> submitToApproval(@PathVariable Long id) {
@@ -85,7 +76,6 @@ public class ProbationController {
         return ResultUtils.success(null);
     }
 
-    @ApiOperation("撤回转正申请（回退为草稿）")
     @PostMapping("/{id}/cancel")
     @AuthCheck
     public BaseResponse<?> cancel(@PathVariable Long id) {
@@ -94,7 +84,6 @@ public class ProbationController {
         return ResultUtils.success(null);
     }
 
-    @ApiOperation("处理转正结果（审批拒绝后HR决定通过/延长试用/不通过）")
     @PostMapping("/{id}/handle-result")
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
     public BaseResponse<?> handleResult(@PathVariable Long id, @Valid @RequestBody ProbationHandleResultDTO dto) {
@@ -103,7 +92,6 @@ public class ProbationController {
         return ResultUtils.success(null);
     }
 
-    @ApiOperation("查询待转正员工（试用期即将到期）")
     @GetMapping("/pending-employees")
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
     public BaseResponse<List<PendingEmployeeVO>> getPendingEmployees(@RequestParam(defaultValue = "7") Integer days) {

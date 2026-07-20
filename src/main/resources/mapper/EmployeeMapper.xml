@@ -82,4 +82,67 @@
         ORDER BY e.hire_date DESC
     </select>
 
+    <select id="selectEmployeeList" resultType="com.limou.hrms.model.vo.EmployeeListVO">
+        SELECT
+            e.id,
+            e.employee_no AS employeeNo,
+            epi.name,
+            d.name AS departmentName,
+            p.name AS positionName,
+            ewi.job_level AS jobLevel,
+            e.status,
+            e.hire_date AS hireDate
+        FROM employee e
+        LEFT JOIN employee_personal_info epi ON e.id = epi.employee_id
+        LEFT JOIN employee_work_info ewi ON e.id = ewi.employee_id
+        LEFT JOIN department d ON ewi.department_id = d.id
+        LEFT JOIN position p ON ewi.position_id = p.id
+        WHERE e.is_deleted = 0
+        <if test="keyword != null and keyword != ''">
+            AND (epi.name LIKE CONCAT('%', #{keyword}, '%')
+                 OR e.employee_no LIKE CONCAT('%', #{keyword}, '%')
+                 OR epi.phone LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="departmentIds != null and departmentIds.size() > 0">
+            AND ewi.department_id IN
+            <foreach item="item" collection="departmentIds" open="(" separator="," close=")">
+                #{item}
+            </foreach>
+        </if>
+        <if test="positionIds != null and positionIds.size() > 0">
+            AND ewi.position_id IN
+            <foreach item="item" collection="positionIds" open="(" separator="," close=")">
+                #{item}
+            </foreach>
+        </if>
+        <if test="statuses != null and statuses.size() > 0">
+            AND e.status IN
+            <foreach item="item" collection="statuses" open="(" separator="," close=")">
+                #{item}
+            </foreach>
+        </if>
+        <if test="jobLevels != null and jobLevels.size() > 0">
+            AND ewi.job_level IN
+            <foreach item="item" collection="jobLevels" open="(" separator="," close=")">
+                #{item}
+            </foreach>
+        </if>
+        <if test="hireDateStart != null and hireDateStart != ''">
+            AND e.hire_date &gt;= #{hireDateStart}
+        </if>
+        <if test="hireDateEnd != null and hireDateEnd != ''">
+            AND e.hire_date &lt;= #{hireDateEnd}
+        </if>
+        <if test="deptIds != null and deptIds.size() > 0">
+            AND ewi.department_id IN
+            <foreach item="item" collection="deptIds" open="(" separator="," close=")">
+                #{item}
+            </foreach>
+        </if>
+        <if test="selfEmployeeId != null">
+            AND e.id = #{selfEmployeeId}
+        </if>
+        ORDER BY e.hire_date DESC
+    </select>
+
 </mapper>

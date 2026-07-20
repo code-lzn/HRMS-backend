@@ -13,6 +13,7 @@ public interface ResignationService {
     void deleteDraft(Long id);
     void submitToApproval(Long id);
     void cancel(Long id);
+    void confirmResignation(Long id);
     Page<ResignationListVO> list(ResignationQuery query);
     ResignationDetailVO getDetail(Long id);
 }

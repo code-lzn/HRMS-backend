@@ -19,14 +19,13 @@ import com.limou.hrms.model.vo.*;
 import com.limou.hrms.service.ApprovalCallback;
 import com.limou.hrms.service.ApprovalFlowService;
 import com.limou.hrms.service.OnboardingService;
-import com.limou.hrms.util.AesUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
-import java.security.SecureRandom;
+
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -61,8 +60,6 @@ public class OnboardingServiceImpl
     private ApprovalInstanceMapper approvalInstanceMapper;
     @Resource
     private ApprovalNodeMapper approvalNodeMapper;
-    @Resource
-    private AesUtil aesUtil;
     @Resource
     private DataScopeContext dataScopeContext;
     @Resource
@@ -287,25 +284,35 @@ public class OnboardingServiceImpl
         // 1. 生成工号
         String employeeNo = generateEmployeeNo(app.getDepartmentId());
 
-        // 2. 写入 employee 表
+        // 2. 先创建系统账号（账号=手机号，初始密码 12345678，首次登录强制修改）
+        User user = new User();
+        user.setUserAccount(app.getPhone());
+        user.setUserPassword(DigestUtils.md5DigestAsHex(("pwd" + "12345678").getBytes()));
+        user.setUserName(app.getName());
+        user.setUserRole(UserRoleEnum.USER.getValue());
+        user.setPwdReset(1); // 首次登录强制修改密码
+        userMapper.insert(user);
+
+        // 3. 写入 employee 表（含 user_id）
         Employee employee = new Employee();
+        employee.setUserId(user.getId());
         employee.setEmployeeNo(employeeNo);
         employee.setStatus(EmployeeStatus.PROBATION.getValue());
         employee.setHireDate(app.getExpectedHireDate());
         employee.setHireType(app.getHireType());
         employeeMapper.insert(employee);
 
-        // 3. 写入 personal_info（身份证号 AES 加密）
+        // 4. 写入 personal_info（身份证号 AES 加密）
         EmployeePersonalInfo personalInfo = new EmployeePersonalInfo();
         personalInfo.setEmployeeId(employee.getId());
         personalInfo.setName(app.getName());
         personalInfo.setGender(app.getGender());
         personalInfo.setPhone(app.getPhone());
         personalInfo.setEmail(app.getEmail());
-        personalInfo.setIdCard(aesUtil.encrypt(app.getIdCard()));
+        personalInfo.setIdCard(app.getIdCard());
         personalInfoMapper.insert(personalInfo);
 
-        // 4. 写入 work_info
+        // 5. 写入 work_info
         EmployeeWorkInfo workInfo = new EmployeeWorkInfo();
         workInfo.setEmployeeId(employee.getId());
         workInfo.setDepartmentId(app.getDepartmentId());
@@ -313,25 +320,12 @@ public class OnboardingServiceImpl
         workInfo.setDirectReportId(app.getDirectReportId());
         workInfoMapper.insert(workInfo);
 
-        // 5. 创建系统账号（账号=手机号，随机密码）
-        String initialPassword = generateRandomPassword();
-        User user = new User();
-        user.setUserAccount(app.getPhone());
-        user.setUserPassword(DigestUtils.md5DigestAsHex(("user" + initialPassword).getBytes()));
-        user.setUserName(app.getName());
-        user.setUserRole(UserRoleEnum.USER.getValue());
-        userMapper.insert(user);
-
-        // 关联用户ID到员工
-        employee.setUserId(user.getId());
-        employeeMapper.updateById(employee);
-
         // 6. 更新入职申请
         app.setEmployeeId(employee.getId());
         app.setStatus(OnboardingStatus.APPROVED.getCode());
         onboardingMapper.updateById(app);
 
-        log.info("入职审批通过后处理完成: 申请表id={}, employeeId={}, employeeNo={}", bizId, employee.getId(), employeeNo);
+        log.info("入职审批通过后处理完成: 申请表id={}, employeeId={}, employeeNo={}, 初始密码=12345678", bizId, employee.getId(), employeeNo);
     }
 
     @Override
@@ -421,10 +415,6 @@ public class OnboardingServiceImpl
 
     @Override
     public boolean isPhoneAvailable(String phone, Long excludeId) {
-        // 检查 employee 表
-        Long empCount = employeeMapper.selectCount(
-                new QueryWrapper<Employee>().eq("phone", phone).last("LIMIT 1"));
-        if (empCount != null && empCount > 0) return false;
         // 检查 employee_personal_info 表
         Long piCount = personalInfoMapper.selectCount(
                 new QueryWrapper<EmployeePersonalInfo>().eq("phone", phone).last("LIMIT 1"));
@@ -499,6 +489,9 @@ public class OnboardingServiceImpl
             OnboardingStatus statusEnum = OnboardingStatus.fromCode(app.getStatus());
             vo.setStatusDesc(statusEnum != null ? statusEnum.getDesc() : "");
             vo.setApplicantName(approverResolver.getEmployeeName(app.getApplicantId()));
+            vo.setHireType(app.getHireType());
+            String[] hireTypes = {"", "全职", "兼职", "实习"};
+            vo.setHireTypeDesc(app.getHireType() != null && app.getHireType() > 0 && app.getHireType() < hireTypes.length ? hireTypes[app.getHireType()] : "");
             vo.setCreateTime(app.getCreateTime());
             return vo;
         }).collect(Collectors.toList());
@@ -575,14 +568,4 @@ public class OnboardingServiceImpl
         }
     }
 
-    private static final String PASSWORD_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    private static final SecureRandom RANDOM = new SecureRandom();
-
-    private String generateRandomPassword() {
-        StringBuilder sb = new StringBuilder(8);
-        for (int i = 0; i < 8; i++) {
-            sb.append(PASSWORD_CHARS.charAt(RANDOM.nextInt(PASSWORD_CHARS.length())));
-        }
-        return sb.toString();
-    }
 }

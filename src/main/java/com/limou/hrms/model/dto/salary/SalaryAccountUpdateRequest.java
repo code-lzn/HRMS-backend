@@ -10,7 +10,7 @@ import lombok.Data;
 /**
  * 薪资账套编辑请求
  */
-@ApiModel("编辑账套请求")
+@ApiModel("SalaryAccountUpdateRequest")
 @Data
 public class SalaryAccountUpdateRequest implements Serializable {
 

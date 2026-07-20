@@ -20,4 +20,6 @@ public class PendingItemVO {
     private String delegatorName;
     private LocalDateTime createTime;
     private LocalDateTime deadLine;
+    /** 当前用户是否有权操作该节点（审批通过/拒绝） */
+    private Boolean canAct;
 }

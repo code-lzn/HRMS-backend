@@ -33,4 +33,17 @@ public interface EmployeeMapper extends BaseMapper<Employee> {
                                             @Param("hireDateEnd") String hireDateEnd,
                                             @Param("deptIds") List<Long> deptIds,
                                             @Param("selfEmployeeId") Long selfEmployeeId);
+
+    /**
+     * 查询员工列表（不分页，用于导出）
+     */
+    List<EmployeeListVO> selectEmployeeList(@Param("keyword") String keyword,
+                                            @Param("departmentIds") List<Long> departmentIds,
+                                            @Param("positionIds") List<Long> positionIds,
+                                            @Param("statuses") List<Integer> statuses,
+                                            @Param("jobLevels") List<String> jobLevels,
+                                            @Param("hireDateStart") String hireDateStart,
+                                            @Param("hireDateEnd") String hireDateEnd,
+                                            @Param("deptIds") List<Long> deptIds,
+                                            @Param("selfEmployeeId") Long selfEmployeeId);
 }

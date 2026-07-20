@@ -1,9 +1,7 @@
 package com.limou.hrms.controller;
 
-import com.limou.hrms.annotation.AuthCheck;
 import com.limou.hrms.common.BaseResponse;
 import com.limou.hrms.common.ResultUtils;
-import com.limou.hrms.constant.UserConstant;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import java.math.BigDecimal;

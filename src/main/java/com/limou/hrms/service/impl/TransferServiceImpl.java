@@ -350,6 +350,13 @@ public class TransferServiceImpl
         QueryWrapper<TransferApplication> qw = new QueryWrapper<>();
         if (query.getStatus() != null) qw.eq("status", query.getStatus());
         if (query.getEmployeeId() != null) qw.eq("employee_id", query.getEmployeeId());
+        if (StringUtils.isNotBlank(query.getKeyword())) {
+            qw.and(w -> w
+                .inSql("employee_id", "SELECT e.id FROM employee e " +
+                    "INNER JOIN employee_personal_info pi ON pi.employee_id = e.id " +
+                    "WHERE pi.name LIKE '%" + query.getKeyword() + "%' " +
+                    "OR e.employee_no LIKE '%" + query.getKeyword() + "%'"));
+        }
         return qw;
     }
 

@@ -53,7 +53,7 @@ public class AesUtil {
     }
 
     /**
-     * AES 解密，输入 Base64 编码的密文，返回明文
+     * AES 解密，输入 Base64 编码的密文，返回明文。解密失败返回 null。
      */
     public String decrypt(String cipherText) {
         if (cipherText == null) {
@@ -67,8 +67,8 @@ public class AesUtil {
             byte[] decrypted = cipher.doFinal(Base64.getDecoder().decode(cipherText));
             return new String(decrypted, StandardCharsets.UTF_8);
         } catch (Exception e) {
-            log.error("AES decrypt error", e);
-            throw new RuntimeException("AES decrypt error", e);
+            log.debug("AES decrypt failed — may be plaintext: {}", e.getMessage());
+            return null;
         }
     }
 }

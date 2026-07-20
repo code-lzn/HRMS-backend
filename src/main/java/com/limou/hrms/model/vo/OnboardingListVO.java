@@ -19,5 +19,7 @@ public class OnboardingListVO {
     private Integer status;
     private String statusDesc;
     private String applicantName;
+    private Integer hireType;
+    private String hireTypeDesc;
     private LocalDateTime createTime;
 }

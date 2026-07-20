@@ -2,9 +2,7 @@ package com.limou.hrms.service;
 
 import com.limou.hrms.model.dto.approval.DelegateSettingDTO;
 import com.limou.hrms.model.entity.ApprovalDelegate;
-
-import java.util.List;
-import java.util.Map;
+import com.limou.hrms.model.vo.MyDelegatesVO;
 
 /**
  * 委托审批服务接口。
@@ -25,7 +23,7 @@ public interface ApprovalDelegateService {
     /**
      * 查询我的委托关系
      */
-    Map<String, List<ApprovalDelegate>> getMyDelegates();
+    MyDelegatesVO getMyDelegates();
 
     /**
      * 解析实际审批人（有委托返回被委托人ID，无委托返回本人）

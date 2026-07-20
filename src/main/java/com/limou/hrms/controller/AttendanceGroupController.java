@@ -21,7 +21,7 @@ import javax.validation.Valid;
  * 考勤组管理控制器 — CRUD
  */
 @RestController
-@RequestMapping("/api/v1/attendance/groups")
+@RequestMapping("/attendance/groups")
 @Slf4j
 @RequiredArgsConstructor
 public class AttendanceGroupController {
@@ -29,7 +29,7 @@ public class AttendanceGroupController {
     private final AttendanceGroupService attendanceGroupService;
 
     /**
-     * GET /api/v1/attendance/groups — 查询考勤组列表（分页 + 数据权限）
+     * GET /api/attendance/groups — 查询考勤组列表（分页 + 数据权限）
      */
     @GetMapping
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.DEPT_HEAD_ROLE})
@@ -44,7 +44,7 @@ public class AttendanceGroupController {
     }
 
     /**
-     * POST /api/v1/attendance/groups — 创建考勤组（含适用规则校验）
+     * POST /api/attendance/groups — 创建考勤组（含适用规则校验）
      */
     @PostMapping
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.DEPT_HEAD_ROLE})
@@ -55,7 +55,7 @@ public class AttendanceGroupController {
     }
 
     /**
-     * PUT /api/v1/attendance/groups/{id} — 更新考勤组（部分更新，rules 传则全量替换）
+     * PUT /api/attendance/groups/{id} — 更新考勤组（部分更新，rules 传则全量替换）
      */
     @PutMapping("/{id}")
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.DEPT_HEAD_ROLE})
@@ -67,7 +67,18 @@ public class AttendanceGroupController {
     }
 
     /**
-     * DELETE /api/v1/attendance/groups/{id} — 删除考勤组（逻辑删除，需先清空规则）
+     * GET /api/attendance/groups/{id} — 查询考勤组详情
+     */
+    @GetMapping("/{id}")
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.DEPT_HEAD_ROLE})
+    public BaseResponse<AttendanceGroupVO> getAttendanceGroupDetail(@PathVariable Long id) {
+        log.info("{} 查询考勤组详情, id={}", UserContext.getCurrentUser(), id);
+        AttendanceGroupVO vo = attendanceGroupService.getAttendanceGroupDetail(id);
+        return ResultUtils.success(vo);
+    }
+
+    /**
+     * DELETE /api/attendance/groups/{id} — 删除考勤组（逻辑删除，需先清空规则）
      */
     @DeleteMapping("/{id}")
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.DEPT_HEAD_ROLE})

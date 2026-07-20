@@ -1,14 +1,10 @@
 package com.limou.hrms.controller;
 
-import com.limou.hrms.annotation.AuthCheck;
 import com.limou.hrms.common.BaseResponse;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.common.ResultUtils;
-import com.limou.hrms.constant.UserConstant;
 import com.limou.hrms.exception.BusinessException;
-import com.limou.hrms.mapper.EmployeeMapper;
 import com.limou.hrms.model.dto.salary.PayslipVerifyRequest;
-import com.limou.hrms.model.entity.Employee;
 import com.limou.hrms.model.entity.User;
 import com.limou.hrms.model.vo.salary.PayslipVO;
 import com.limou.hrms.service.UserService;
@@ -74,7 +70,7 @@ public class SalaryDetailController {
     @PostMapping("/{id}/verify")
     @AuthCheck(mustRole = {UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE, UserConstant.DEFAULT_ROLE})
     public BaseResponse<Boolean> verifyPayslip(
-            @ApiParam("工资条ID") @PathVariable Long id,
+            @PathVariable Long id,
             @RequestBody PayslipVerifyRequest verifyRequest,
             HttpServletRequest request) {
         if (id == null || id <= 0 || verifyRequest == null) {

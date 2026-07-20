@@ -1,6 +1,7 @@
 package com.limou.hrms.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.limou.hrms.builder.ApprovalNodeBuilder;
@@ -51,6 +52,20 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
     private DataScopeContext dataScopeContext;
     @Resource
     private CacheManager cacheManager;
+    @Resource
+    private OnboardingApplicationMapper onboardingApplicationMapper;
+    @Resource
+    private ProbationApplicationMapper probationApplicationMapper;
+    @Resource
+    private TransferApplicationMapper transferApplicationMapper;
+    @Resource
+    private ResignationApplicationMapper resignationApplicationMapper;
+    @Resource
+    private LeaveRequestMapper leaveRequestMapper;
+    @Resource
+    private DepartmentMapper departmentMapper;
+    @Resource
+    private PositionMapper positionMapper;
 
     /** Spring 自动注入所有 ApprovalCallback 实现（各业务模块），可能为空。
      *  @Lazy 避免循环依赖：ApprovalFlowServiceImpl → List&lt;ApprovalCallback&gt; → OnboardingServiceImpl → ApprovalFlowService */
@@ -61,6 +76,23 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ApprovalInstance createInstance(ApprovalBizType bizType, Long bizId, Long applicantId) {
+        // 0. 检查是否存在已撤回的实例，有则复用（避免 uk_biz 唯一键冲突）
+        ApprovalInstance exist = approvalInstanceMapper.selectOne(
+                Wrappers.<ApprovalInstance>lambdaQuery()
+                        .eq(ApprovalInstance::getBizType, bizType.getCode())
+                        .eq(ApprovalInstance::getBizId, bizId)
+                        .last("LIMIT 1"));
+        if (exist != null) {
+            // 删除旧节点，重置状态为 PENDING
+            approvalNodeMapper.delete(
+                    Wrappers.<ApprovalNode>lambdaQuery()
+                            .eq(ApprovalNode::getInstanceId, exist.getId()));
+            exist.setStatus(ApprovalStatus.PENDING.getCode());
+            exist.setCurrentNodeOrder(1);
+            exist.setCreateTime(LocalDateTime.now());
+            approvalInstanceMapper.updateById(exist);
+        }
+
         // 1. 查 Builder 构建节点链
         ApprovalNodeBuilder builder = builderFactory.getBuilder(bizType);
         List<ApprovalNode> nodes = builder.build(bizId, applicantId);
@@ -69,15 +101,22 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
         String applicantName = approverResolver.getEmployeeName(applicantId);
         String title = applicantName + "的" + bizType.getDesc();
 
-        // 3. 保存审批实例
-        ApprovalInstance instance = new ApprovalInstance();
-        instance.setBizType(bizType.getCode());
-        instance.setBizId(bizId);
-        instance.setTitle(title);
-        instance.setStatus(ApprovalStatus.PENDING.getCode());
-        instance.setApplicantId(applicantId);
-        instance.setCurrentNodeOrder(1);
-        approvalInstanceMapper.insert(instance);
+        // 3. 保存审批实例（复用或新建）
+        ApprovalInstance instance;
+        if (exist != null) {
+            instance = exist;
+        } else {
+            instance = new ApprovalInstance();
+            instance.setBizType(bizType.getCode());
+            instance.setBizId(bizId);
+            instance.setTitle(title);
+            instance.setStatus(ApprovalStatus.PENDING.getCode());
+            instance.setApplicantId(applicantId);
+            instance.setCurrentNodeOrder(1);
+            instance.setCreateTime(LocalDateTime.now());
+            approvalInstanceMapper.insert(instance);
+        }
+        instance.setTitle(title); // 标题可能变化
 
         // 4. 批量保存节点，绑定 instanceId
         for (int i = 0; i < nodes.size(); i++) {
@@ -350,7 +389,9 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
 
         long total = ownCount + delegateCount;
 
-        List<PendingItemVO> records = buildPendingVOs(merged, delegateNodeIds);
+        // 个人待办的所有节点当前用户都可操作
+        Set<Long> myActionableIds = merged.stream().map(ApprovalNode::getId).collect(Collectors.toSet());
+        List<PendingItemVO> records = buildPendingVOs(merged, delegateNodeIds, myActionableIds);
         if (StringUtils.isNotBlank(query.getBizType())) {
             records = records.stream()
                     .filter(r -> query.getBizType().equals(r.getBizType()))
@@ -361,23 +402,45 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
         return result;
     }
 
-    /** 全平台待办 */
+    /** 全平台待办（admin/hr） */
     private Page<PendingItemVO> getAllPendingList(ApprovalQuery query) {
+        Long employeeId = resolveCurrentEmployeeId();
         Page<ApprovalNode> nodePage = approvalNodeMapper.selectPage(
                 new Page<>(query.getCurrent(), query.getPageSize()),
                 new QueryWrapper<ApprovalNode>()
                         .eq("status", NodeStatus.PENDING.getCode())
                         .orderByDesc("create_time"));
 
-        List<PendingItemVO> records = buildPendingVOs(nodePage.getRecords(), new HashSet<>());
+        // admin/hr 可操作任意节点
+        Set<Long> actionableNodeIds = nodePage.getRecords().stream()
+                .map(ApprovalNode::getId)
+                .collect(Collectors.toSet());
+
+        List<PendingItemVO> records = buildPendingVOs(nodePage.getRecords(), new HashSet<>(), actionableNodeIds);
+        // 按 instanceId 去重，确保同个审批只出现一次
+        Set<Long> seen = new HashSet<>();
+        records = records.stream()
+                .filter(r -> seen.add(r.getInstanceId()))
+                .collect(Collectors.toList());
         if (StringUtils.isNotBlank(query.getBizType())) {
             records = records.stream()
                     .filter(r -> query.getBizType().equals(r.getBizType()))
                     .collect(Collectors.toList());
         }
-        Page<PendingItemVO> result = new Page<>(nodePage.getCurrent(), nodePage.getSize(), nodePage.getTotal());
+        Page<PendingItemVO> result = new Page<>(nodePage.getCurrent(), nodePage.getSize(), records.size());
         result.setRecords(records);
         return result;
+    }
+
+    /** 判断当前用户是否可以操作该审批节点 */
+    private boolean canActOnNode(ApprovalNode node, Long employeeId) {
+        if (node.getApproverId().equals(employeeId)) return true;
+        try {
+            Long resolved = approvalDelegateService.resolveApprover(node.getApproverId());
+            return employeeId.equals(resolved);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /** 部门待办 */
@@ -403,7 +466,9 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
                                 "JOIN employee_work_info w ON w.employee_id = e.id " +
                                 "WHERE w.department_id = " + departmentId + " AND e.is_deleted = 0"));
 
-        List<PendingItemVO> records = buildPendingVOs(deptNodes, new HashSet<>());
+        // 部门主管可操作其管辖范围内的所有节点
+        Set<Long> deptActionableIds = deptNodes.stream().map(ApprovalNode::getId).collect(Collectors.toSet());
+        List<PendingItemVO> records = buildPendingVOs(deptNodes, new HashSet<>(), deptActionableIds);
         if (StringUtils.isNotBlank(query.getBizType())) {
             records = records.stream()
                     .filter(r -> query.getBizType().equals(r.getBizType()))
@@ -539,6 +604,9 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
         vo.setApplicantName(approverResolver.getEmployeeName(instance.getApplicantId()));
         vo.setCurrentNodeOrder(instance.getCurrentNodeOrder());
         vo.setCreateTime(instance.getCreateTime());
+        if (instance.getCreateTime() != null) {
+            vo.setDeadLine(instance.getCreateTime().plusHours(48));
+        }
 
         List<ApprovalNodeVO> nodeVOs = nodes.stream().map(node -> {
             ApprovalNodeVO nvo = new ApprovalNodeVO();
@@ -559,7 +627,162 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
         }).collect(Collectors.toList());
         vo.setNodes(nodeVOs);
 
+        // 填充业务申请表数据，前端据此渲染"申请详情"区域
+        Map<String, Object> bizData = queryBizData(instance);
+        vo.setBizData(bizData);
+        log.info("审批详情查询完成: instanceId={}, bizType={}, bizId={}, bizDataKeys={}",
+                instanceId, instance.getBizType(), instance.getBizId(), bizData.keySet());
+
         return vo;
+    }
+
+    /**
+     * 根据审批实例的业务类型和业务 ID，查询对应的申请表数据并转为 Map，
+     * 同时补充显示名（如部门名、职位名、性别描述等）。
+     */
+    private Map<String, Object> queryBizData(ApprovalInstance instance) {
+        ApprovalBizType bizType = ApprovalBizType.fromCode(instance.getBizType());
+        Long bizId = instance.getBizId();
+        if (bizType == null || bizId == null) return Collections.emptyMap();
+
+        try {
+            switch (bizType) {
+                case ONBOARDING:
+                    return enrichOnboarding(onboardingApplicationMapper.selectById(bizId));
+                case PROBATION:
+                    return enrichProbation(probationApplicationMapper.selectById(bizId));
+                case TRANSFER:
+                    return enrichTransfer(transferApplicationMapper.selectById(bizId));
+                case RESIGNATION:
+                    return enrichResignation(resignationApplicationMapper.selectById(bizId));
+                case LEAVE:
+                    return enrichLeave(leaveRequestMapper.selectById(bizId));
+                default:
+                    return Collections.emptyMap();
+            }
+        } catch (Exception e) {
+            log.warn("查询业务申请表数据失败: bizType={}, bizId={}", instance.getBizType(), bizId, e);
+            return Collections.emptyMap();
+        }
+    }
+
+    /** 入职申请：实体只存 ID，需要补显示名 */
+    private Map<String, Object> enrichOnboarding(OnboardingApplication app) {
+        if (app == null) return Collections.emptyMap();
+        Map<String, Object> map = beanToMap(app);
+        // 性别
+        if (app.getGender() != null) {
+            map.put("genderDesc", app.getGender() == 1 ? "男" : "女");
+        }
+        // 部门名
+        if (app.getDepartmentId() != null) {
+            Department dept = departmentMapper.selectById(app.getDepartmentId());
+            if (dept != null) map.put("departmentName", dept.getName());
+        }
+        // 职位名
+        if (app.getPositionId() != null) {
+            Position pos = positionMapper.selectById(app.getPositionId());
+            if (pos != null) map.put("positionName", pos.getName());
+        }
+        // 录用类型
+        if (app.getHireType() != null) {
+            String[] hireTypes = {"", "全职", "兼职", "实习"};
+            map.put("hireTypeDesc", app.getHireType() > 0 && app.getHireType() < hireTypes.length ? hireTypes[app.getHireType()] : "");
+        }
+        // 直接汇报人姓名
+        if (app.getDirectReportId() != null) {
+            map.put("directReportName", approverResolver.getEmployeeName(app.getDirectReportId()));
+        }
+        // 试用期月数（前端用 probationsMonths，实体是 defaultProbationMonths）
+        map.put("probationMonths", app.getDefaultProbationMonths());
+        return map;
+    }
+
+    /** 转正申请：补员工姓名 */
+    private Map<String, Object> enrichProbation(ProbationApplication app) {
+        if (app == null) return Collections.emptyMap();
+        Map<String, Object> map = beanToMap(app);
+        if (app.getEmployeeId() != null) {
+            map.put("employeeName", approverResolver.getEmployeeName(app.getEmployeeId()));
+        }
+        return map;
+    }
+
+    /** 调岗申请：补员工名、部门名、职位名 */
+    private Map<String, Object> enrichTransfer(TransferApplication app) {
+        if (app == null) return Collections.emptyMap();
+        Map<String, Object> map = beanToMap(app);
+        if (app.getEmployeeId() != null) {
+            map.put("employeeName", approverResolver.getEmployeeName(app.getEmployeeId()));
+        }
+        if (app.getFromDepartmentId() != null) {
+            Department d = departmentMapper.selectById(app.getFromDepartmentId());
+            if (d != null) map.put("fromDepartmentName", d.getName());
+        }
+        if (app.getToDepartmentId() != null) {
+            Department d = departmentMapper.selectById(app.getToDepartmentId());
+            if (d != null) map.put("toDepartmentName", d.getName());
+        }
+        if (app.getFromPositionId() != null) {
+            Position p = positionMapper.selectById(app.getFromPositionId());
+            if (p != null) map.put("fromPositionName", p.getName());
+        }
+        if (app.getToPositionId() != null) {
+            Position p = positionMapper.selectById(app.getToPositionId());
+            if (p != null) map.put("toPositionName", p.getName());
+        }
+        return map;
+    }
+
+    /** 离职申请：补员工名、交接人名、离职类型描述 */
+    private Map<String, Object> enrichResignation(ResignationApplication app) {
+        if (app == null) return Collections.emptyMap();
+        Map<String, Object> map = beanToMap(app);
+        if (app.getEmployeeId() != null) {
+            map.put("employeeName", approverResolver.getEmployeeName(app.getEmployeeId()));
+        }
+        if (app.getHandoverToId() != null) {
+            map.put("handoverToName", approverResolver.getEmployeeName(app.getHandoverToId()));
+        }
+        if (app.getResignationType() != null) {
+            String[] types = {"", "辞职", "辞退", "合同到期不续签", "其他"};
+            map.put("resignationTypeDesc", app.getResignationType() > 0 && app.getResignationType() < types.length ? types[app.getResignationType()] : "");
+        }
+        return map;
+    }
+
+    /** 请假申请：补员工姓名 */
+    private Map<String, Object> enrichLeave(LeaveRequest app) {
+        if (app == null) return Collections.emptyMap();
+        Map<String, Object> map = beanToMap(app);
+        if (app.getEmployeeId() != null) {
+            map.put("employeeName", approverResolver.getEmployeeName(app.getEmployeeId()));
+        }
+        return map;
+    }
+
+    /** 将实体对象转为 Map，直接用 BeanUtils 描述符遍历属性 */
+    private Map<String, Object> beanToMap(Object obj) {
+        if (obj == null) return Collections.emptyMap();
+        Map<String, Object> map = new LinkedHashMap<>();
+        try {
+            java.beans.BeanInfo info = java.beans.Introspector.getBeanInfo(obj.getClass());
+            for (java.beans.PropertyDescriptor pd : info.getPropertyDescriptors()) {
+                String name = pd.getName();
+                if ("class".equals(name)) continue;
+                try {
+                    Object value = pd.getReadMethod().invoke(obj);
+                    if (value != null) {
+                        map.put(name, value);
+                    }
+                } catch (Exception ignored) {
+                    // skip unreadable properties
+                }
+            }
+        } catch (Exception e) {
+            log.warn("beanToMap 转换失败: {}", obj.getClass().getSimpleName(), e);
+        }
+        return map;
     }
 
     // ==================== 私有辅助方法 ====================
@@ -628,11 +851,13 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
 
     private void validateNodeOwner(ApprovalNode node, Long employeeId) {
         if (!node.getApproverId().equals(employeeId)) {
+            // admin 角色可操作任何节点
+            if ("admin".equals(resolveCurrentUserRole())) return;
             // 检查当前用户是否为 node 审批人的有效委托人
             Long resolvedApprover = approvalDelegateService.resolveApprover(node.getApproverId());
             if (!employeeId.equals(resolvedApprover)) {
-                log.warn("当前用户不是审批人有效委托人: nodeId={}, employeeId={}",
-                        node.getId(), employeeId);
+                log.warn("该节点不属于当前用户: nodeId={}, nodeApproverId={}, currentEmployeeId={}, resolvedDelegate={}, nodeName={}",
+                        node.getId(), node.getApproverId(), employeeId, resolvedApprover, node.getNodeName());
                 throw new BusinessException(ErrorCode.APPROVAL_NODE_NOT_OWNER);
             }
         }
@@ -652,8 +877,14 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
     /**
      * 将审批节点列表组装为待办 VO
      */
-    private List<PendingItemVO> buildPendingVOs(List<ApprovalNode> nodes, Set<Long> delegateNodeIds) {
-        return nodes.stream().map(node -> {
+    private List<PendingItemVO> buildPendingVOs(List<ApprovalNode> nodes, Set<Long> delegateNodeIds, Set<Long> actionableNodeIds) {
+        return nodes.stream()
+                // 只展示当前活跃节点（node_order = instance.current_node_order）
+                .filter(node -> {
+                    ApprovalInstance instance = approvalInstanceMapper.selectById(node.getInstanceId());
+                    return instance != null && node.getNodeOrder().equals(instance.getCurrentNodeOrder());
+                })
+                .map(node -> {
             ApprovalInstance instance = approvalInstanceMapper.selectById(node.getInstanceId());
             PendingItemVO vo = new PendingItemVO();
             vo.setInstanceId(node.getInstanceId());
@@ -669,12 +900,14 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
             }
             vo.setNodeName(node.getNodeName());
             vo.setNodeOrder(node.getNodeOrder());
-            if (node.getCreateTime() != null) {
-                vo.setDeadLine(node.getCreateTime().plusHours(48));
+            // 截止时间基于审批实例创建时间 + 48 小时
+            if (instance.getCreateTime() != null) {
+                vo.setDeadLine(instance.getCreateTime().plusHours(48));
             }
             if (delegateNodeIds.contains(node.getId())) {
                 vo.setDelegatorName(approverResolver.getEmployeeName(node.getApproverId()));
             }
+            vo.setCanAct(actionableNodeIds != null && actionableNodeIds.contains(node.getId()));
             return vo;
         }).collect(Collectors.toList());
     }

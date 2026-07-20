@@ -7,7 +7,6 @@ import com.limou.hrms.common.ResultUtils;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.model.dto.salary.SalaryBatchCreateRequest;
 import com.limou.hrms.model.dto.salary.SalaryBatchQueryRequest;
-import com.limou.hrms.model.dto.salary.SalaryBatchRejectRequest;
 import com.limou.hrms.model.dto.salary.SalaryDetailAdjustRequest;
 import com.limou.hrms.model.dto.salary.SalaryDetailQueryRequest;
 import com.limou.hrms.model.entity.User;
@@ -68,7 +67,7 @@ public class SalaryBatchController {
 
     @ApiOperation("执行异步计算")
     @PostMapping("/{id}/execute")
-    public BaseResponse<Boolean> executeCalculate(@ApiParam("批次ID") @PathVariable Long id) {
+    public BaseResponse<Boolean> executeCalculate(@PathVariable Long id) {
         if (id == null || id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
@@ -78,7 +77,7 @@ public class SalaryBatchController {
 
     @ApiOperation("获取批次详情")
     @GetMapping("/{id}")
-    public BaseResponse<SalaryBatchVO> getBatchDetail(@ApiParam("批次ID") @PathVariable Long id) {
+    public BaseResponse<SalaryBatchVO> getBatchDetail(@PathVariable Long id) {
         if (id == null || id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
@@ -89,7 +88,7 @@ public class SalaryBatchController {
     @ApiOperation("查询批次下的薪资明细")
     @GetMapping("/{id}/details")
     public BaseResponse<Page<SalaryDetailVO>> listDetails(
-            @ApiParam("批次ID") @PathVariable Long id,
+            @PathVariable Long id,
             SalaryDetailQueryRequest request) {
         if (id == null || id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -104,7 +103,7 @@ public class SalaryBatchController {
     @ApiOperation("手动调整员工工资条")
     @PutMapping("/details/{detailId}/adjust")
     public BaseResponse<Boolean> adjustDetail(
-            @ApiParam("明细ID") @PathVariable Long detailId,
+            @PathVariable Long detailId,
             @RequestBody SalaryDetailAdjustRequest request) {
         if (request == null || detailId == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -113,9 +112,9 @@ public class SalaryBatchController {
         return ResultUtils.success(true);
     }
 
-    @ApiOperation("提交审批")
+    @ApiOperation("提交审批（创建审批实例，后续统一走 /api/v1/approvals 接口）")
     @PutMapping("/{id}/submit")
-    public BaseResponse<Boolean> submitForApproval(@ApiParam("批次ID") @PathVariable Long id) {
+    public BaseResponse<Boolean> submitForApproval(@PathVariable Long id) {
         if (id == null || id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
@@ -123,31 +122,9 @@ public class SalaryBatchController {
         return ResultUtils.success(true);
     }
 
-    @ApiOperation("审批通过")
-    @PutMapping("/{id}/approve")
-    public BaseResponse<Boolean> approve(@ApiParam("批次ID") @PathVariable Long id) {
-        if (id == null || id <= 0) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR);
-        }
-        salaryBatchService.approve(id);
-        return ResultUtils.success(true);
-    }
-
-    @ApiOperation("审批驳回")
-    @PutMapping("/{id}/reject")
-    public BaseResponse<Boolean> reject(
-            @ApiParam("批次ID") @PathVariable Long id,
-            @RequestBody SalaryBatchRejectRequest request) {
-        if (id == null || id <= 0) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR);
-        }
-        salaryBatchService.reject(id, request);
-        return ResultUtils.success(true);
-    }
-
     @ApiOperation("标记已发放")
     @PutMapping("/{id}/paid")
-    public BaseResponse<Boolean> markAsPaid(@ApiParam("批次ID") @PathVariable Long id) {
+    public BaseResponse<Boolean> markAsPaid(@PathVariable Long id) {
         if (id == null || id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }

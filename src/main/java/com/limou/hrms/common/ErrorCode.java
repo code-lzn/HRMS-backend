@@ -95,7 +95,25 @@ public enum ErrorCode {
 
     // region 补卡管理 (33xxx)
     SUPPLEMENT_CARD_DUPLICATE(63001, "该日期已存在补卡申请，请勿重复提交"),
-    SUPPLEMENT_CARD_LIMIT_EXCEEDED(63002, "当月补卡次数已达上限（2次）");
+    SUPPLEMENT_CARD_LIMIT_EXCEEDED(63002, "当月补卡次数已达上限（2次）"),
+    // endregion
+
+    // region 个人中心 (50xxx)
+    EMPLOYEE_NOT_FOUND(50001, "员工不存在"),
+    PROFILE_FIELD_NOT_EDITABLE(50002, "不允许编辑该字段"),
+    OLD_PASSWORD_ERROR(50003, "旧密码错误"),
+    NEW_PASSWORD_WEAK(50004, "新密码不符合复杂度要求（至少8位，含大小写字母和数字）"),
+    NEW_PASSWORD_SAME_AS_OLD(50005, "新密码与旧密码相同"),
+    NEW_PASSWORD_RECENTLY_USED(50006, "新密码为最近使用过的密码"),
+    PHONE_ALREADY_USED(50007, "手机号已被占用"),
+    VERIFY_CODE_ERROR(50008, "验证码错误或已过期"),
+    VERIFY_CODE_TOO_FREQUENT(50009, "验证码发送过于频繁，请稍后再试"),
+    ALREADY_CLOCKED_TODAY(50010, "今日已打卡"),
+    WEB_CLOCK_DISABLED(50011, "考勤组未开启网页打卡"),
+    LEAVE_NOT_BELONG_TO_USER(50012, "该请假申请不属于当前用户"),
+    LEAVE_CANCEL_ONLY_PENDING(50013, "仅审批中状态可取消"),
+    PAYSLIP_NOT_FOUND(50014, "工资条不存在或不属于当前用户"),
+    VERIFY_CODE_LIMIT_EXCEEDED(50015, "验证码验证次数超限，请稍后再试");
     // endregion
 
 

@@ -17,12 +17,22 @@ public interface SalaryDetailService extends IService<SalaryDetail> {
     List<PayslipVO> getMyPayslips(Long employeeId);
 
     /**
-     * 查看工资条详情（需二次验证后才能查看）
+     * 发送工资条二次验证码（短信 / 降级密码）
+     */
+    void sendPayslipVerifyCode(Long employeeId, Long detailId);
+
+    /**
+     * 校验工资条验证码（或密码）
+     */
+    boolean verifyPayslip(Long employeeId, Long detailId, PayslipVerifyRequest request);
+
+    /**
+     * 查看工资条详情（需先通过验证码校验，已验证后可直接查看）
      */
     PayslipVO getPayslipDetail(Long employeeId, Long detailId);
 
     /**
-     * 二次验证
+     * 检查工资条是否已通过验证（本次登录期间）
      */
-    boolean verifyPayslip(Long employeeId, Long detailId, PayslipVerifyRequest request);
+    boolean isPayslipVerified(Long employeeId, Long detailId);
 }

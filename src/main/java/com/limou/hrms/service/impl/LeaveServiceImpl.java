@@ -306,6 +306,27 @@ public class LeaveServiceImpl implements LeaveService {
         return workInfo != null && deptIds.contains(workInfo.getDepartmentId());
     }
 
+    // ==================== 取消申请 ====================
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void cancelLeaveRequest(Long id, Long employeeId) {
+        LeaveRequest leaveRequest = leaveRequestMapper.selectById(id);
+        if (leaveRequest == null) {
+            throw new BusinessException(ErrorCode.LEAVE_NOT_FOUND);
+        }
+        if (!leaveRequest.getEmployeeId().equals(employeeId)) {
+            throw new BusinessException(ErrorCode.LEAVE_NOT_BELONG_TO_USER);
+        }
+        if (leaveRequest.getStatus() != 2) {
+            throw new BusinessException(ErrorCode.LEAVE_CANCEL_ONLY_PENDING);
+        }
+
+        leaveRequest.setStatus(5); // 已取消
+        leaveRequestMapper.updateById(leaveRequest);
+        log.info("员工 {} 取消了请假申请 id={}", employeeId, id);
+    }
+
     // ==================== 天数计算 ====================
 
     /**

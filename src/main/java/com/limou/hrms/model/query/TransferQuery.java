@@ -13,4 +13,5 @@ public class TransferQuery extends PageRequest {
 
     private Integer status;
     private Long employeeId;
+    private String keyword;
 }

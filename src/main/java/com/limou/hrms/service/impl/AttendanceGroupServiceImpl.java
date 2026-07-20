@@ -24,6 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -108,6 +109,7 @@ public class AttendanceGroupServiceImpl extends ServiceImpl<AttendanceGroupMappe
             rule.setAttendanceGroupId(group.getId());
             rule.setRuleType(r.getRuleType());
             rule.setTargetId(r.getTargetId());
+            rule.setCreateTime(LocalDateTime.now());
             return rule;
         }).collect(Collectors.toList());
         for (AttendanceGroupRule rule : rules) {
@@ -200,6 +202,7 @@ public class AttendanceGroupServiceImpl extends ServiceImpl<AttendanceGroupMappe
                 entity.setAttendanceGroupId(id);
                 entity.setRuleType(rule.getRuleType());
                 entity.setTargetId(rule.getTargetId());
+                entity.setCreateTime(LocalDateTime.now());
                 attendanceGroupRuleMapper.insert(entity);
             }
         }
@@ -413,6 +416,41 @@ public class AttendanceGroupServiceImpl extends ServiceImpl<AttendanceGroupMappe
             case 3: return "排班制";
             default: return "未知";
         }
+    }
+
+    // ==================== 查询详情 ====================
+
+    @Override
+    public AttendanceGroupVO getAttendanceGroupDetail(Long id) {
+        AttendanceGroup group = this.lambdaQuery()
+                .eq(AttendanceGroup::getId, id).one();
+        if (group == null) {
+            throw new BusinessException(ErrorCode.ATTENDANCE_GROUP_NOT_FOUND);
+        }
+
+        // dept_head：校验管辖范围
+        DataScopeEnum scope = dataScopeContext.canManageOrganization();
+        if (scope == DataScopeEnum.DEPT) {
+            Set<Long> visibleIds = resolveVisibleGroupIds();
+            if (!visibleIds.contains(id)) {
+                throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
+            }
+        }
+
+        // 加载规则
+        List<AttendanceGroupRule> rules = attendanceGroupRuleMapper.selectList(
+                Wrappers.<AttendanceGroupRule>lambdaQuery()
+                        .eq(AttendanceGroupRule::getAttendanceGroupId, id));
+        List<RuleDTO> ruleDTOs = rules.stream().map(r -> {
+            RuleDTO dto = new RuleDTO();
+            dto.setRuleType(r.getRuleType());
+            dto.setTargetId(r.getTargetId());
+            return dto;
+        }).collect(Collectors.toList());
+
+        AttendanceGroupVO vo = toCreateVO(group, ruleDTOs);
+        vo.setShiftTypeDesc(getShiftTypeDesc(group.getShiftType()));
+        return vo;
     }
 
     // ==================== 删除 ====================

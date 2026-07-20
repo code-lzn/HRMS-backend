@@ -8,7 +8,7 @@ import lombok.Data;
 /**
  * 薪资核算批次创建请求
  */
-@ApiModel("创建核算批次请求")
+@ApiModel("SalaryBatchCreateRequest")
 @Data
 public class SalaryBatchCreateRequest implements Serializable {
 

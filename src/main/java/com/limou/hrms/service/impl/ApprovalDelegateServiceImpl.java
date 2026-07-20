@@ -8,6 +8,7 @@ import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.mapper.ApprovalDelegateMapper;
 import com.limou.hrms.model.dto.approval.DelegateSettingDTO;
 import com.limou.hrms.model.entity.ApprovalDelegate;
+import com.limou.hrms.model.vo.MyDelegatesVO;
 import com.limou.hrms.service.ApprovalDelegateService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.CacheManager;
@@ -15,9 +16,7 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * 委托审批服务实现。
@@ -97,17 +96,15 @@ public class ApprovalDelegateServiceImpl extends ServiceImpl<ApprovalDelegateMap
     }
 
     @Override
-    public Map<String, List<ApprovalDelegate>> getMyDelegates() {
+    public MyDelegatesVO getMyDelegates() {
         Long userId = resolveCurrentEmployeeId();
-        Map<String, List<ApprovalDelegate>> result = new HashMap<>();
+        MyDelegatesVO result = new MyDelegatesVO();
         // asDelegator: 我委托别人
-        List<ApprovalDelegate> asDelegator = approvalDelegateMapper.selectList(
-                new QueryWrapper<ApprovalDelegate>().eq("delegator_id", userId).eq("enabled", 1));
+        result.setAsDelegator(approvalDelegateMapper.selectList(
+                new QueryWrapper<ApprovalDelegate>().eq("delegator_id", userId).eq("enabled", 1)));
         // asDelegate: 别人委托我
-        List<ApprovalDelegate> asDelegate = approvalDelegateMapper.selectList(
-                new QueryWrapper<ApprovalDelegate>().eq("delegate_id", userId).eq("enabled", 1));
-        result.put("asDelegator", asDelegator);
-        result.put("asDelegate", asDelegate);
+        result.setAsDelegate(approvalDelegateMapper.selectList(
+                new QueryWrapper<ApprovalDelegate>().eq("delegate_id", userId).eq("enabled", 1)));
         return result;
     }
 
