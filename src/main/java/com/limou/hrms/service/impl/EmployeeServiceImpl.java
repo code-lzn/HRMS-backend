@@ -727,28 +727,11 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
      * 校验部门主管的数据范围：只能看本部门及下属部门的员工
      */
     private void validateDeptHeadScope(User loginUser, Long targetEmployeeId) {
-        // 先查主管自己的 employee 记录，确定其管辖部门
-        Employee deptHeadEmp = this.lambdaQuery()
-                .eq(Employee::getUserId, loginUser.getId())
-                .one();
-        if (deptHeadEmp == null) {
+        List<Long> managedDeptIds = resolveManagedDeptIds(loginUser);
+        if (managedDeptIds.isEmpty()) {
             throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "无法确定您的管辖范围");
         }
-        EmployeeWorkInfo headWorkInfo = workInfoMapper.selectOne(
-                Wrappers.<EmployeeWorkInfo>lambdaQuery()
-                        .eq(EmployeeWorkInfo::getEmployeeId, deptHeadEmp.getId()));
-        if (headWorkInfo == null) {
-            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "无法确定您的管辖范围");
-        }
-        Long managedDeptId = headWorkInfo.getDepartmentId();
 
-        // 获取管辖部门及其所有下属部门 ID
-        List<Department> allDepts = departmentService.list();
-        Set<Long> managedDeptIds = new HashSet<>();
-        managedDeptIds.add(managedDeptId);
-        collectChildDeptIds(allDepts, managedDeptId, managedDeptIds);
-
-        // 检查目标员工是否在管辖范围内
         EmployeeWorkInfo targetWorkInfo = workInfoMapper.selectOne(
                 Wrappers.<EmployeeWorkInfo>lambdaQuery()
                         .eq(EmployeeWorkInfo::getEmployeeId, targetEmployeeId));
@@ -785,42 +768,17 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
     /**
      * 获取部门主管管辖的所有部门ID（含子部门）
      */
-    private List<Long> resolveManagedDeptIds(User loginUser) {
-        Employee deptHeadEmp = this.lambdaQuery()
-                .eq(Employee::getUserId, loginUser.getId())
-                .one();
-        if (deptHeadEmp == null) {
-            log.warn("部门主管 userId={} 无对应 employee 记录，尝试通过部门 managerId 查找", loginUser.getId());
-            return resolveDeptIdsByManagerId(loginUser.getId());
-        }
-        EmployeeWorkInfo headWorkInfo = workInfoMapper.selectOne(
-                Wrappers.<EmployeeWorkInfo>lambdaQuery()
-                        .eq(EmployeeWorkInfo::getEmployeeId, deptHeadEmp.getId()));
-        if (headWorkInfo == null) {
-            log.warn("部门主管 employeeId={} 无对应 work_info 记录，尝试通过部门 managerId 查找", deptHeadEmp.getId());
-            return resolveDeptIdsByManagerId(loginUser.getId());
-        }
-        Long managedDeptId = headWorkInfo.getDepartmentId();
-
-        List<Department> allDepts = departmentService.list();
-        Set<Long> deptIds = new HashSet<>();
-        deptIds.add(managedDeptId);
-        collectChildDeptIds(allDepts, managedDeptId, deptIds);
-        return new ArrayList<>(deptIds);
-    }
-
     /**
-     * 通过 user 关联的 employee 再查 Department.managerId，
-     * 适配只有 user 记录没有 employee/work_info 的部门主管
+     * 按 department.manager_id 解析部门主管管辖的部门（含子部门）
      */
-    private List<Long> resolveDeptIdsByManagerId(Long userId) {
-        // 找到该 user 对应的所有 employee 记录
+    private List<Long> resolveManagedDeptIds(User loginUser) {
         List<Employee> emps = this.lambdaQuery()
-                .eq(Employee::getUserId, userId)
+                .eq(Employee::getUserId, loginUser.getId())
                 .list();
         if (emps.isEmpty()) return Collections.emptyList();
         List<Long> empIds = emps.stream().map(Employee::getId).collect(Collectors.toList());
-        // 查所有部门，找到 managerId 在 empIds 中的
+
+        // 查所有部门，找 managerId 匹配的
         List<Department> allDepts = departmentService.list();
         Set<Long> deptIds = new HashSet<>();
         for (Department d : allDepts) {

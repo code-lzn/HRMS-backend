@@ -1,10 +1,11 @@
 package com.limou.hrms.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.limou.hrms.mapper.AttendanceStatisticsMapper;
-import com.limou.hrms.mapper.EmployeeWorkInfoMapper;
-import com.limou.hrms.model.entity.AttendanceStatistics;
-import com.limou.hrms.model.entity.EmployeeWorkInfo;
+import com.limou.hrms.constant.DataScopeContext;
+import com.limou.hrms.constant.DataScopeEnum;
+import com.limou.hrms.mapper.*;
+import com.limou.hrms.model.entity.*;
 import com.limou.hrms.model.vo.AttendanceRateChartVO;
 import com.limou.hrms.model.vo.AttendanceRateChartVO.SeriesItem;
 import com.limou.hrms.model.vo.LeaveDistributionVO;
@@ -26,16 +27,18 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AttendanceStatisticsServiceImpl implements AttendanceStatisticsService {
 
-    private final AttendanceStatisticsMapper statisticsMapper;
+    private final AttendanceRecordMapper attendanceRecordMapper;
+    private final LeaveRequestMapper leaveRequestMapper;
     private final EmployeeWorkInfoMapper employeeWorkInfoMapper;
     private final DepartmentService departmentService;
+    private final DataScopeContext dataScopeContext;
 
     @Override
     public AttendanceRateChartVO getAttendanceRate(int months, List<Long> departmentIds) {
-        LocalDate now = LocalDate.now();
         List<String> monthLabels = new ArrayList<>();
         List<Integer> years = new ArrayList<>();
         List<Integer> monthVals = new ArrayList<>();
+        LocalDate now = LocalDate.now();
 
         for (int i = months - 1; i >= 0; i--) {
             LocalDate d = now.minusMonths(i);
@@ -44,23 +47,35 @@ public class AttendanceStatisticsServiceImpl implements AttendanceStatisticsServ
             monthVals.add(d.getMonthValue());
         }
 
-        // 查所有统计记录
-        List<AttendanceStatistics> allStats = statisticsMapper.selectList(
-                Wrappers.<AttendanceStatistics>lambdaQuery()
-                        .ge(AttendanceStatistics::getStatYear, years.get(0))
-                        .le(AttendanceStatistics::getStatYear, years.get(years.size() - 1)));
+        // 部门主管数据范围
+        Set<Long> allowedDeptIds = resolveManagedDeptIdsIfNeeded();
+        if (departmentIds != null && !departmentIds.isEmpty()) {
+            if (allowedDeptIds != null) {
+                departmentIds.retainAll(allowedDeptIds);
+            }
+        } else {
+            departmentIds = new ArrayList<>(allowedDeptIds != null
+                    ? allowedDeptIds : loadAllDeptIds());
+        }
+        if (departmentIds.isEmpty()) {
+            return emptyRateVO(monthLabels);
+        }
 
-        // 员工 → 部门映射
-        Set<Long> empIds = allStats.stream().map(AttendanceStatistics::getEmployeeId).collect(Collectors.toSet());
+        LocalDate startDate = LocalDate.of(years.get(0), monthVals.get(0), 1);
+        LocalDate endDate = LocalDate.of(years.get(years.size() - 1), monthVals.get(monthVals.size() - 1), 1)
+                .plusMonths(1).minusDays(1);
+
+        // 批量查所有记录 + 员工→部门映射
+        List<AttendanceRecord> records = attendanceRecordMapper.selectList(
+                Wrappers.<AttendanceRecord>lambdaQuery()
+                        .between(AttendanceRecord::getAttendanceDate, startDate, endDate));
+        Set<Long> empIds = records.stream().map(AttendanceRecord::getEmployeeId).collect(Collectors.toSet());
         Map<Long, Long> empDeptMap = loadEmpDeptMap(empIds);
 
-        Set<Long> targetDeptIds = departmentIds != null && !departmentIds.isEmpty()
-                ? new HashSet<>(departmentIds) : new HashSet<>(empDeptMap.values());
-
         List<SeriesItem> series = new ArrayList<>();
-        for (Long deptId : targetDeptIds) {
-            String deptName = departmentService.getById(deptId) != null
-                    ? departmentService.getById(deptId).getName() : "未知部门";
+        for (Long deptId : departmentIds) {
+            Department dept = departmentService.getById(deptId);
+            String deptName = dept != null ? dept.getName() : "未知部门";
 
             Set<Long> deptEmpIds = empDeptMap.entrySet().stream()
                     .filter(e -> e.getValue().equals(deptId))
@@ -68,18 +83,22 @@ public class AttendanceStatisticsServiceImpl implements AttendanceStatisticsServ
 
             List<BigDecimal> rates = new ArrayList<>();
             for (int i = 0; i < months; i++) {
-                int y = years.get(i);
-                int m = monthVals.get(i);
-                double avg = allStats.stream()
-                        .filter(s -> s.getStatYear() == y && s.getStatMonth() == m
-                                && deptEmpIds.contains(s.getEmployeeId())
-                                && s.getScheduledDays() != null
-                                && s.getScheduledDays().compareTo(BigDecimal.ZERO) > 0)
-                        .mapToDouble(s -> s.getActualDays() != null
-                                ? s.getActualDays().divide(s.getScheduledDays(), 4, RoundingMode.HALF_UP).doubleValue()
-                                : 0)
-                        .average().orElse(0);
-                rates.add(BigDecimal.valueOf(avg).setScale(4, RoundingMode.HALF_UP));
+                int y = years.get(i), m = monthVals.get(i);
+                long totalRecords = records.stream()
+                        .filter(r -> deptEmpIds.contains(r.getEmployeeId())
+                                && r.getAttendanceDate().getYear() == y
+                                && r.getAttendanceDate().getMonthValue() == m)
+                        .count();
+                long presentRecords = records.stream()
+                        .filter(r -> deptEmpIds.contains(r.getEmployeeId())
+                                && r.getAttendanceDate().getYear() == y
+                                && r.getAttendanceDate().getMonthValue() == m
+                                && isPresent(r))
+                        .count();
+                BigDecimal rate = totalRecords > 0
+                        ? BigDecimal.valueOf(presentRecords).divide(BigDecimal.valueOf(totalRecords), 4, RoundingMode.HALF_UP)
+                        : BigDecimal.ZERO;
+                rates.add(rate);
             }
 
             SeriesItem item = new SeriesItem();
@@ -94,31 +113,38 @@ public class AttendanceStatisticsServiceImpl implements AttendanceStatisticsServ
         return vo;
     }
 
-    private Map<Long, Long> loadEmpDeptMap(Set<Long> empIds) {
-        if (empIds.isEmpty()) return Collections.emptyMap();
-        return employeeWorkInfoMapper.selectList(
-                        Wrappers.<EmployeeWorkInfo>lambdaQuery()
-                                .in(EmployeeWorkInfo::getEmployeeId, empIds))
-                .stream()
-                .collect(Collectors.toMap(
-                        EmployeeWorkInfo::getEmployeeId, EmployeeWorkInfo::getDepartmentId, (a, b) -> a));
-    }
-
     @Override
     public List<LeaveDistributionVO> getLeaveDistribution(int year, int month) {
-        List<AttendanceStatistics> stats = statisticsMapper.selectList(
-                Wrappers.<AttendanceStatistics>lambdaQuery()
-                        .eq(AttendanceStatistics::getStatYear, year)
-                        .eq(AttendanceStatistics::getStatMonth, month));
+        LocalDate startDate = LocalDate.of(year, month, 1);
+        LocalDate endDate = startDate.plusMonths(1).minusDays(1);
 
-        BigDecimal annual = sum(stats, AttendanceStatistics::getAnnualLeaveDays);
-        BigDecimal sick = sum(stats, AttendanceStatistics::getSickLeaveDays);
-        BigDecimal personal = sum(stats, AttendanceStatistics::getPersonalLeaveDays);
-        BigDecimal marriage = sum(stats, AttendanceStatistics::getMarriageLeaveDays);
-        BigDecimal maternity = sum(stats, AttendanceStatistics::getMaternityLeaveDays);
-        BigDecimal funeral = sum(stats, AttendanceStatistics::getFuneralLeaveDays);
-        BigDecimal comp = sum(stats, AttendanceStatistics::getCompTimeLeaveDays);
+        // 已通过的请假记录
+        List<LeaveRequest> leaves = leaveRequestMapper.selectList(
+                Wrappers.<LeaveRequest>lambdaQuery()
+                        .eq(LeaveRequest::getStatus, 3)
+                        .ge(LeaveRequest::getStartTime, startDate.atStartOfDay())
+                        .le(LeaveRequest::getStartTime, endDate.atTime(23, 59, 59)));
+
+        BigDecimal annual = BigDecimal.ZERO, sick = BigDecimal.ZERO, personal = BigDecimal.ZERO,
+                marriage = BigDecimal.ZERO, maternity = BigDecimal.ZERO, funeral = BigDecimal.ZERO,
+                comp = BigDecimal.ZERO;
+
+        for (LeaveRequest lv : leaves) {
+            BigDecimal days = lv.getLeaveDays() != null ? lv.getLeaveDays() : BigDecimal.ZERO;
+            switch (lv.getLeaveType()) {
+                case 1: annual = annual.add(days); break;
+                case 2: sick = sick.add(days); break;
+                case 3: personal = personal.add(days); break;
+                case 4: marriage = marriage.add(days); break;
+                case 5: maternity = maternity.add(days); break;
+                case 6: funeral = funeral.add(days); break;
+                case 7: comp = comp.add(days); break;
+            }
+        }
+
         BigDecimal total = annual.add(sick).add(personal).add(marriage).add(maternity).add(funeral).add(comp);
+        BigDecimal zero = BigDecimal.ZERO;
+        if (total.compareTo(zero) == 0) total = BigDecimal.ONE; // 避免除以0
 
         List<LeaveDistributionVO> result = new ArrayList<>();
         addItem(result, "年假", annual, total);
@@ -131,38 +157,34 @@ public class AttendanceStatisticsServiceImpl implements AttendanceStatisticsServ
         return result;
     }
 
-    private BigDecimal sum(List<AttendanceStatistics> stats, java.util.function.Function<AttendanceStatistics, BigDecimal> getter) {
-        return stats.stream().map(getter).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
-    }
-
-    private void addItem(List<LeaveDistributionVO> list, String desc, BigDecimal days, BigDecimal total) {
-        LeaveDistributionVO vo = new LeaveDistributionVO();
-        vo.setLeaveTypeDesc(desc);
-        vo.setDays(days);
-        vo.setPercentage(total.compareTo(BigDecimal.ZERO) == 0
-                ? BigDecimal.ZERO
-                : days.divide(total, 4, RoundingMode.HALF_UP));
-        list.add(vo);
-    }
-
     @Override
     public List<LeaveEarlyRankingVO> getLateEarlyRanking(int year, int month, int topN) {
-        List<AttendanceStatistics> stats = statisticsMapper.selectList(
-                Wrappers.<AttendanceStatistics>lambdaQuery()
-                        .eq(AttendanceStatistics::getStatYear, year)
-                        .eq(AttendanceStatistics::getStatMonth, month));
+        Set<Long> allowedDeptIds = resolveManagedDeptIdsIfNeeded();
 
-        Set<Long> empIds = stats.stream().map(AttendanceStatistics::getEmployeeId).collect(Collectors.toSet());
+        // 当月所有打卡记录
+        LocalDate startDate = LocalDate.of(year, month, 1);
+        LocalDate endDate = startDate.plusMonths(1).minusDays(1);
+
+        List<AttendanceRecord> records = attendanceRecordMapper.selectList(
+                Wrappers.<AttendanceRecord>lambdaQuery()
+                        .between(AttendanceRecord::getAttendanceDate, startDate, endDate));
+        Set<Long> empIds = records.stream().map(AttendanceRecord::getEmployeeId).collect(Collectors.toSet());
         Map<Long, Long> empDeptMap = loadEmpDeptMap(empIds);
 
         Map<Long, Integer> lateMap = new HashMap<>();
         Map<Long, Integer> earlyMap = new HashMap<>();
 
-        for (AttendanceStatistics s : stats) {
-            Long deptId = empDeptMap.get(s.getEmployeeId());
+        for (AttendanceRecord r : records) {
+            Long deptId = empDeptMap.get(r.getEmployeeId());
             if (deptId == null) continue;
-            lateMap.merge(deptId, s.getLateCount() != null ? s.getLateCount() : 0, Integer::sum);
-            earlyMap.merge(deptId, s.getEarlyLeaveCount() != null ? s.getEarlyLeaveCount() : 0, Integer::sum);
+            if (allowedDeptIds != null && !allowedDeptIds.contains(deptId)) continue;
+
+            if (r.getStartStatus() != null && r.getStartStatus() == 2) {
+                lateMap.merge(deptId, 1, Integer::sum);
+            }
+            if (r.getEndStatus() != null && r.getEndStatus() == 2) {
+                earlyMap.merge(deptId, 1, Integer::sum);
+            }
         }
 
         Set<Long> allDeptIds = new HashSet<>();
@@ -171,8 +193,8 @@ public class AttendanceStatisticsServiceImpl implements AttendanceStatisticsServ
 
         return allDeptIds.stream().map(deptId -> {
             LeaveEarlyRankingVO vo = new LeaveEarlyRankingVO();
-            vo.setDepartmentName(departmentService.getById(deptId) != null
-                    ? departmentService.getById(deptId).getName() : "未知部门");
+            Department dept = departmentService.getById(deptId);
+            vo.setDepartmentName(dept != null ? dept.getName() : "未知部门");
             vo.setLateCount(lateMap.getOrDefault(deptId, 0));
             vo.setEarlyLeaveCount(earlyMap.getOrDefault(deptId, 0));
             return vo;
@@ -181,5 +203,51 @@ public class AttendanceStatisticsServiceImpl implements AttendanceStatisticsServ
                 a.getLateCount() + a.getEarlyLeaveCount()))
                 .limit(topN)
                 .collect(Collectors.toList());
+    }
+
+    // ==================== 工具 ====================
+
+    /** 部门主管返回管辖部门集合，HR/管理员返回 null（全量） */
+    private Set<Long> resolveManagedDeptIdsIfNeeded() {
+        DataScopeEnum scope = dataScopeContext.getAttendanceScope();
+        if (scope == DataScopeEnum.DEPT) {
+            return dataScopeContext.getManagedDepartmentIds();
+        }
+        return null;
+    }
+
+    private Set<Long> loadAllDeptIds() {
+        return departmentService.list().stream()
+                .map(Department::getId).collect(Collectors.toSet());
+    }
+
+    private Map<Long, Long> loadEmpDeptMap(Set<Long> empIds) {
+        if (empIds.isEmpty()) return Collections.emptyMap();
+        return employeeWorkInfoMapper.selectList(
+                        Wrappers.<EmployeeWorkInfo>lambdaQuery()
+                                .in(EmployeeWorkInfo::getEmployeeId, empIds))
+                .stream()
+                .collect(Collectors.toMap(
+                        EmployeeWorkInfo::getEmployeeId, EmployeeWorkInfo::getDepartmentId, (a, b) -> a));
+    }
+
+    private boolean isPresent(AttendanceRecord r) {
+        return (r.getStartStatus() != null && r.getStartStatus() <= 2)
+                || (r.getEndStatus() != null && r.getEndStatus() <= 2);
+    }
+
+    private AttendanceRateChartVO emptyRateVO(List<String> monthLabels) {
+        AttendanceRateChartVO vo = new AttendanceRateChartVO();
+        vo.setMonths(monthLabels);
+        vo.setSeries(Collections.emptyList());
+        return vo;
+    }
+
+    private void addItem(List<LeaveDistributionVO> list, String desc, BigDecimal days, BigDecimal total) {
+        LeaveDistributionVO vo = new LeaveDistributionVO();
+        vo.setLeaveTypeDesc(desc);
+        vo.setDays(days);
+        vo.setPercentage(days.divide(total, 4, RoundingMode.HALF_UP));
+        list.add(vo);
     }
 }
