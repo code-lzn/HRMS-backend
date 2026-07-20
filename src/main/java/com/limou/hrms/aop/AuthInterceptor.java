@@ -105,13 +105,15 @@ public class AuthInterceptor {
         if ("dept_head".equals(user.getUserRole())) {
 
             QueryWrapper<Department> wrapper = new QueryWrapper<>();
-            wrapper.eq("manager_id", employee.getId());//查找部门主管所在的部门
+            wrapper.eq("manager_id", employee.getId());
             wrapper.eq("is_deleted", 0);
-            Department managedDept = departmentMapper.selectOne(wrapper);
-            if (managedDept != null) {
-                dataScopeContext.setCurrentDepartmentId(managedDept.getId());
+            List<Department> managedDepts = departmentMapper.selectList(wrapper);
+            if (managedDepts != null && !managedDepts.isEmpty()) {
+                dataScopeContext.setCurrentDepartmentId(managedDepts.get(0).getId());
                 Set<Long> deptIds = new HashSet<>();
-                collectChildDeptIds(managedDept.getId(), deptIds);
+                for (Department dept : managedDepts) {
+                    collectChildDeptIds(dept.getId(), deptIds);
+                }
                 dataScopeContext.setManagedDepartmentIds(deptIds);
             } else {
                 dataScopeContext.setManagedDepartmentIds(Collections.emptySet());
