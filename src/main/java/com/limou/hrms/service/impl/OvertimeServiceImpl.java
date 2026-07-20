@@ -13,6 +13,8 @@ import com.limou.hrms.model.enums.ApprovalActionEnum;
 import com.limou.hrms.model.enums.ApprovalRecordStatusEnum;
 import com.limou.hrms.model.enums.ApprovalStatusEnum;
 import com.limou.hrms.model.enums.BusinessTypeEnum;
+import com.limou.hrms.model.enums.ProgressNodeStatusEnum;
+import com.limou.hrms.model.vo.OvertimeProgressVO;
 import com.limou.hrms.model.vo.OvertimeVO;
 import com.limou.hrms.service.ApprovalDetailService;
 import com.limou.hrms.service.ApprovalService;
@@ -26,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 import javax.annotation.Resource;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Objects;
@@ -121,6 +124,95 @@ public class OvertimeServiceImpl extends ServiceImpl<OvertimeRecordMapper, Overt
                 approvalDetailService.updateById(detail);
             }
         }
+    }
+
+    @Override
+    public OvertimeProgressVO getApprovalProgress(Long requestId, Long userId) {
+        OvertimeRecord record = this.getById(requestId);
+        ThrowUtils.throwIf(record == null, ErrorCode.NOT_FOUND_ERROR, "加班申请不存在");
+        ThrowUtils.throwIf(!Objects.equals(record.getUserId(), userId), ErrorCode.NO_AUTH_ERROR);
+
+        Employee emp = employeeService.lambdaQuery().eq(Employee::getId, record.getEmployeeId()).one();
+        OvertimeVO overtimeVO = convertToVO(record, emp);
+
+        List<OvertimeProgressVO.ProgressNode> nodes = new ArrayList<>();
+
+        // 节点0: 提交申请
+        OvertimeProgressVO.ProgressNode submitNode = new OvertimeProgressVO.ProgressNode();
+        submitNode.setNodeName("提交申请");
+        submitNode.setStatus(ProgressNodeStatusEnum.COMPLETED.getValue());
+        submitNode.setOperatorName(emp != null ? emp.getEmployeeName() : null);
+        submitNode.setOperateTime(record.getCreateTime());
+        submitNode.setComment(record.getReason());
+        nodes.add(submitNode);
+
+        // 查询审批实例
+        ApprovalRecord approvalRecord = approvalService.lambdaQuery()
+                .eq(ApprovalRecord::getBusinessType, BusinessTypeEnum.OVERTIME.getValue())
+                .eq(ApprovalRecord::getBusinessId, requestId)
+                .orderByDesc(ApprovalRecord::getCreateTime)
+                .last("LIMIT 1")
+                .one();
+
+        if (approvalRecord != null) {
+            List<ApprovalDetail> details = approvalDetailService.lambdaQuery()
+                    .eq(ApprovalDetail::getRecordId, approvalRecord.getId())
+                    .orderByAsc(ApprovalDetail::getStepOrder, ApprovalDetail::getCreateTime)
+                    .list();
+
+            for (ApprovalDetail detail : details) {
+                OvertimeProgressVO.ProgressNode node = new OvertimeProgressVO.ProgressNode();
+                node.setNodeName(detail.getNodeName());
+
+                String operatorName = detail.getApproverName();
+                if (operatorName == null && detail.getApproverId() != null) {
+                    Employee approver = employeeService.getById(detail.getApproverId());
+                    operatorName = approver != null ? approver.getEmployeeName() : null;
+                }
+                if (operatorName == null) {
+                    operatorName = "待分配";
+                }
+                node.setOperatorName(operatorName);
+                node.setOperateTime(detail.getOperateTime());
+                node.setComment(detail.getComment());
+
+                String action = detail.getAction();
+                if (ApprovalActionEnum.PENDING.getValue().equals(action)) {
+                    boolean isCurrentStep = Objects.equals(detail.getStepOrder(), approvalRecord.getCurrentStep())
+                            && ApprovalRecordStatusEnum.APPROVING.getValue().equals(approvalRecord.getStatus());
+                    node.setStatus(isCurrentStep
+                            ? ProgressNodeStatusEnum.IN_PROGRESS.getValue()
+                            : ProgressNodeStatusEnum.NOT_STARTED.getValue());
+                } else if (ApprovalActionEnum.APPROVE.getValue().equals(action)) {
+                    node.setStatus(ProgressNodeStatusEnum.COMPLETED.getValue());
+                } else if (ApprovalActionEnum.REJECT.getValue().equals(action)) {
+                    node.setStatus(ProgressNodeStatusEnum.COMPLETED.getValue());
+                    node.setNodeName(detail.getNodeName() + "（已拒绝）");
+                } else if (ApprovalActionEnum.TRANSFER.getValue().equals(action)) {
+                    node.setStatus(ProgressNodeStatusEnum.COMPLETED.getValue());
+                    node.setNodeName(detail.getNodeName() + "（已转交）");
+                } else if (ApprovalActionEnum.WITHDRAWN.getValue().equals(action)) {
+                    node.setStatus(ProgressNodeStatusEnum.NOT_STARTED.getValue());
+                } else {
+                    node.setStatus(ProgressNodeStatusEnum.NOT_STARTED.getValue());
+                }
+
+                nodes.add(node);
+            }
+        } else {
+            OvertimeProgressVO.ProgressNode fallbackNode = new OvertimeProgressVO.ProgressNode();
+            fallbackNode.setNodeName("审批");
+            fallbackNode.setStatus(ProgressNodeStatusEnum.NOT_STARTED.getValue());
+            fallbackNode.setOperatorName(null);
+            fallbackNode.setOperateTime(null);
+            fallbackNode.setComment("审批流未初始化");
+            nodes.add(fallbackNode);
+        }
+
+        OvertimeProgressVO vo = new OvertimeProgressVO();
+        vo.setOvertime(overtimeVO);
+        vo.setProgressNodes(nodes);
+        return vo;
     }
 
     private Employee getEmployee(Long userId) {

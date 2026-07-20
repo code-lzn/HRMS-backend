@@ -6,6 +6,8 @@ import com.limou.hrms.common.ResultUtils;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.model.dto.attendance.OvertimeApplyRequest;
 import com.limou.hrms.model.entity.User;
+
+import com.limou.hrms.model.vo.OvertimeProgressVO;
 import com.limou.hrms.model.vo.OvertimeVO;
 import com.limou.hrms.service.OvertimeService;
 import com.limou.hrms.service.UserService;
@@ -51,6 +53,17 @@ public class OvertimeController {
         User loginUser = userService.getLoginUser(request);
         List<OvertimeVO> list = overtimeService.getMyOvertimes(loginUser.getId());
         return ResultUtils.success(list);
+    }
+
+    /**
+     * 获取加班审批进度
+     */
+    @GetMapping("/{id}/progress")
+    public BaseResponse<OvertimeProgressVO> getApprovalProgress(
+            @PathVariable Long id, HttpServletRequest request) {
+        User loginUser = userService.getLoginUser(request);
+        OvertimeProgressVO vo = overtimeService.getApprovalProgress(id, loginUser.getId());
+        return ResultUtils.success(vo);
     }
 
     /**
