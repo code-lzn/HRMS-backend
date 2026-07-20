@@ -86,7 +86,7 @@ public class LeaveController {
 
     // ==================== 查询 ====================
 
-    /** 请假列表（分页 + 关键字搜索 + 数据权限） */
+    /** 请假列表（分页 + 关键字搜索 + 数据权限 + 审批进度） */
     @GetMapping("/requests")
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.DEPT_HEAD_ROLE, UserConstant.DEFAULT_ROLE})
     public BaseResponse<Page<LeaveRequestVO>> queryRequests(
@@ -98,15 +98,23 @@ public class LeaveController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
         log.info("{} 查询请假申请列表", UserContext.getCurrentUser());
-        LeaveQuery query = new LeaveQuery();
-        query.setEmployeeId(employeeId);
-        query.setLeaveType(leaveType);
-        query.setStatus(status);
-        query.setStartDate(startDate);
-        query.setEndDate(endDate);
-        query.setCurrent(page);
-        query.setPageSize(size);
-        Page<LeaveRequestVO> result = leaveService.queryRequests(query);
+        Page<LeaveRequestVO> result = leaveService.queryRequests(employeeId,leaveType,status,startDate,endDate,page,size);
+        return ResultUtils.success(result);
+    }
+
+    /** 请假列表（不含审批进度，性能优化版） */
+    @GetMapping("/requestss")
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.DEPT_HEAD_ROLE, UserConstant.DEFAULT_ROLE})
+    public BaseResponse<Page<LeaveRequestVO>> queryRequestsLight(
+            @RequestParam(required = false) Long employeeId,
+            @RequestParam(required = false) Integer leaveType,
+            @RequestParam(required = false) Integer status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        log.info("{} 查询请假申请列表(轻量)", UserContext.getCurrentUser());
+        Page<LeaveRequestVO> result = leaveService.queryRequestsLight(employeeId, leaveType, status, startDate, endDate, page, size);
         return ResultUtils.success(result);
     }
 

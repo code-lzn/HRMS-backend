@@ -222,7 +222,7 @@ public class ProfileServiceImpl implements ProfileService {
         lq.setStatus(query.getStatus());
         lq.setCurrent(query.getPage() != null ? query.getPage() : 1);
         lq.setPageSize(query.getSize() != null ? query.getSize() : 20);
-        return leaveService.queryRequests(lq);
+        return leaveService.queryRequests(dataScopeContext.getCurrentEmployeeId(),null,query.getStatus(),null,null,query.getPage() != null ? query.getPage() : 1,query.getSize() != null ? query.getSize() : 20);
     }
 
     @Override

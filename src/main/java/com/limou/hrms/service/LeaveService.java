@@ -34,7 +34,10 @@ public interface LeaveService {
     // ==================== 查询 ====================
 
     /** 分页查询请假列表（含关键字搜索 + 数据权限） */
-    Page<LeaveRequestVO> queryRequests(LeaveQuery query);
+    Page<LeaveRequestVO> queryRequests(Long  employeeId,Integer leaveType,Integer status,LocalDate startDate,LocalDate endDate,int page,int size);
+
+    /** 分页查询请假列表（不含审批进度，性能优化版） */
+    Page<LeaveRequestVO> queryRequestsLight(Long employeeId, Integer leaveType, Integer status, LocalDate startDate, LocalDate endDate, int page, int size);
 
     /** 查询请假详情 */
     LeaveRequestVO getRequestDetail(Long id);

@@ -227,7 +227,15 @@ public class LeaveServiceImpl
     // ==================== 查询列表 ====================
 
     @Override
-    public Page<LeaveRequestVO> queryRequests(LeaveQuery query) {
+    public Page<LeaveRequestVO> queryRequests(Long  employeeId,Integer leaveType,Integer status,LocalDate startDate,LocalDate endDate,int page,int size) {
+        LeaveQuery query = new LeaveQuery();
+        query.setEmployeeId(employeeId);
+        query.setLeaveType(leaveType);
+        query.setStatus(status);
+        query.setStartDate(startDate);
+        query.setEndDate(endDate);
+        query.setCurrent(page);
+        query.setPageSize(size);
         QueryWrapper<LeaveRequest> wrapper = new QueryWrapper<>();
         wrapper.orderByDesc("create_time");
 
@@ -316,6 +324,75 @@ public class LeaveServiceImpl
         }).collect(Collectors.toList());
 
         Page<LeaveRequestVO> result = new Page<>(query.getCurrent(), query.getPageSize(), resultPage.getTotal());
+        result.setRecords(voList);
+        return result;
+    }
+
+    @Override
+    public Page<LeaveRequestVO> queryRequestsLight(Long employeeId, Integer leaveType, Integer status,
+                                                    LocalDate startDate, LocalDate endDate, int page, int size) {
+        QueryWrapper<LeaveRequest> wrapper = new QueryWrapper<>();
+        wrapper.orderByDesc("create_time");
+
+        if (employeeId != null) {
+            wrapper.eq("employee_id", employeeId);
+        } else {
+            DataScopeEnum scope = dataScopeContext.getAttendanceScope();
+            switch (scope) {
+                case DEPT: {
+                    Set<Long> deptIds = dataScopeContext.getManagedDepartmentIds();
+                    if (deptIds == null || deptIds.isEmpty()) {
+                        wrapper.eq("employee_id", dataScopeContext.getCurrentEmployeeId());
+                    } else {
+                        wrapper.inSql("employee_id",
+                                "SELECT e.id FROM employee e " +
+                                "INNER JOIN employee_work_info ewi ON e.id = ewi.employee_id " +
+                                "WHERE ewi.department_id IN (" + joinIds(deptIds) + ")");
+                    }
+                    break;
+                }
+                case SELF:
+                    wrapper.eq("employee_id", dataScopeContext.getCurrentEmployeeId());
+                    break;
+            }
+        }
+
+        if (status == null) {
+            wrapper.notIn("status", 1, 5);
+        }
+        if (leaveType != null) wrapper.eq("leave_type", leaveType);
+        if (status != null) wrapper.eq("status", status);
+        if (startDate != null) wrapper.ge("start_time", startDate.atStartOfDay());
+        if (endDate != null) wrapper.le("start_time", endDate.atTime(LocalTime.of(23, 59, 59)));
+
+        Page<LeaveRequest> resultPage = this.page(new Page<>(page, size), wrapper);
+
+        Set<Long> empIds = resultPage.getRecords().stream()
+                .map(LeaveRequest::getEmployeeId).collect(Collectors.toSet());
+        Map<Long, String> empNameMap = loadEmpNames(empIds);
+        Map<Long, String> deptNameMap = loadDeptNames(empIds);
+
+        List<LeaveRequestVO> voList = resultPage.getRecords().stream().map(r -> {
+            LeaveRequestVO vo = new LeaveRequestVO();
+            vo.setId(r.getId());
+            vo.setEmployeeId(r.getEmployeeId());
+            vo.setLeaveType(r.getLeaveType());
+            vo.setStartTime(r.getStartTime());
+            vo.setEndTime(r.getEndTime());
+            vo.setLeaveDays(r.getLeaveDays());
+            vo.setReason(r.getReason());
+            vo.setHandoverEmployeeId(r.getHandoverEmployeeId());
+            vo.setStatus(r.getStatus());
+            vo.setCreateTime(r.getCreateTime());
+            vo.setApprovalInstanceId(r.getApprovalInstanceId());
+            vo.setEmployeeName(empNameMap.getOrDefault(r.getEmployeeId(), ""));
+            vo.setDepartmentName(deptNameMap.getOrDefault(r.getEmployeeId(), ""));
+            vo.setLeaveTypeDesc(getLeaveTypeDesc(r.getLeaveType()));
+            vo.setStatusDesc(getLeaveStatusDesc(r.getStatus()));
+            return vo;
+        }).collect(Collectors.toList());
+
+        Page<LeaveRequestVO> result = new Page<>(page, size, resultPage.getTotal());
         result.setRecords(voList);
         return result;
     }
