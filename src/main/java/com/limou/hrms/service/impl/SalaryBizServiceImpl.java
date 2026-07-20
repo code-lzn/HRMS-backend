@@ -6,6 +6,7 @@ import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.exception.ThrowUtils;
 import com.limou.hrms.mapper.*;
 import com.limou.hrms.model.entity.*;
+import com.limou.hrms.model.enums.ApprovalStatusEnum;
 import com.limou.hrms.model.enums.ChangeTypeEnum;
 import com.limou.hrms.model.enums.SalaryItemTypeEnum;
 import com.limou.hrms.model.vo.*;
@@ -70,6 +71,8 @@ public class SalaryBizServiceImpl implements SalaryBizService {
     private AttendanceMapper attendanceMapper;
     @Resource
     private LeaveMapper leaveMapper;
+    @Resource
+    private OvertimeRecordMapper overtimeRecordMapper;
     @Resource
     private ApprovalService approvalService;
     @Resource
@@ -312,9 +315,12 @@ public class SalaryBizServiceImpl implements SalaryBizService {
                 ? profile.getPerformanceBase().setScale(2, RoundingMode.HALF_UP)
                 : BigDecimal.ZERO;
 
-        // 6. 加班费（暂时默认为0，后续对接加班系统）
-        BigDecimal overtimePay = BigDecimal.ZERO;
-        // todo: 对接加班审批记录，计算 小时工资 × 倍数 × 时长
+        // 6. 加班费：对接加班审批记录，小时工资 × 1.5倍 × 时长
+        BigDecimal overtimeHours = sumOvertimeHours(emp.getId(), year, month);
+        BigDecimal hourlyRate = baseSalary.divide(WORK_DAYS, 2, RoundingMode.HALF_UP)
+                .divide(WORK_HOURS, 2, RoundingMode.HALF_UP);
+        BigDecimal overtimePay = hourlyRate.multiply(BigDecimal.valueOf(1.5))
+                .multiply(overtimeHours).setScale(2, RoundingMode.HALF_UP);
 
         // 7. 考勤扣款：迟到
         int lateCount = countAttendanceStatus(emp.getId(), year, month, 1); // status=1=迟到
@@ -372,7 +378,11 @@ public class SalaryBizServiceImpl implements SalaryBizService {
             hasAnomaly = 1;
             anomalyReason.append("当月请假超过15天; ");
         }
-        // todo: 加班>50h → 黄色预警
+        // 加班>50h → 黄色预警
+        if (overtimeHours.compareTo(BigDecimal.valueOf(50)) > 0) {
+            hasAnomaly = Math.max(hasAnomaly, 1);
+            anomalyReason.append("当月加班超过50小时; ");
+        }
         // 变动>30% → 红色预警（需有上月对比）
         SalarySlip lastMonthSlip = findLastMonthSlip(emp.getId(), year, month);
         if (lastMonthSlip != null && lastMonthSlip.getNetSalary().compareTo(BigDecimal.ZERO) > 0) {
@@ -424,8 +434,12 @@ public class SalaryBizServiceImpl implements SalaryBizService {
                         .orderByAsc(SalarySlip::getEmployeeId)
         );
 
+        // 批量查员工和部门信息
+        Map<Long, Employee> empMap = buildEmployeeMap(result.getRecords());
+        Map<Long, String> deptNameMap = buildDeptNameMap(empMap);
+
         List<SalaryDetailVO> records = result.getRecords().stream()
-                .map(slip -> toDetailVO(slip, null))
+                .map(slip -> toDetailVO(slip, empMap.get(slip.getEmployeeId()), deptNameMap))
                 .collect(Collectors.toList());
 
         SalaryBatchPreviewVO preview = new SalaryBatchPreviewVO();
@@ -444,7 +458,9 @@ public class SalaryBizServiceImpl implements SalaryBizService {
                         .eq(SalarySlip::getBatchId, batchId)
                         .gt(SalarySlip::getHasAnomaly, 0)
         );
-        return slips.stream().map(slip -> toDetailVO(slip, null)).collect(Collectors.toList());
+        Map<Long, Employee> empMap = buildEmployeeMap(slips);
+        Map<Long, String> deptNameMap = buildDeptNameMap(empMap);
+        return slips.stream().map(slip -> toDetailVO(slip, empMap.get(slip.getEmployeeId()), deptNameMap)).collect(Collectors.toList());
     }
 
     @Override
@@ -691,6 +707,35 @@ public class SalaryBizServiceImpl implements SalaryBizService {
     }
 
     /**
+     * 汇总某月加班总时长（仅已通过的加班记录）
+     */
+    private BigDecimal sumOvertimeHours(Long employeeId, int year, int month) {
+        Calendar cal = Calendar.getInstance();
+        cal.set(year, month - 1, 1, 0, 0, 0);
+        Date startDate = cal.getTime();
+        cal.set(year, month - 1, cal.getActualMaximum(Calendar.DAY_OF_MONTH), 23, 59, 59);
+        Date endDate = cal.getTime();
+
+        List<OvertimeRecord> records = overtimeRecordMapper.selectList(
+                new LambdaQueryWrapper<OvertimeRecord>()
+                        .eq(OvertimeRecord::getEmployeeId, employeeId)
+                        .eq(OvertimeRecord::getStatus, ApprovalStatusEnum.APPROVED.getValue())
+                        .ge(OvertimeRecord::getOvertimeDate, startDate)
+                        .le(OvertimeRecord::getOvertimeDate, endDate)
+        );
+
+        BigDecimal total = BigDecimal.ZERO;
+        if (records != null) {
+            for (OvertimeRecord record : records) {
+                if (record.getOvertimeHours() != null) {
+                    total = total.add(record.getOvertimeHours());
+                }
+            }
+        }
+        return total;
+    }
+
+    /**
      * 找上月工资条（用于异常检测）
      */
     private SalarySlip findLastMonthSlip(Long employeeId, int year, int month) {
@@ -731,7 +776,7 @@ public class SalaryBizServiceImpl implements SalaryBizService {
         return vo;
     }
 
-    private SalaryDetailVO toDetailVO(SalarySlip slip, Employee emp) {
+    private SalaryDetailVO toDetailVO(SalarySlip slip, Employee emp, Map<Long, String> deptNameMap) {
         SalaryDetailVO vo = new SalaryDetailVO();
         vo.setId(slip.getId());
         vo.setBatchId(slip.getBatchId());
@@ -755,12 +800,38 @@ public class SalaryBizServiceImpl implements SalaryBizService {
         vo.setHasAnomaly(slip.getHasAnomaly());
         vo.setAnomalyReason(slip.getAnomalyReason());
         vo.setCreatedAt(slip.getCreatedAt());
-        // 填充员工信息
+        // 填充员工和部门信息
         if (emp != null) {
             vo.setEmployeeNo(emp.getEmployeeNo());
             vo.setEmployeeName(emp.getEmployeeName());
+            if (emp.getDepartmentId() != null && deptNameMap != null) {
+                vo.setDepartmentName(deptNameMap.getOrDefault(emp.getDepartmentId(), null));
+            }
         }
         return vo;
+    }
+
+    /**
+     * 批量构建员工 Map
+     */
+    private Map<Long, Employee> buildEmployeeMap(List<SalarySlip> slips) {
+        Set<Long> empIds = slips.stream().map(SalarySlip::getEmployeeId).collect(Collectors.toSet());
+        if (empIds.isEmpty()) return Collections.emptyMap();
+        List<Employee> emps = employeeMapper.selectBatchIds(empIds);
+        return emps.stream().collect(Collectors.toMap(Employee::getId, e -> e, (a, b) -> a));
+    }
+
+    /**
+     * 批量构建部门名称 Map
+     */
+    private Map<Long, String> buildDeptNameMap(Map<Long, Employee> empMap) {
+        Set<Long> deptIds = empMap.values().stream()
+                .map(Employee::getDepartmentId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (deptIds.isEmpty()) return Collections.emptyMap();
+        List<Department> depts = departmentMapper.selectBatchIds(deptIds);
+        return depts.stream().collect(Collectors.toMap(Department::getId, Department::getDeptName, (a, b) -> a));
     }
 
     private String getStatusText(String status) {

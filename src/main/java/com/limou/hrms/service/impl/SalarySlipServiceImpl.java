@@ -3,11 +3,9 @@ package com.limou.hrms.service.impl;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.exception.ThrowUtils;
+import com.limou.hrms.mapper.SalPayslipViewLogMapper;
 import com.limou.hrms.mapper.SalarySlipMapper;
-import com.limou.hrms.model.entity.Employee;
-import com.limou.hrms.model.entity.SalaryBatch;
-import com.limou.hrms.model.entity.SalarySlip;
-import com.limou.hrms.model.entity.User;
+import com.limou.hrms.model.entity.*;
 import com.limou.hrms.model.vo.SalarySlipDetailVO;
 import com.limou.hrms.model.vo.SalarySlipVO;
 import com.limou.hrms.model.vo.SalaryTrendVO;
@@ -21,6 +19,7 @@ import org.springframework.util.DigestUtils;
 
 import javax.annotation.Resource;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.Objects;
 
@@ -43,6 +42,9 @@ public class SalarySlipServiceImpl extends ServiceImpl<SalarySlipMapper, SalaryS
     @Resource
     private SalaryBatchService salaryBatchService;
 
+    @Resource
+    private SalPayslipViewLogMapper salPayslipViewLogMapper;
+
     @Override
     public List<SalarySlipVO> getMySalarySlips(Long userId) {
         Employee emp = getEmployee(userId);
@@ -54,19 +56,22 @@ public class SalarySlipServiceImpl extends ServiceImpl<SalarySlipMapper, SalaryS
 
         List<SalarySlipVO> voList = new ArrayList<>();
         for (SalarySlip slip : slips) {
+            // 查询批次获取月份和状态
+            SalaryBatch batch = salaryBatchService.getById(slip.getBatchId());
+            // 仅审批通过或已发放的批次才展示工资条
+            if (batch == null) continue;
+            if (!"APPROVED".equals(batch.getStatus()) && !"PAID".equals(batch.getStatus())) {
+                continue;
+            }
+
             SalarySlipVO vo = new SalarySlipVO();
             vo.setId(slip.getId());
             vo.setGrossSalary(slip.getGrossSalary());
             vo.setTotalDeduction(slip.getTotalDeduction());
             vo.setNetSalary(slip.getNetSalary());
             vo.setHasAnomaly(slip.getHasAnomaly());
-
-            // 查询批次获取月份和状态
-            SalaryBatch batch = salaryBatchService.getById(slip.getBatchId());
-            if (batch != null) {
-                vo.setSalaryMonth(batch.getSalaryMonth());
-                vo.setBatchStatus(batch.getStatus());
-            }
+            vo.setSalaryMonth(batch.getSalaryMonth());
+            vo.setBatchStatus(batch.getStatus());
 
             voList.add(vo);
         }
@@ -91,6 +96,23 @@ public class SalarySlipServiceImpl extends ServiceImpl<SalarySlipMapper, SalaryS
                 ErrorCode.NO_AUTH_ERROR);
 
         SalaryBatch batch = salaryBatchService.getById(slip.getBatchId());
+        // 校验：仅审批通过或已发放的批次可查看工资条
+        ThrowUtils.throwIf(batch == null
+                        || (!"APPROVED".equals(batch.getStatus()) && !"PAID".equals(batch.getStatus())),
+                ErrorCode.NO_AUTH_ERROR, "工资条尚未开放查看");
+
+        // 记录查看日志（首次查看需密码验证，非首次可跳过 - 此接口统一要求密码）
+        boolean isFirstView = salPayslipViewLogMapper.selectCount(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SalPayslipViewLog>()
+                        .eq(SalPayslipViewLog::getBatchDetailId, detailId)
+                        .eq(SalPayslipViewLog::getEmployeeId, emp.getId())
+        ) == 0;
+        SalPayslipViewLog viewLog = new SalPayslipViewLog();
+        viewLog.setBatchDetailId(detailId);
+        viewLog.setEmployeeId(emp.getId());
+        viewLog.setVerifiedAt(new Date());
+        viewLog.setViewedAt(new Date());
+        salPayslipViewLogMapper.insert(viewLog);
 
         SalarySlipDetailVO vo = new SalarySlipDetailVO();
         vo.setId(slip.getId());
