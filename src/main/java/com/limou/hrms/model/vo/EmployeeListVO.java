@@ -42,4 +42,7 @@ public class EmployeeListVO {
 
     @ExcelProperty("入职日期")
     private String hireDate;
+
+    @ExcelProperty("直接汇报人")
+    private String directReportName;
 }

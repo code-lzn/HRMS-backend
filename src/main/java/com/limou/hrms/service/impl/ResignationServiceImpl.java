@@ -293,6 +293,8 @@ public class ResignationServiceImpl
             vo.setEmployeeName(approverResolver.getEmployeeName(app.getEmployeeId()));
             vo.setEmployeeNo(getEmployeeNo(app.getEmployeeId()));
             vo.setDepartmentName(getDeptNameByEmployeeId(app.getEmployeeId()));
+            vo.setPositionName(getPositionNameByEmployeeId(app.getEmployeeId()));
+            vo.setHandoverToName(approverResolver.getEmployeeName(app.getHandoverToId()));
             vo.setResignationDate(app.getResignationDate());
             vo.setResignationType(app.getResignationType());
             vo.setResignationTypeDesc(getResignationTypeDesc(app.getResignationType()));

@@ -46,6 +46,11 @@ public class Position implements Serializable {
     private Integer levelMax;
 
     /**
+     * 职级前缀（如 P、M）
+     */
+    private String levelPrefix;
+
+    /**
      * 默认试用期（月）
      */
     private Integer defaultProbationMonths;
