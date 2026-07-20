@@ -23,18 +23,10 @@ public class IncomeTaxCalculator implements SalaryCalculator {
         if (context == null || context.getEmployeeSalary() == null) {
             return BigDecimal.ZERO;
         }
-        // 月度累计预扣法简化版：当月应纳税所得额 = 应发 - 5000 - 社保 - 公积金
-        // 实际应查 income_tax_cumulative 取累计数据，此处简化：直接基于当月计算
-        BigDecimal grossPay = BigDecimal.ZERO;
-        if (context.getEmployeeSalary().getBaseSalary() != null) {
-            grossPay = grossPay.add(context.getEmployeeSalary().getBaseSalary());
-        }
-        if (context.getEmployeeSalary().getAllowanceBase() != null) {
-            grossPay = grossPay.add(context.getEmployeeSalary().getAllowanceBase());
-        }
-        if (context.getEmployeeSalary().getPerformanceBase() != null) {
-            grossPay = grossPay.add(context.getEmployeeSalary().getPerformanceBase());
-        }
+        // 优先使用外部已算好的应发合计（含加班费等），否则用薪资档案基础数据估算
+        BigDecimal grossPay = context.getGrossPay() != null
+                ? context.getGrossPay()
+                : computeBaseGross(context);
 
         // 社保（10.5%）
         BigDecimal socialSecurity = BigDecimal.ZERO;
@@ -58,6 +50,23 @@ public class IncomeTaxCalculator implements SalaryCalculator {
 
         // 7级累进税率
         return calculateTax(taxableIncome).negate();
+    }
+
+    /**
+     * 基于薪资档案基础数据估算应发（不含考勤、加班等变动因素）
+     */
+    private BigDecimal computeBaseGross(SalaryCalculationContext context) {
+        BigDecimal gross = BigDecimal.ZERO;
+        if (context.getEmployeeSalary().getBaseSalary() != null) {
+            gross = gross.add(context.getEmployeeSalary().getBaseSalary());
+        }
+        if (context.getEmployeeSalary().getAllowanceBase() != null) {
+            gross = gross.add(context.getEmployeeSalary().getAllowanceBase());
+        }
+        if (context.getEmployeeSalary().getPerformanceBase() != null) {
+            gross = gross.add(context.getEmployeeSalary().getPerformanceBase());
+        }
+        return gross;
     }
 
     /**

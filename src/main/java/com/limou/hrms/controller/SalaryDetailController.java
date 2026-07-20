@@ -1,17 +1,18 @@
 package com.limou.hrms.controller;
 
+import com.limou.hrms.annotation.AuthCheck;
 import com.limou.hrms.common.BaseResponse;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.common.ResultUtils;
+import com.limou.hrms.constant.UserConstant;
 import com.limou.hrms.exception.BusinessException;
+import com.limou.hrms.mapper.EmployeeMapper;
 import com.limou.hrms.model.dto.salary.PayslipVerifyRequest;
+import com.limou.hrms.model.entity.Employee;
 import com.limou.hrms.model.entity.User;
 import com.limou.hrms.model.vo.salary.PayslipVO;
 import com.limou.hrms.service.UserService;
 import com.limou.hrms.service.salary.SalaryDetailService;
-import io.swagger.annotations.Api;
-import io.swagger.annotations.ApiOperation;
-import io.swagger.annotations.ApiParam;
 import java.util.List;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
@@ -26,9 +27,8 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 工资条 Controller（员工自助）
  */
-@Api(tags = "工资条（员工自助）")
 @RestController
-@RequestMapping("/v1/payslips")
+@RequestMapping("/payslips")
 @Slf4j
 public class SalaryDetailController {
 
@@ -41,9 +41,8 @@ public class SalaryDetailController {
     @Resource
     private EmployeeMapper employeeMapper;
 
-    @ApiOperation("获取我的工资条列表")
     @GetMapping("/my")
-    @AuthCheck(mustRole = {UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE, UserConstant.DEFAULT_ROLE})
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE, UserConstant.DEPT_HEAD_ROLE, UserConstant.DEFAULT_ROLE})
     public BaseResponse<List<PayslipVO>> getMyPayslips(HttpServletRequest request) {
         User loginUser = userService.getLoginUser(request);
         Long employeeId = getEmployeeId(loginUser);
@@ -51,11 +50,10 @@ public class SalaryDetailController {
         return ResultUtils.success(list);
     }
 
-    @ApiOperation("查看工资条详情")
     @GetMapping("/{id}")
-    @AuthCheck(mustRole = {UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE, UserConstant.DEFAULT_ROLE})
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE, UserConstant.DEPT_HEAD_ROLE, UserConstant.DEFAULT_ROLE})
     public BaseResponse<PayslipVO> getPayslipDetail(
-            @ApiParam("工资条ID") @PathVariable Long id,
+            @PathVariable Long id,
             HttpServletRequest request) {
         if (id == null || id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -66,9 +64,22 @@ public class SalaryDetailController {
         return ResultUtils.success(vo);
     }
 
-    @ApiOperation("二次验证")
+    @PostMapping("/{id}/send-code")
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE, UserConstant.DEPT_HEAD_ROLE, UserConstant.DEFAULT_ROLE})
+    public BaseResponse<Boolean> sendVerifyCode(
+            @PathVariable Long id,
+            HttpServletRequest request) {
+        if (id == null || id <= 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        User loginUser = userService.getLoginUser(request);
+        Long employeeId = getEmployeeId(loginUser);
+        salaryDetailService.sendPayslipVerifyCode(employeeId, id);
+        return ResultUtils.success(true);
+    }
+
     @PostMapping("/{id}/verify")
-    @AuthCheck(mustRole = {UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE, UserConstant.DEFAULT_ROLE})
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE, UserConstant.DEPT_HEAD_ROLE, UserConstant.DEFAULT_ROLE})
     public BaseResponse<Boolean> verifyPayslip(
             @PathVariable Long id,
             @RequestBody PayslipVerifyRequest verifyRequest,

@@ -49,8 +49,8 @@ public class SalaryDetailServiceImpl extends ServiceImpl<SalaryDetailMapper, Sal
     private static final Duration LIMIT_TTL = Duration.ofSeconds(60);
     /** 失败锁定时间 */
     private static final Duration FAIL_LOCK_TTL = Duration.ofMinutes(15);
-    /** 已验证标记有效期（= session 有效期，默认8小时） */
-    private static final Duration VIEWED_TTL = Duration.ofHours(8);
+    /** 已验证标记有效期：15分钟 */
+    private static final Duration VIEWED_TTL = Duration.ofMinutes(15);
     /** 最大失败次数 */
     private static final int MAX_FAILURES = 3;
 
@@ -209,7 +209,23 @@ public class SalaryDetailServiceImpl extends ServiceImpl<SalaryDetailMapper, Sal
             throw new BusinessException(ErrorCode.FORBIDDEN_ERROR, "工资条尚未审批通过");
         }
 
-        return toPayslipVO(detail, batch);
+        // ③ 构建 VO
+        PayslipVO vo = toPayslipVO(detail, batch);
+
+        // ④ 二次验证状态：Redis 过期则强制重新验证 + 脱敏
+        boolean currentlyVerified = isPayslipVerified(employeeId, detailId);
+        if (!currentlyVerified) {
+            // 重置为未查看，前端据此弹出验证弹窗
+            vo.setPayslipViewed(0);
+            // 脱敏：隐藏薪资数字
+            vo.setGrossPay(null);
+            vo.setNetPay(null);
+            vo.setTotalDeductions(null);
+            vo.setIncomeItems(null);
+            vo.setDeductionItems(null);
+        }
+
+        return vo;
     }
 
     // ==================== 已验证标记 ====================

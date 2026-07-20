@@ -7,6 +7,7 @@ import com.limou.hrms.common.ResultUtils;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.model.dto.salary.SalaryBatchCreateRequest;
 import com.limou.hrms.model.dto.salary.SalaryBatchQueryRequest;
+import com.limou.hrms.model.dto.salary.SalaryBatchRejectRequest;
 import com.limou.hrms.model.dto.salary.SalaryDetailAdjustRequest;
 import com.limou.hrms.model.dto.salary.SalaryDetailQueryRequest;
 import com.limou.hrms.model.entity.User;
@@ -14,6 +15,8 @@ import com.limou.hrms.model.vo.salary.SalaryBatchVO;
 import com.limou.hrms.model.vo.salary.SalaryDetailVO;
 import com.limou.hrms.service.UserService;
 import com.limou.hrms.service.salary.SalaryBatchService;
+import com.limou.hrms.annotation.AuthCheck;
+import com.limou.hrms.constant.UserConstant;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiParam;
@@ -33,7 +36,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @Api(tags = "薪资核算批次")
 @RestController
-@RequestMapping("/v1/salary-batches")
+@RequestMapping("/salary-batches")
 @Slf4j
 public class SalaryBatchController {
 
@@ -45,6 +48,7 @@ public class SalaryBatchController {
 
     @ApiOperation("查询批次列表")
     @GetMapping
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE})
     public BaseResponse<Page<SalaryBatchVO>> listBatches(SalaryBatchQueryRequest request) {
         if (request == null) {
             request = new SalaryBatchQueryRequest();
@@ -55,6 +59,7 @@ public class SalaryBatchController {
 
     @ApiOperation("创建核算批次")
     @PostMapping
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
     public BaseResponse<Long> createBatch(@RequestBody SalaryBatchCreateRequest request,
                                           HttpServletRequest httpRequest) {
         if (request == null) {
@@ -67,6 +72,7 @@ public class SalaryBatchController {
 
     @ApiOperation("执行异步计算")
     @PostMapping("/{id}/execute")
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
     public BaseResponse<Boolean> executeCalculate(@PathVariable Long id) {
         if (id == null || id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -77,6 +83,7 @@ public class SalaryBatchController {
 
     @ApiOperation("获取批次详情")
     @GetMapping("/{id}")
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE})
     public BaseResponse<SalaryBatchVO> getBatchDetail(@PathVariable Long id) {
         if (id == null || id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -87,6 +94,7 @@ public class SalaryBatchController {
 
     @ApiOperation("查询批次下的薪资明细")
     @GetMapping("/{id}/details")
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE})
     public BaseResponse<Page<SalaryDetailVO>> listDetails(
             @PathVariable Long id,
             SalaryDetailQueryRequest request) {
@@ -102,6 +110,7 @@ public class SalaryBatchController {
 
     @ApiOperation("手动调整员工工资条")
     @PutMapping("/details/{detailId}/adjust")
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
     public BaseResponse<Boolean> adjustDetail(
             @PathVariable Long detailId,
             @RequestBody SalaryDetailAdjustRequest request) {
@@ -112,8 +121,9 @@ public class SalaryBatchController {
         return ResultUtils.success(true);
     }
 
-    @ApiOperation("提交审批（创建审批实例，后续统一走 /api/v1/approvals 接口）")
+    @ApiOperation("提交审批（创建审批实例）")
     @PutMapping("/{id}/submit")
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
     public BaseResponse<Boolean> submitForApproval(@PathVariable Long id) {
         if (id == null || id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -122,8 +132,32 @@ public class SalaryBatchController {
         return ResultUtils.success(true);
     }
 
+    @ApiOperation("审批通过")
+    @PutMapping("/{id}/approve")
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.FINANCE_ROLE})
+    public BaseResponse<Boolean> approve(@PathVariable Long id) {
+        if (id == null || id <= 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        salaryBatchService.approve(id);
+        return ResultUtils.success(true);
+    }
+
+    @ApiOperation("审批驳回")
+    @PutMapping("/{id}/reject")
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.FINANCE_ROLE})
+    public BaseResponse<Boolean> reject(@PathVariable Long id,
+                                        @RequestBody SalaryBatchRejectRequest request) {
+        if (id == null || id <= 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        salaryBatchService.reject(id, request);
+        return ResultUtils.success(true);
+    }
+
     @ApiOperation("标记已发放")
     @PutMapping("/{id}/paid")
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.FINANCE_ROLE})
     public BaseResponse<Boolean> markAsPaid(@PathVariable Long id) {
         if (id == null || id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);

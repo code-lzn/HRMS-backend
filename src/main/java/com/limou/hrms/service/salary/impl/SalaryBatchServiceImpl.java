@@ -12,11 +12,7 @@ import com.limou.hrms.mapper.IncomeTaxCumulativeMapper;
 import com.limou.hrms.mapper.SalaryBatchMapper;
 import com.limou.hrms.mapper.SalaryDetailMapper;
 import com.limou.hrms.mapper.SalaryItemMapper;
-import com.limou.hrms.model.dto.salary.SalaryBatchCreateRequest;
-import com.limou.hrms.model.dto.salary.SalaryBatchQueryRequest;
-import com.limou.hrms.model.dto.salary.SalaryBatchRejectRequest;
-import com.limou.hrms.model.dto.salary.SalaryDetailAdjustRequest;
-import com.limou.hrms.model.dto.salary.SalaryDetailQueryRequest;
+import com.limou.hrms.model.dto.salary.*;
 import com.limou.hrms.model.entity.EmployeeSalary;
 import com.limou.hrms.model.entity.IncomeTaxCumulative;
 import com.limou.hrms.model.entity.SalaryBatch;
@@ -43,7 +39,6 @@ import javax.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -99,9 +94,8 @@ public class SalaryBatchServiceImpl extends ServiceImpl<SalaryBatchMapper, Salar
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    @Async("salaryTaskExecutor")
     public void executeCalculate(Long batchId) {
-        log.info("开始异步薪资核算，批次ID：{}", batchId);
+        log.info("开始薪资核算，批次ID：{}", batchId);
         SalaryBatch batch = this.getById(batchId);
         if (batch == null) {
             log.error("批次不存在，ID：{}", batchId);
@@ -116,6 +110,11 @@ public class SalaryBatchServiceImpl extends ServiceImpl<SalaryBatchMapper, Salar
         this.updateById(batch);
 
         try {
+            // 清除该批次旧的核算明细，防止重复
+            QueryWrapper<SalaryDetail> delWrapper = new QueryWrapper<>();
+            delWrapper.eq("batch_id", batchId);
+            salaryDetailMapper.delete(delWrapper);
+
             // 拉取所有在职员工薪资档案
             QueryWrapper<EmployeeSalary> esWrapper = new QueryWrapper<>();
             esWrapper.eq("is_deleted", 0).orderByDesc("effective_date");
@@ -148,11 +147,18 @@ public class SalaryBatchServiceImpl extends ServiceImpl<SalaryBatchMapper, Salar
                     BigDecimal incomeTax = BigDecimal.ZERO;
                     BigDecimal totalDeductions = BigDecimal.ZERO;
                     List<SalaryItemDetailVO> itemDetails = new ArrayList<>();
+                    // 试用期薪资比例
+                    double ratio = context.getProbationRatio() != null ? context.getProbationRatio() : 1.0;
+                    BigDecimal probationMultiplier = BigDecimal.valueOf(ratio);
 
+                    // 第一遍：计算非税项（type 1-5），汇总应发和扣除
                     for (SalaryItem item : items) {
+                        if (item.getItemType() != null && item.getItemType() == 6) continue;
                         BigDecimal amount = calculatorEngine.calculate(item.getItemType(), context);
-                        if (amount == null) {
-                            amount = BigDecimal.ZERO;
+                        if (amount == null) amount = BigDecimal.ZERO;
+                        // 试用期打折仅对收入项（type 1-2）
+                        if (item.getItemType() != null && item.getItemType() <= 2 && ratio < 1.0) {
+                            amount = amount.multiply(probationMultiplier).setScale(2, RoundingMode.HALF_UP);
                         }
                         SalaryItemDetailVO detail = new SalaryItemDetailVO();
                         detail.setName(item.getName());
@@ -166,15 +172,25 @@ public class SalaryBatchServiceImpl extends ServiceImpl<SalaryBatchMapper, Salar
                         } else {
                             totalDeductions = totalDeductions.add(amount.abs());
                         }
-                        if (item.getItemType() == 4) {
-                            socialSecurity = socialSecurity.add(amount.abs());
-                        }
-                        if (item.getItemType() == 5) {
-                            housingFund = housingFund.add(amount.abs());
-                        }
-                        if (item.getItemType() == 6) {
-                            incomeTax = incomeTax.add(amount.abs());
-                        }
+                        if (item.getItemType() == 4) socialSecurity = socialSecurity.add(amount.abs());
+                        if (item.getItemType() == 5) housingFund = housingFund.add(amount.abs());
+                    }
+
+                    // 设置应发合计供个税计算器使用
+                    context.setGrossPay(grossPay);
+
+                    // 第二遍：计算个税（type 6）
+                    for (SalaryItem item : items) {
+                        if (item.getItemType() == null || item.getItemType() != 6) continue;
+                        BigDecimal amount = calculatorEngine.calculate(item.getItemType(), context);
+                        if (amount == null) amount = BigDecimal.ZERO;
+                        SalaryItemDetailVO detail = new SalaryItemDetailVO();
+                        detail.setName(item.getName());
+                        detail.setAmount(amount);
+                        detail.setType(item.getItemType());
+                        itemDetails.add(detail);
+                        incomeTax = incomeTax.add(amount.abs());
+                        totalDeductions = totalDeductions.add(amount.abs());
                     }
 
                     BigDecimal netPay = grossPay.subtract(totalDeductions);
@@ -323,6 +339,7 @@ public class SalaryBatchServiceImpl extends ServiceImpl<SalaryBatchMapper, Salar
         this.updateById(batch);
         log.info("薪资批次审批通过: batchId={}", batchId);
     }
+
 
     @Override
     @Transactional(rollbackFor = Exception.class)
