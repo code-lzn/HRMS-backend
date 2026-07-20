@@ -492,15 +492,12 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
                     record.setHalfDayLeave(0);
                     attendanceService.updateById(record);
                 } else if (Objects.equals(record.getStatus(), AttendanceStatusEnum.LEAVE.getValue())) {
-                    if (record.getPunchInTime() != null || record.getPunchOutTime() != null) {
-                        record.setStatus(AttendanceStatusEnum.NORMAL.getValue());
-                        attendanceService.updateById(record);
-                    } else {
-                        attendanceService.removeById(record.getId());
-                    }
+                    // 请假撤销/拒绝后：不删除记录，改为缺卡，保留数据完整性
+                    record.setStatus(AttendanceStatusEnum.MISSING.getValue());
+                    attendanceService.updateById(record);
                 }
+                cursor = DateUtil.offsetDay(cursor, 1);
             }
-            cursor = DateUtil.offsetDay(cursor, 1);
         }
     }
 }

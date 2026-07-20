@@ -9,16 +9,13 @@ import com.limou.hrms.model.dto.attendance.HRAttendanceQueryRequest;
 import com.limou.hrms.model.vo.HRAttendanceVO;
 import com.limou.hrms.model.vo.PageResult;
 import com.limou.hrms.service.HRAttendanceService;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
-import javax.servlet.http.HttpServletRequest;
-
 import javax.annotation.Resource;
+import javax.servlet.http.HttpServletRequest;
 
 @RestController
 @RequestMapping("/hr/attendance")
-@Slf4j
 public class HRAttendanceController {
 
     @Resource
@@ -27,8 +24,7 @@ public class HRAttendanceController {
     @GetMapping("/list")
     public BaseResponse<PageResult<HRAttendanceVO>> queryAttendance(HRAttendanceQueryRequest request,
                                                                     HttpServletRequest httpRequest) {
-        PageResult<HRAttendanceVO> result = hrAttendanceService.queryAttendance(request, httpRequest);
-        return ResultUtils.success(result);
+        return ResultUtils.success(hrAttendanceService.queryAttendance(request, httpRequest));
     }
 
     @GetMapping("/detail/{id}")

@@ -19,7 +19,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.DefaultTransactionDefinition;
 
 import javax.annotation.Resource;
 import java.util.*;
@@ -55,6 +59,9 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
 
     @Resource
     private com.limou.hrms.mapper.DepartmentMapper departmentMapper;
+
+    @Resource
+    private PlatformTransactionManager transactionManager;
 
     /**
      * 上下班打卡
@@ -164,12 +171,15 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
 
                 if (earlyMinutes > earlyThreshold) {
                     record.setEarlyMinutes(earlyMinutes);
-                    if (!Objects.equals(record.getStatus(), AttendanceStatusEnum.LATE.getValue())) {
+                    if (Objects.equals(record.getStatus(), AttendanceStatusEnum.LATE.getValue())) {
+                        record.setStatus(AttendanceStatusEnum.LATE_AND_EARLY.getValue());
+                    } else {
                         record.setStatus(AttendanceStatusEnum.LEAVE_EARLY.getValue());
                     }
                 } else {
                     if (!Objects.equals(record.getStatus(), AttendanceStatusEnum.LATE.getValue())
-                            && !Objects.equals(record.getStatus(), AttendanceStatusEnum.LEAVE_EARLY.getValue())) {
+                            && !Objects.equals(record.getStatus(), AttendanceStatusEnum.LEAVE_EARLY.getValue())
+                            && !Objects.equals(record.getStatus(), AttendanceStatusEnum.LATE_AND_EARLY.getValue())) {
                         record.setStatus(AttendanceStatusEnum.NORMAL.getValue());
                     }
                 }
@@ -321,9 +331,6 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
 
         int created = 0;
         Date now = new Date();
-        int nowHour = DateUtil.hour(now, true);
-        int nowMinute = DateUtil.minute(now);
-        int nowTotalMinutes = nowHour * 60 + nowMinute;
 
         // 非工作日：修正已有记录中无打卡的非休息状态 → 休息
         if (!isWorkDay) {
@@ -348,24 +355,8 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
             record.setAttendanceDate(targetDate);
 
             if (isWorkDay) {
-                // 根据员工个人考勤规则判断当前时刻是否已迟到
-                AttendanceGroup group = attendanceGroupService.getGroupByEmployeeId(emp.getId());
-                int workStartHour = AttendanceConstant.DEFAULT_WORK_START_HOUR;
-                int workStartMinute = 0;
-                int lateGrace = AttendanceConstant.LATE_GRACE_MINUTES;
-                if (group != null && group.getWorkStartTime() != null) {
-                    workStartHour = DateUtil.hour(group.getWorkStartTime(), true);
-                    workStartMinute = DateUtil.minute(group.getWorkStartTime());
-                    lateGrace = group.getLateThreshold() != null ? group.getLateThreshold() : lateGrace;
-                }
-                int workStartTotal = workStartHour * 60 + workStartMinute;
-                int thresholdMinutes = workStartTotal + lateGrace;
-                if (nowTotalMinutes > thresholdMinutes) {
-                    record.setStatus(AttendanceStatusEnum.LATE.getValue());
-                    record.setLateMinutes(nowTotalMinutes - workStartTotal);
-                } else {
-                    record.setStatus(AttendanceStatusEnum.NORMAL.getValue());
-                }
+                // 工作日统一初始为正常，19:00 终评再根据实际打卡情况判定
+                record.setStatus(AttendanceStatusEnum.NORMAL.getValue());
             } else {
                 record.setStatus(AttendanceStatusEnum.REST.getValue());
             }
@@ -404,21 +395,12 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
             boolean isPmLeave = halfDay != null && halfDay == 2;
 
             if (!hasIn && !hasOut) {
-                if (isAmLeave || isPmLeave) {
-                    // 半天请假但全天未打卡：仍按旷工处理
-                    if (!Objects.equals(r.getStatus(), AttendanceStatusEnum.ABSENT.getValue())) {
-                        r.setStatus(AttendanceStatusEnum.ABSENT.getValue());
-                        r.setUpdateTime(new Date());
-                        this.updateById(r);
-                        updated++;
-                    }
-                } else {
-                    if (!Objects.equals(r.getStatus(), AttendanceStatusEnum.ABSENT.getValue())) {
-                        r.setStatus(AttendanceStatusEnum.ABSENT.getValue());
-                        r.setUpdateTime(new Date());
-                        this.updateById(r);
-                        updated++;
-                    }
+                // 全天未打卡 → 缺卡
+                if (!Objects.equals(r.getStatus(), AttendanceStatusEnum.MISSING.getValue())) {
+                    r.setStatus(AttendanceStatusEnum.MISSING.getValue());
+                    r.setUpdateTime(new Date());
+                    this.updateById(r);
+                    updated++;
                 }
             } else if (hasIn && !hasOut) {
                 // 下午请假：下班缺卡属正常
@@ -526,20 +508,32 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
      */
     private void createAnomalyApproval(Attendance record) {
         try {
-            Employee emp = employeeService.getById(record.getEmployeeId());
-            if (emp == null) return;
+            DefaultTransactionDefinition def = new DefaultTransactionDefinition();
+            def.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            TransactionStatus status = transactionManager.getTransaction(def);
+            try {
+                Employee emp = employeeService.getById(record.getEmployeeId());
+                if (emp == null) {
+                    transactionManager.commit(status);
+                    return;
+                }
 
-            Map<Integer, Long> overrides = new HashMap<>();
-            overrides.put(2, emp.getId());
+                Map<Integer, Long> overrides = new HashMap<>();
+                overrides.put(2, emp.getId());
 
-            approvalService.startApproval(
-                    "ATTENDANCE_ANOMALY",
-                    record.getId(),
-                    emp.getId(),
-                    emp.getEmployeeName(),
-                    emp.getDepartmentId(),
-                    overrides
-            );
+                approvalService.startApproval(
+                        "ATTENDANCE_ANOMALY",
+                        record.getId(),
+                        emp.getId(),
+                        emp.getEmployeeName(),
+                        emp.getDepartmentId(),
+                        overrides
+                );
+                transactionManager.commit(status);
+            } catch (Exception ex) {
+                transactionManager.rollback(status);
+                throw ex;
+            }
         } catch (Exception e) {
             log.warn("创建考勤异常审批失败，员工ID={}, 日期={}, 原因: {}",
                     record.getEmployeeId(), record.getAttendanceDate(), e.getMessage());
