@@ -66,18 +66,24 @@ public class WorkCalendarServiceImpl implements WorkCalendarService {
     @Transactional(rollbackFor = Exception.class)
     public void batchUpdate(WorkCalendarBatchRequest request) {
         for (WorkCalendarBatchRequest.DayItem item : request.getDays()) {
+            // 节假日必须填写名称
+            if (item.getDayType() == 3 && (item.getHolidayName() == null || item.getHolidayName().isBlank())) {
+                throw new BusinessException(ErrorCode.PARAMS_ERROR,
+                        "日期 " + item.getDate() + " 设置为节假日时必须填写节假日名称");
+            }
             WorkCalendar exist = workCalendarMapper.selectOne(
                     Wrappers.<WorkCalendar>lambdaQuery()
                             .eq(WorkCalendar::getCalendarDate, item.getDate()));
             if (exist != null) {
                 exist.setDayType(item.getDayType());
-                exist.setHolidayName(item.getHolidayName());
+                // 非节假日则清空节假日名称
+                exist.setHolidayName(item.getDayType() == 3 ? item.getHolidayName() : null);
                 workCalendarMapper.updateById(exist);
             } else {
                 WorkCalendar cal = new WorkCalendar();
                 cal.setCalendarDate(item.getDate());
                 cal.setDayType(item.getDayType());
-                cal.setHolidayName(item.getHolidayName());
+                cal.setHolidayName(item.getDayType() == 3 ? item.getHolidayName() : null);
                 workCalendarMapper.insert(cal);
             }
         }

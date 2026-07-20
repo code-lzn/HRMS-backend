@@ -59,7 +59,7 @@ public class PositionController {
      * GET /api/positions/{id} — 查询职位详情
      */
     @GetMapping("/{id}")
-    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE,UserConstant.DEPT_HEAD_ROLE})
     public BaseResponse<PositionVO> getPositionDetail(@PathVariable Long id) {
         if (id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);

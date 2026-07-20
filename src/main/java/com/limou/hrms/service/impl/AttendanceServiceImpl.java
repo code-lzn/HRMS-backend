@@ -71,7 +71,17 @@ public class AttendanceServiceImpl implements AttendanceService, ApprovalCallbac
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "无效的打卡类型");
         }
 
-        // ① 匹配考勤组
+        // ① 工作日校验
+        LocalDate today = LocalDate.now();
+        WorkCalendar calendar = workCalendarMapper.selectOne(
+                Wrappers.<WorkCalendar>lambdaQuery()
+                        .eq(WorkCalendar::getCalendarDate, today));
+        if (calendar != null && (calendar.getDayType() == 2 || calendar.getDayType() == 3)) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR,
+                    "今天不是上班日，不需要打卡");
+        }
+
+        // ② 匹配考勤组
         AttendanceGroup group = matchAttendanceGroup(employeeId);
         if (group == null) {
             throw new BusinessException(ErrorCode.OPERATION_ERROR, "未匹配到任何考勤组，请联系HR配置");
@@ -83,7 +93,6 @@ public class AttendanceServiceImpl implements AttendanceService, ApprovalCallbac
         //     validateIpWhitelist(clientIp, group.getIpWhitelist());
         // }
 
-        LocalDate today = LocalDate.now();
         LocalDateTime now = LocalDateTime.now();
 
         // ③ 请假联动
@@ -686,7 +695,7 @@ public class AttendanceServiceImpl implements AttendanceService, ApprovalCallbac
     }
 
     /**
-     * 弹性班上��卡判定：在 flexStartTime ~ flexEndTime 内打卡为正常
+     * 弹性班上班卡判定：在 flexStartTime ~ flexEndTime 内打卡为正常
      */
     private int judgeFlexStartStatus(LocalDateTime actualTime, LocalTime flexStartTime, LocalTime flexEndTime,
                                       Integer lateThreshold) {

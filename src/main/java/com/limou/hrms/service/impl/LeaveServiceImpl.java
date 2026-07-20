@@ -58,6 +58,8 @@ public class LeaveServiceImpl
     private final EmployeeMapper employeeMapper;
     private final DataScopeContext dataScopeContext;
 
+    private final OvertimeRecordMapper overtimeRecordMapper;
+
     private static final Set<Integer> ATTACHMENT_REQUIRED_TYPES = new HashSet<>(Arrays.asList(2, 4, 5));
 
     // ==================== 请假 CRUD ====================
@@ -210,6 +212,32 @@ public class LeaveServiceImpl
                 balance.setUsedDays(balance.getUsedDays().add(app.getLeaveDays()));
                 balance.setRemainingDays(balance.getRemainingDays().subtract(app.getLeaveDays()));
                 leaveBalanceMapper.updateById(balance);
+            }
+
+            // 调休：回写加班记录的 is_used 状态
+            if (app.getLeaveType() == 7) {
+                BigDecimal consumedHours = app.getLeaveDays()
+                        .multiply(BigDecimal.valueOf(8))
+                        .setScale(1, RoundingMode.HALF_UP);
+                List<OvertimeRecord> overtimeRecords = overtimeRecordMapper.selectList(
+                        Wrappers.<OvertimeRecord>lambdaQuery()
+                                .eq(OvertimeRecord::getEmployeeId, app.getEmployeeId())
+                                .eq(OvertimeRecord::getIsUsed, 0)
+                                .orderByAsc(OvertimeRecord::getOvertimeDate));
+                BigDecimal remaining = consumedHours;
+                for (OvertimeRecord record : overtimeRecords) {
+                    if (remaining.compareTo(BigDecimal.ZERO) <= 0) break;
+                    java.math.BigDecimal recordHours = calcOvertimeHours(record);
+                    if (recordHours.compareTo(remaining) >= 0) {
+                        record.setIsUsed(1);
+                        overtimeRecordMapper.updateById(record);
+                        break;
+                    } else {
+                        record.setIsUsed(1);
+                        overtimeRecordMapper.updateById(record);
+                        remaining = remaining.subtract(recordHours);
+                    }
+                }
             }
         }
         log.info("请假审批通过后处理完成: id={}", bizId);
@@ -578,6 +606,13 @@ public class LeaveServiceImpl
     private String getLeaveStatusDesc(Integer status) {
         LeaveStatus s = LeaveStatus.fromCode(status);
         return s != null ? s.getDesc() : "未知";
+    }
+
+    /** 根据起止时间计算加班小时数 */
+    private BigDecimal calcOvertimeHours(OvertimeRecord record) {
+        if (record.getStartTime() == null || record.getEndTime() == null) return BigDecimal.ZERO;
+        long minutes = java.time.Duration.between(record.getStartTime(), record.getEndTime()).toMinutes();
+        return BigDecimal.valueOf(minutes).divide(BigDecimal.valueOf(60), 1, RoundingMode.HALF_UP);
     }
 
     private String getLeaveTypeDesc(Integer leaveType) {
