@@ -93,7 +93,7 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
                 .in(isNotEmpty(request.getJobLevels()), Employee::getJobLevel, request.getJobLevels())
                 .ge(request.getHireDateStart() != null, Employee::getHireDate, request.getHireDateStart())
                 .le(request.getHireDateEnd() != null, Employee::getHireDate, request.getHireDateEnd())
-                .orderByDesc(Employee::getCreateTime);
+                .last("ORDER BY FIELD(status, 2, 1, 3, 4), createTime DESC");
 
         // DEPARTMENT(3)：按可见部门过滤
         if (dataScope == DataScopeEnum.DEPARTMENT.getCode()) {
@@ -276,28 +276,92 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
         ThrowUtils.throwIf(emp == null, ErrorCode.NOT_FOUND_ERROR, "员工不存在");
 
         // 锁定字段拦截
-        if (request.getPhone() != null && !request.getPhone().equals(emp.getPhone()))
-            ThrowUtils.throwIf(true, ErrorCode.OPERATION_ERROR, "手机号不可直接修改，需走申请流程");
+        // 手机号可直接修改
         if (request.getDepartmentId() != null && !request.getDepartmentId().equals(emp.getDepartmentId()))
             ThrowUtils.throwIf(true, ErrorCode.OPERATION_ERROR, "部门不可直接修改，需走调岗流程");
         if (request.getPositionId() != null && !request.getPositionId().equals(emp.getPositionId()))
             ThrowUtils.throwIf(true, ErrorCode.OPERATION_ERROR, "职位不可直接修改，需走调岗流程");
         if (request.getJobLevel() != null && !Objects.equals(request.getJobLevel(), emp.getJobLevel()))
             ThrowUtils.throwIf(true, ErrorCode.OPERATION_ERROR, "职级不可直接修改，需走调岗流程");
+        if (request.getHireDate() != null && !request.getHireDate().equals(emp.getHireDate()))
+            ThrowUtils.throwIf(true, ErrorCode.OPERATION_ERROR, "入职日期不可直接修改，需走调岗流程");
+        if (request.getEmploymentType() != null && !request.getEmploymentType().equals(emp.getEmploymentType()))
+            ThrowUtils.throwIf(true, ErrorCode.OPERATION_ERROR, "录用类型不可直接修改，需走调岗流程");
+        if (request.getDirectReportId() != null) {
+            EmployeeDetail ed = getDetailByEmployeeId(emp.getId());
+            if (ed != null && !Objects.equals(request.getDirectReportId(), ed.getDirectReportId()))
+                ThrowUtils.throwIf(true, ErrorCode.OPERATION_ERROR, "直接汇报人不可直接修改，需走调岗流程");
+        }
+        if (request.getWorkLocation() != null) {
+            EmployeeDetail ed = getDetailByEmployeeId(emp.getId());
+            if (ed != null && !Objects.equals(request.getWorkLocation(), ed.getWorkLocation()))
+                ThrowUtils.throwIf(true, ErrorCode.OPERATION_ERROR, "工作地点不可直接修改，需走调岗流程");
+        }
 
-        // 记录变更历史
+        // 记录变更历史（先于唯一性校验定义，供校验使用）
         Employee oldEmp = new Employee();
         BeanUtils.copyProperties(emp, oldEmp);
         EmployeeDetail oldDetail = getDetailByEmployeeId(emp.getId());
 
+        // 唯一性校验
+        if (request.getPhone() != null && !request.getPhone().equals(emp.getPhone())) {
+            long phoneDup = this.count(new LambdaQueryWrapper<Employee>()
+                    .eq(Employee::getPhone, request.getPhone())
+                    .ne(Employee::getId, emp.getId()));
+            ThrowUtils.throwIf(phoneDup > 0, ErrorCode.OPERATION_ERROR, "手机号 " + request.getPhone() + " 已被其他员工使用");
+        }
+        if (request.getIdCard() != null && !request.getIdCard().equals(oldDetail != null ? oldDetail.getIdCard() : null)) {
+            long idCardDup = employeeDetailMapper.selectCount(new LambdaQueryWrapper<EmployeeDetail>()
+                    .eq(EmployeeDetail::getIdCard, request.getIdCard())
+                    .ne(oldDetail != null, EmployeeDetail::getId, oldDetail != null ? oldDetail.getId() : null));
+            ThrowUtils.throwIf(idCardDup > 0, ErrorCode.OPERATION_ERROR, "身份证号已存在");
+        }
+        if (request.getEmail() != null && !request.getEmail().isEmpty() && !request.getEmail().equals(emp.getEmail())) {
+            long emailDup = this.count(new LambdaQueryWrapper<Employee>()
+                    .eq(Employee::getEmail, request.getEmail())
+                    .ne(Employee::getId, emp.getId()));
+            ThrowUtils.throwIf(emailDup > 0, ErrorCode.OPERATION_ERROR, "邮箱 " + request.getEmail() + " 已被其他员工使用");
+        }
+        if (request.getBankAccount() != null && !request.getBankAccount().equals(oldDetail != null ? oldDetail.getBankAccount() : null)) {
+            long bankDup = employeeDetailMapper.selectCount(new LambdaQueryWrapper<EmployeeDetail>()
+                    .eq(EmployeeDetail::getBankAccount, request.getBankAccount())
+                    .ne(oldDetail != null, EmployeeDetail::getId, oldDetail != null ? oldDetail.getId() : null));
+            ThrowUtils.throwIf(bankDup > 0, ErrorCode.OPERATION_ERROR, "银行账号已存在");
+        }
+
         if (request.getEmployeeName() != null) emp.setEmployeeName(request.getEmployeeName().trim());
         if (request.getGender() != null) emp.setGender(request.getGender());
+        if (request.getPhone() != null) {
+            emp.setPhone(request.getPhone());
+            emp.setAccount(request.getPhone());
+            // 同步更新系统登录账号
+            if (emp.getUserId() != null) {
+                User sysUser = userMapper.selectById(emp.getUserId());
+                if (sysUser != null) {
+                    sysUser.setUserAccount(request.getPhone());
+                    userMapper.updateById(sysUser);
+                }
+            }
+        }
         if (request.getEmail() != null) emp.setEmail(request.getEmail());
-        if (request.getHireDate() != null) emp.setHireDate(request.getHireDate());
         this.updateById(emp);
 
         EmployeeDetail detail = getOrCreateDetail(emp.getId());
-        BeanUtils.copyProperties(request, detail, getNullPropertyNames(request));
+        // 手动赋值详情表字段（禁止 BeanUtils.copyProperties，request.id 会覆盖 detail.id）
+        if (request.getIdCard() != null) detail.setIdCard(request.getIdCard());
+        if (request.getBirthday() != null) detail.setBirthday(request.getBirthday());
+        if (request.getRegisteredAddress() != null) detail.setRegisteredAddress(request.getRegisteredAddress());
+        if (request.getCurrentAddress() != null) detail.setCurrentAddress(request.getCurrentAddress());
+        if (request.getDirectReportId() != null) detail.setDirectReportId(request.getDirectReportId());
+        if (request.getWorkLocation() != null) detail.setWorkLocation(request.getWorkLocation());
+        if (request.getContractType() != null) detail.setContractType(request.getContractType());
+        if (request.getContractExpireDate() != null) detail.setContractExpireDate(request.getContractExpireDate());
+        if (request.getProbationRatio() != null) detail.setProbationRatio(request.getProbationRatio());
+        if (request.getBaseSalary() != null) detail.setBaseSalary(request.getBaseSalary());
+        if (request.getBankAccount() != null) detail.setBankAccount(request.getBankAccount());
+        if (request.getBankName() != null) detail.setBankName(request.getBankName());
+        if (request.getEmergencyContactName() != null) detail.setEmergencyContactName(request.getEmergencyContactName());
+        if (request.getEmergencyContactPhone() != null) detail.setEmergencyContactPhone(request.getEmergencyContactPhone());
         employeeDetailMapper.updateById(detail);
 
         // 写变更日志
