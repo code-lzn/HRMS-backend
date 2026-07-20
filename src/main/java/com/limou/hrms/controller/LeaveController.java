@@ -75,20 +75,20 @@ public class LeaveController {
     }
 
     /**
-     * 审批请假
+     * 审批请假----现在统一审批中心进行审批
      *
      */
-    @PostMapping("/approve")
-    public BaseResponse<LeaveVO> approve(@RequestBody ApprovalRequest approvalRequest,
-                                                 HttpServletRequest request) {
-        if (approvalRequest == null) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR);
-        }
-        User loginUser = userService.getLoginUser(request);
-        LeaveVO vo = leaveService.approve(approvalRequest.getId(),
-                approvalRequest.getResult(), approvalRequest.getComment(), loginUser.getId());
-        return ResultUtils.success(vo);
-    }
+//    @PostMapping("/approve")
+//    public BaseResponse<LeaveVO> approve(@RequestBody ApprovalRequest approvalRequest,
+//                                                 HttpServletRequest request) {
+//        if (approvalRequest == null) {
+//            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+//        }
+//        User loginUser = userService.getLoginUser(request);
+//        LeaveVO vo = leaveService.approve(approvalRequest.getId(),
+//                approvalRequest.getResult(), approvalRequest.getComment(), loginUser.getId());
+//        return ResultUtils.success(vo);
+//    }
 
     /**
      * 获取我的请假记录

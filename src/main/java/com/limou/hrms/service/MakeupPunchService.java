@@ -20,7 +20,7 @@ public interface MakeupPunchService extends IService<MakeupPunch> {
     /**
      * 审批补卡
      */
-    MakeupPunchVO approve(Long requestId, Integer result, String comment, Long approverId);
+//    MakeupPunchVO approve(Long requestId, Integer result, String comment, Long approverId);
 
     /**
      * 获取我的补卡记录

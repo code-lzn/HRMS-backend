@@ -94,31 +94,31 @@ public class MakeupPunchServiceImpl extends ServiceImpl<MakeupPunchMapper, Makeu
         return convertToVO(request, emp);
     }
 
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public MakeupPunchVO approve(Long requestId, Integer result, String comment, Long approverId) {
-        MakeupPunch request = this.getById(requestId);
-        ThrowUtils.throwIf(request == null, ErrorCode.NOT_FOUND_ERROR, "补卡申请不存在");
-        ThrowUtils.throwIf(request.getStatus() != ApprovalStatusEnum.PENDING.getValue(),
-                ErrorCode.APPROVAL_NOT_PENDING_ERROR);
-
-        Date now = new Date();
-        request.setStatus(result);
-        request.setApproverId(approverId);
-        request.setApproveTime(now);
-        request.setApproveComment(comment);
-
-        boolean updated = this.updateById(request);
-        ThrowUtils.throwIf(!updated, ErrorCode.OPERATION_ERROR, "审批失败");
-
-        // 审批通过后，更新打卡记录
-        if (Objects.equals(result, ApprovalStatusEnum.APPROVED.getValue())) {
-            updateAttendanceRecord(request);
-        }
-
-        Employee emp = employeeService.lambdaQuery().eq(Employee::getId, request.getEmployeeId()).one();
-        return convertToVO(request, emp);
-    }
+//    @Override
+//    @Transactional(rollbackFor = Exception.class)
+//    public MakeupPunchVO approve(Long requestId, Integer result, String comment, Long approverId) {
+//        MakeupPunch request = this.getById(requestId);
+//        ThrowUtils.throwIf(request == null, ErrorCode.NOT_FOUND_ERROR, "补卡申请不存在");
+//        ThrowUtils.throwIf(request.getStatus() != ApprovalStatusEnum.PENDING.getValue(),
+//                ErrorCode.APPROVAL_NOT_PENDING_ERROR);
+//
+//        Date now = new Date();
+//        request.setStatus(result);
+//        request.setApproverId(approverId);
+//        request.setApproveTime(now);
+//        request.setApproveComment(comment);
+//
+//        boolean updated = this.updateById(request);
+//        ThrowUtils.throwIf(!updated, ErrorCode.OPERATION_ERROR, "审批失败");
+//
+//        // 审批通过后，更新打卡记录
+//        if (Objects.equals(result, ApprovalStatusEnum.APPROVED.getValue())) {
+//            updateAttendanceRecord(request);
+//        }
+//
+//        Employee emp = employeeService.lambdaQuery().eq(Employee::getId, request.getEmployeeId()).one();
+//        return convertToVO(request, emp);
+//    }
 
     @Override
     public List<MakeupPunchVO> getMyMakeupPunches(Long userId) {

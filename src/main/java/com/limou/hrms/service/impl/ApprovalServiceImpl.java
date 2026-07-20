@@ -230,7 +230,8 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
         detail.setOperateTime(new Date());
         approvalDetailService.updateById(detail);
 
-        // 推进审批流程
+        // 推进审批流程----同步到对应的业务表
+
         advanceApproval(detail.getRecordId());
     }
 
@@ -483,11 +484,6 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
 
     private void advanceApproval(Long recordId) {
         ApprovalRecord record = this.getById(recordId);
-        List<ApprovalDetail> details = approvalDetailService.lambdaQuery()
-                .eq(ApprovalDetail::getRecordId, recordId)
-                .orderByAsc(ApprovalDetail::getStepOrder)
-                .list();
-
         int nextStep = record.getCurrentStep() + 1;
         if (nextStep > record.getTotalSteps()) {
             // 所有节点已通过

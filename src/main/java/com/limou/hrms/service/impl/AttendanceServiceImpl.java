@@ -74,7 +74,7 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
                 .eq(Attendance::getEmployeeId, emp.getId())
                 .eq(Attendance::getAttendanceDate, DateUtil.parseDate(today))
                 .one();
-
+        //上班打卡
         boolean isPunchIn = (punchType == null || punchType == 0);
 
         if (record == null) {

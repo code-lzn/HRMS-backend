@@ -149,30 +149,30 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
         return convertToVO(request, emp);
     }
 
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public LeaveVO approve(Long requestId, Integer result, String comment, Long approverId) {
-        Leave request = this.getById(requestId);
-        ThrowUtils.throwIf(request == null, ErrorCode.NOT_FOUND_ERROR, "请假申请不存在");
-        ThrowUtils.throwIf(!Objects.equals(request.getStatus(), ApprovalStatusEnum.PENDING.getValue()),
-                ErrorCode.APPROVAL_NOT_PENDING_ERROR);
-        Date now = new Date();
-        request.setStatus(result);
-        request.setApproverId(approverId);
-        request.setApproveTime(now);
-        request.setApproveComment(comment);
-
-        boolean updated = this.updateById(request);
-        ThrowUtils.throwIf(!updated, ErrorCode.OPERATION_ERROR, "审批失败");
-
-        // 如果拒绝，还原考勤状态
-        if (Objects.equals(result, ApprovalStatusEnum.REJECTED.getValue())) {
-            revertAttendanceForLeave(request.getEmployeeId(), request.getStartDate(), request.getEndDate());
-        }
-
-        Employee emp = employeeService.lambdaQuery().eq(Employee::getId, request.getEmployeeId()).one();
-        return convertToVO(request, emp);
-    }
+//    @Override
+//    @Transactional(rollbackFor = Exception.class)
+//    public LeaveVO approve(Long requestId, Integer result, String comment, Long approverId) {
+//        Leave request = this.getById(requestId);
+//        ThrowUtils.throwIf(request == null, ErrorCode.NOT_FOUND_ERROR, "请假申请不存在");
+//        ThrowUtils.throwIf(!Objects.equals(request.getStatus(), ApprovalStatusEnum.PENDING.getValue()),
+//                ErrorCode.APPROVAL_NOT_PENDING_ERROR);
+//        Date now = new Date();
+//        request.setStatus(result);
+//        request.setApproverId(approverId);
+//        request.setApproveTime(now);
+//        request.setApproveComment(comment);
+//
+//        boolean updated = this.updateById(request);
+//        ThrowUtils.throwIf(!updated, ErrorCode.OPERATION_ERROR, "审批失败");
+//
+//        // 如果拒绝，还原考勤状态
+//        if (Objects.equals(result, ApprovalStatusEnum.REJECTED.getValue())) {
+//            revertAttendanceForLeave(request.getEmployeeId(), request.getStartDate(), request.getEndDate());
+//        }
+//
+//        Employee emp = employeeService.lambdaQuery().eq(Employee::getId, request.getEmployeeId()).one();
+//        return convertToVO(request, emp);
+//    }
 
     @Override
     public List<LeaveVO> getMyLeaves(Long userId) {
@@ -327,21 +327,19 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
 
     private void checkLeaveBalance(Long employeeId, Integer leaveType, BigDecimal days) {
         if (leaveType == null || days == null) return;
-        LeaveBalanceVO balance = employeeLeaveBalanceService.getCurrentYearBalance(employeeId);
+        LeaveTypeEnum typeEnum = LeaveTypeEnum.getEnumByValue(leaveType);
+        if (typeEnum == null) return;
 
-        String label;
+        LeaveBalanceVO balance = employeeLeaveBalanceService.getCurrentYearBalance(employeeId);
         BigDecimal remaining;
-        switch (leaveType) {
-            case 1:
-                label = "病假";
+        switch (typeEnum) {
+            case SICK:
                 remaining = balance.getSickRemaining();
                 break;
-            case 2:
-                label = "年假";
+            case ANNUAL:
                 remaining = balance.getAnnualRemaining();
                 break;
-            case 6:
-                label = "调休";
+            case COMPENSATORY:
                 remaining = balance.getCompRemaining();
                 break;
             default:
@@ -349,7 +347,7 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
         }
 
         ThrowUtils.throwIf(remaining.compareTo(days) < 0,
-                ErrorCode.PARAMS_ERROR, label + "余额不足，剩余 " + remaining + " 天，申请 " + days + " 天");
+                ErrorCode.PARAMS_ERROR, typeEnum.getText() + "余额不足，剩余 " + remaining + " 天，申请 " + days + " 天");
     }
 
     /**
@@ -382,8 +380,8 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
         final double WORK_HOURS_PER_DAY = WORK_END - WORK_START;           // 9
 
         long totalWorkMinutes = 0;
-        Calendar cursor = DateUtil.beginOfDay(start).toCalendar();
-        cursor.set(Calendar.MILLISECOND, 0);
+        Calendar cursor = DateUtil.beginOfDay(start).toCalendar();//统统强行截断为 2026-07-20 00:00:00.000（当天的开始）。
+        cursor.set(Calendar.MILLISECOND, 0);//消除毫秒
         Date endDate = end;
 
         while (!cursor.getTime().after(endDate)) {
@@ -397,11 +395,12 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
 
             Date dayEnd = DateUtil.endOfDay(dayStart);
 
-            // 当天的工作时间段
+            // 当天的工作时间段-----开始与结束时间
             Date workStart = DateUtil.offsetHour(dayStart, WORK_START);
             Date workEnd = DateUtil.offsetHour(dayStart, WORK_END);
 
             // 当天请假区间 ∩ 工作时间
+            //请假开始时间是不是在dayStart之前，是的话按照dayStart,否则是start
             Date segStart = start.after(dayStart) ? start : dayStart;
             Date segEnd = end.before(dayEnd) ? end : dayEnd;
             Date overlapStart = segStart.after(workStart) ? segStart : workStart;
@@ -410,6 +409,7 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
             if (overlapStart.before(overlapEnd)) {
                 totalWorkMinutes += DateUtil.between(overlapStart, overlapEnd, DateUnit.MINUTE);
             }
+            //将cursor的日期往后推一天
 
             cursor.add(Calendar.DAY_OF_MONTH, 1);
         }
@@ -417,6 +417,7 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
         if (totalWorkMinutes == 0) {
             return 0;
         }
+        //拿到总的工作时长
         double days = totalWorkMinutes / 60.0 / WORK_HOURS_PER_DAY;
         return Math.max(days, 0.5);
     }

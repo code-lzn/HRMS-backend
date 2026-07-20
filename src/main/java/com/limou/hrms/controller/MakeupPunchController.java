@@ -49,19 +49,19 @@ public class MakeupPunchController {
     }
 
     /**
-     * 审批补卡
+     * 审批补卡----统一审批中心进行审批
      */
-    @PostMapping("/approve")
-    public BaseResponse<MakeupPunchVO> approve(@RequestBody ApprovalRequest approvalRequest,
-                                                       HttpServletRequest request) {
-        if (approvalRequest == null) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR);
-        }
-        User loginUser = userService.getLoginUser(request);
-        MakeupPunchVO vo = makeupPunchService.approve(approvalRequest.getId(),
-                approvalRequest.getResult(), approvalRequest.getComment(), loginUser.getId());
-        return ResultUtils.success(vo);
-    }
+//    @PostMapping("/approve")
+//    public BaseResponse<MakeupPunchVO> approve(@RequestBody ApprovalRequest approvalRequest,
+//                                                       HttpServletRequest request) {
+//        if (approvalRequest == null) {
+//            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+//        }
+//        User loginUser = userService.getLoginUser(request);
+//        MakeupPunchVO vo = makeupPunchService.approve(approvalRequest.getId(),
+//                approvalRequest.getResult(), approvalRequest.getComment(), loginUser.getId());
+//        return ResultUtils.success(vo);
+//    }
 
     /**
      * 获取我的补卡记录
