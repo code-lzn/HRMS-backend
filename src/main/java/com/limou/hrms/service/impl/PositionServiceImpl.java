@@ -247,27 +247,19 @@ public class PositionServiceImpl extends ServiceImpl<PositionMapper, Position> i
         if (positionIds.isEmpty()) {
             return Collections.emptyMap();
         }
+        // 一次 JOIN 查询：work_info + employee 在职过滤
         List<EmployeeWorkInfo> workInfos = employeeWorkInfoMapper.selectList(
                 Wrappers.<EmployeeWorkInfo>lambdaQuery()
-                        .in(EmployeeWorkInfo::getPositionId, positionIds));
+                        .in(EmployeeWorkInfo::getPositionId, positionIds)
+                        .inSql(EmployeeWorkInfo::getEmployeeId,
+                                "SELECT e.id FROM employee e WHERE e.status IN ("
+                                + EmployeeStatus.getActiveValues().stream()
+                                        .map(String::valueOf).collect(Collectors.joining(","))
+                                + ") AND e.is_deleted = 0"));
         if (workInfos.isEmpty()) {
             return Collections.emptyMap();
         }
-        // 过滤在职员工
-        List<Long> employeeIds = workInfos.stream()
-                .map(EmployeeWorkInfo::getEmployeeId)
-                .distinct()
-                .collect(Collectors.toList());
-        Set<Long> activeEmployeeIds = employeeMapper.selectList(
-                        Wrappers.<Employee>lambdaQuery()
-                                .in(Employee::getId, employeeIds)
-                                .in(Employee::getStatus, EmployeeStatus.getActiveValues()))
-                .stream()
-                .map(Employee::getId)
-                .collect(Collectors.toSet());
-        // 按职位聚合
         return workInfos.stream()
-                .filter(wi -> activeEmployeeIds.contains(wi.getEmployeeId()))
                 .collect(Collectors.groupingBy(EmployeeWorkInfo::getPositionId, Collectors.summingInt(e -> 1)));
     }
 

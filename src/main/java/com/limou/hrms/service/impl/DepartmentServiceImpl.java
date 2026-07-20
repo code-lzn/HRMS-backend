@@ -415,6 +415,11 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
         if (role != UserRoleEnum.USER && role != UserRoleEnum.DEPT_HEAD) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "只有普通员工或部门负责人可以担任部门负责人，HR、管理员、财务专员不可以");
         }
+        // 普通用户自动升级为部门负责人
+        if (role == UserRoleEnum.USER) {
+            managerUser.setUserRole(UserRoleEnum.DEPT_HEAD.getValue());
+            userMapper.updateById(managerUser);
+        }
     }
 
     private void checkNotCircularRef(Long deptId, Long newParentId) {
