@@ -464,6 +464,46 @@ public class SalaryBizServiceImpl implements SalaryBizService {
     }
 
     @Override
+    public List<SalaryDetailExcelVO> exportBatch(Long batchId) {
+        List<SalarySlip> slips = salarySlipMapper.selectList(
+                new LambdaQueryWrapper<SalarySlip>()
+                        .eq(SalarySlip::getBatchId, batchId)
+                        .orderByAsc(SalarySlip::getEmployeeId)
+        );
+        Map<Long, Employee> empMap = buildEmployeeMap(slips);
+        Map<Long, String> deptNameMap = buildDeptNameMap(empMap);
+
+        return slips.stream().map(slip -> {
+            SalaryDetailExcelVO vo = new SalaryDetailExcelVO();
+            Employee emp = empMap.get(slip.getEmployeeId());
+            if (emp != null) {
+                vo.setEmployeeNo(emp.getEmployeeNo());
+                vo.setEmployeeName(emp.getEmployeeName());
+                vo.setDepartmentName(deptNameMap.getOrDefault(emp.getDepartmentId(), null));
+            }
+            vo.setBaseSalary(slip.getBaseSalary());
+            vo.setAllowance(slip.getAllowance());
+            vo.setPerformanceBonus(slip.getPerformanceBonus());
+            vo.setOvertimePay(slip.getOvertimePay());
+            vo.setLateDeduction(slip.getLateDeduction());
+            vo.setLeaveDeduction(slip.getLeaveDeduction());
+            vo.setSocialPension(slip.getSocialPension());
+            vo.setSocialMedical(slip.getSocialMedical());
+            vo.setSocialUnemployment(slip.getSocialUnemployment());
+            vo.setHousingFund(slip.getHousingFund());
+            vo.setIncomeTax(slip.getIncomeTax());
+            vo.setGrossSalary(slip.getGrossSalary());
+            vo.setTotalDeduction(slip.getTotalDeduction());
+            vo.setNetSalary(slip.getNetSalary());
+            vo.setManualAdjust(slip.getManualAdjust());
+            vo.setAdjustReason(slip.getAdjustReason());
+            vo.setAnomalyDesc(getAnomalyDesc(slip.getHasAnomaly()));
+            vo.setAnomalyReason(slip.getAnomalyReason());
+            return vo;
+        }).collect(Collectors.toList());
+    }
+
+    @Override
     public void adjustDetail(Long batchId, Long employeeId, BigDecimal manualAdjust,
                              String adjustReason, Long operatorId) {
         SalaryBatch batch = salaryBatchMapper.selectById(batchId);
@@ -853,6 +893,21 @@ public class SalaryBizServiceImpl implements SalaryBizService {
                 return "已驳回";
             default:
                 return status;
+        }
+    }
+
+    /**
+     * 异常状态 → 中文描述
+     */
+    private String getAnomalyDesc(Integer hasAnomaly) {
+        if (hasAnomaly == null) return "正常";
+        switch (hasAnomaly) {
+            case 1:
+                return "黄色预警";
+            case 2:
+                return "红色阻断";
+            default:
+                return "正常";
         }
     }
 }
