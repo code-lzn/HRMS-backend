@@ -26,6 +26,16 @@ public class SalaryCalculationContext {
     private Double overtimeHours;
 
     /**
+     * 试用期薪资比例（1.0=正式员工，0.8=试用期八折）
+     */
+    private Double probationRatio;
+
+    /**
+     * 已计算的应发合计（由外部设置，供个税计算器等下游使用）
+     */
+    private java.math.BigDecimal grossPay;
+
+    /**
      * 获取日工资 = 基本工资 / 21.75
      */
     public java.math.BigDecimal getDailySalary() {

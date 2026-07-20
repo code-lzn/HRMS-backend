@@ -12,7 +12,6 @@ import com.limou.hrms.exception.ThrowUtils;
 import com.limou.hrms.model.dto.user.UserAddRequest;
 import com.limou.hrms.model.dto.user.UserLoginRequest;
 import com.limou.hrms.model.dto.user.UserQueryRequest;
-import com.limou.hrms.model.dto.user.UserRegisterRequest;
 import com.limou.hrms.model.dto.user.UserUpdateMyRequest;
 import com.limou.hrms.model.dto.user.UserUpdateRequest;
 import com.limou.hrms.model.entity.User;
@@ -49,27 +48,6 @@ public class UserController {
 //    private WxOpenConfig wxOpenConfig;
 
     // region 登录相关
-
-    /**
-     * 用户注册
-     *
-     * @param userRegisterRequest
-     * @return
-     */
-    @PostMapping("/register")
-    public BaseResponse<Long> userRegister(@RequestBody UserRegisterRequest userRegisterRequest) {
-        if (userRegisterRequest == null) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR);
-        }
-        String userAccount = userRegisterRequest.getUserAccount();
-        String userPassword = userRegisterRequest.getUserPassword();
-        String checkPassword = userRegisterRequest.getCheckPassword();
-        if (StringUtils.isAnyBlank(userAccount, userPassword, checkPassword)) {
-            return null;
-        }
-        long result = userService.userRegister(userAccount, userPassword, checkPassword);
-        return ResultUtils.success(result);
-    }
 
     /**
      * 用户登录
