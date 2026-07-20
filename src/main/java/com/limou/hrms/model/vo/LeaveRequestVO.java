@@ -5,6 +5,7 @@ import lombok.Data;
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 请假申请 VO
@@ -43,6 +44,12 @@ public class LeaveRequestVO implements Serializable {
     private LocalDateTime createTime;
 
     private LocalDateTime updateTime;
+
+    /** 审批实例ID，用于跳转审批详情页 */
+    private Long approvalInstanceId;
+
+    /** 审批进度（含节点时间线），审批中/已通过/已拒绝时有值 */
+    private ApprovalInstanceVO approvalProgress;
 
     private static final long serialVersionUID = 1L;
 }

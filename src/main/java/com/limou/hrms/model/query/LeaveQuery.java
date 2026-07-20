@@ -13,6 +13,9 @@ import java.time.LocalDate;
 @EqualsAndHashCode(callSuper = true)
 public class LeaveQuery extends PageRequest implements Serializable {
 
+    /** 强制只看该员工（个人中心用，绕过数据权限） */
+    private Long employeeId;
+
     /** 模糊搜索（员工姓名） */
     private String keyword;
 

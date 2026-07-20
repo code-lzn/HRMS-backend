@@ -3,6 +3,7 @@ package com.limou.hrms.model.dto.leave;
 import lombok.Data;
 import javax.validation.constraints.NotNull;
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
@@ -30,6 +31,9 @@ public class LeaveCreateDTO implements Serializable {
 
     /** 是否直接提交审批 */
     private Boolean submitDirectly;
+
+    /** 请假天数（可选，不传则由后端根据起止时间自动计算） */
+    private BigDecimal leaveDays;
 
     private static final long serialVersionUID = 1L;
 }

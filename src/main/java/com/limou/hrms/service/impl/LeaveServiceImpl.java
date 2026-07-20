@@ -15,6 +15,7 @@ import com.limou.hrms.model.entity.*;
 import com.limou.hrms.model.enums.ApprovalBizType;
 import com.limou.hrms.model.enums.LeaveStatus;
 import com.limou.hrms.model.query.LeaveQuery;
+import com.limou.hrms.model.vo.ApprovalInstanceVO;
 import com.limou.hrms.model.vo.LeaveBalanceVO;
 import com.limou.hrms.model.vo.LeaveBalanceVO.BalanceItem;
 import com.limou.hrms.model.vo.LeaveRequestVO;
@@ -69,8 +70,10 @@ public class LeaveServiceImpl
         if (dto.getEndTime().isBefore(dto.getStartTime())) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "结束时间不能早于开始时间");
         }
-        // 计算请假天数
-        BigDecimal leaveDays = calculateLeaveDays(dto.getStartTime(), dto.getEndTime());
+        // 计算请假天数：优先使用前端传入的天数，不传则自动计算
+        BigDecimal leaveDays = dto.getLeaveDays() != null
+                ? dto.getLeaveDays()
+                : calculateLeaveDays(dto.getStartTime(), dto.getEndTime());
         // 附件校验
         validateAttachment(dto.getLeaveType(), leaveDays, dto.getAttachmentUrl());
         // 余额校验
@@ -144,13 +147,11 @@ public class LeaveServiceImpl
         if (app.getStatus() != LeaveStatus.DRAFT.getCode()) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "仅草稿状态可提交审批");
         }
-        // 重新校验
+        // 重新校验（天数已在创建/编辑时计算好，此处沿用）
         if (app.getEndTime().isBefore(app.getStartTime())) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "结束时间不能早于开始时间");
         }
-        BigDecimal leaveDays = calculateLeaveDays(app.getStartTime(), app.getEndTime());
-        app.setLeaveDays(leaveDays);
-        validateAttachment(app.getLeaveType(), leaveDays, app.getAttachmentUrl());
+        validateAttachment(app.getLeaveType(), app.getLeaveDays(), app.getAttachmentUrl());
         validateFieldsComplete(app);
 
         // 创建审批实例
@@ -227,24 +228,29 @@ public class LeaveServiceImpl
         QueryWrapper<LeaveRequest> wrapper = new QueryWrapper<>();
         wrapper.orderByDesc("create_time");
 
-        // 数据权限
-        DataScopeEnum scope = dataScopeContext.getAttendanceScope();
-        switch (scope) {
-            case DEPT: {
-                Set<Long> deptIds = dataScopeContext.getManagedDepartmentIds();
-                if (deptIds == null || deptIds.isEmpty()) {
-                    wrapper.eq("employee_id", dataScopeContext.getCurrentEmployeeId());
-                } else {
-                    wrapper.inSql("employee_id",
-                            "SELECT e.id FROM employee e " +
-                            "INNER JOIN employee_work_info ewi ON e.id = ewi.employee_id " +
-                            "WHERE ewi.department_id IN (" + joinIds(deptIds) + ")");
+        // 个人中心强制只看自己：绕过数据权限
+        if (query.getEmployeeId() != null) {
+            wrapper.eq("employee_id", query.getEmployeeId());
+        } else {
+            // 数据权限
+            DataScopeEnum scope = dataScopeContext.getAttendanceScope();
+            switch (scope) {
+                case DEPT: {
+                    Set<Long> deptIds = dataScopeContext.getManagedDepartmentIds();
+                    if (deptIds == null || deptIds.isEmpty()) {
+                        wrapper.eq("employee_id", dataScopeContext.getCurrentEmployeeId());
+                    } else {
+                        wrapper.inSql("employee_id",
+                                "SELECT e.id FROM employee e " +
+                                "INNER JOIN employee_work_info ewi ON e.id = ewi.employee_id " +
+                                "WHERE ewi.department_id IN (" + joinIds(deptIds) + ")");
+                    }
+                    break;
                 }
-                break;
+                case SELF:
+                    wrapper.eq("employee_id", dataScopeContext.getCurrentEmployeeId());
+                    break;
             }
-            case SELF:
-                wrapper.eq("employee_id", dataScopeContext.getCurrentEmployeeId());
-                break;
         }
 
         // 关键字搜索（员工姓名）
@@ -266,6 +272,20 @@ public class LeaveServiceImpl
         Map<Long, String> empNameMap = loadEmpNames(empIds);
         Map<Long, String> deptNameMap = loadDeptNames(empIds);
 
+        // 批量加载审批进度
+        Set<Long> instanceIds = resultPage.getRecords().stream()
+                .map(LeaveRequest::getApprovalInstanceId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, ApprovalInstanceVO> progressMap = new HashMap<>();
+        for (Long instanceId : instanceIds) {
+            try {
+                progressMap.put(instanceId, approvalFlowService.getDetail(instanceId));
+            } catch (Exception e) {
+                log.warn("加载审批进度失败: instanceId={}", instanceId, e);
+            }
+        }
+
         List<LeaveRequestVO> voList = resultPage.getRecords().stream().map(r -> {
             LeaveRequestVO vo = new LeaveRequestVO();
             vo.setId(r.getId());
@@ -278,6 +298,8 @@ public class LeaveServiceImpl
             vo.setHandoverEmployeeId(r.getHandoverEmployeeId());
             vo.setStatus(r.getStatus());
             vo.setCreateTime(r.getCreateTime());
+            vo.setApprovalInstanceId(r.getApprovalInstanceId());
+            vo.setApprovalProgress(progressMap.get(r.getApprovalInstanceId()));
             vo.setEmployeeName(empNameMap.getOrDefault(r.getEmployeeId(), ""));
             vo.setDepartmentName(deptNameMap.getOrDefault(r.getEmployeeId(), ""));
             vo.setLeaveTypeDesc(getLeaveTypeDesc(r.getLeaveType()));
@@ -338,15 +360,17 @@ public class LeaveServiceImpl
         if (year == null) year = LocalDate.now().getYear();
         if (employeeId == null) employeeId = dataScopeContext.getCurrentEmployeeId();
 
+        boolean isSelf = employeeId.equals(dataScopeContext.getCurrentEmployeeId());
         DataScopeEnum scope = dataScopeContext.getAttendanceScope();
-        if (scope == DataScopeEnum.DEPT) {
+        // 查看他人余额时校验部门权限
+        if (!isSelf && scope == DataScopeEnum.DEPT) {
             Set<Long> managedDeptIds = dataScopeContext.getManagedDepartmentIds();
             if (managedDeptIds == null || managedDeptIds.isEmpty()
                     || !isEmployeeInDepts(employeeId, managedDeptIds)) {
                 throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
             }
         }
-        if (scope == DataScopeEnum.SELF && !employeeId.equals(dataScopeContext.getCurrentEmployeeId())) {
+        if (!isSelf && scope == DataScopeEnum.SELF) {
             throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
         }
 

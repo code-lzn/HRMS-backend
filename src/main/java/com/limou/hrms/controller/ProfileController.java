@@ -80,6 +80,18 @@ public class ProfileController {
         return ResultUtils.success(vo);
     }
 
+    // ==================== 我的补卡 ====================
+
+    @GetMapping("/supplement-cards")
+    @AuthCheck
+    public BaseResponse<Page<SupplementCardListVO>> getMySupplementCards(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        User loginUser = UserContext.getCurrentUser();
+        Page<SupplementCardListVO> result = profileService.getMySupplementCards(loginUser, page, size);
+        return ResultUtils.success(result);
+    }
+
     // ==================== 我的请假 ====================
 
     /**

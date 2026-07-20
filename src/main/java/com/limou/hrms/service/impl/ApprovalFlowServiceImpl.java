@@ -63,6 +63,8 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
     @Resource
     private LeaveRequestMapper leaveRequestMapper;
     @Resource
+    private SupplementCardRequestMapper supplementCardRequestMapper;
+    @Resource
     private DepartmentMapper departmentMapper;
     @Resource
     private PositionMapper positionMapper;
@@ -280,6 +282,7 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
         }
         // 更换审批人
         node.setApproverId(toEmployeeId);
+        node.setTransferred(true);
         // 状态保持待审批
         node.setStatus(NodeStatus.PENDING.getCode());
         node.setComment(null);
@@ -315,7 +318,18 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
         instance.setStatus(ApprovalStatus.CANCELLED.getCode());
         approvalInstanceMapper.updateById(instance);
 
-        log.info("审批已撤回: instanceId={}", instanceId);
+        // 将所有待审批节点标记为已撤回，审批人不再看到该待办
+        List<ApprovalNode> pendingNodes = approvalNodeMapper.selectList(
+                new QueryWrapper<ApprovalNode>()
+                        .eq("instance_id", instanceId)
+                        .eq("status", NodeStatus.PENDING.getCode()));
+        for (ApprovalNode node : pendingNodes) {
+            node.setStatus(NodeStatus.CANCELLED.getCode());
+            node.setOperateTime(LocalDateTime.now());
+            approvalNodeMapper.updateById(node);
+        }
+
+        log.info("审批已撤回: instanceId={}, 已标记{}个节点为已撤回", instanceId, pendingNodes.size());
     }
 
     @Override
@@ -622,6 +636,7 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
             nvo.setNodeOrder(node.getNodeOrder());
             nvo.setApproverId(node.getApproverId());
             nvo.setApproverName(approverResolver.getEmployeeName(node.getApproverId()));
+            boolean isTransfer = Boolean.TRUE.equals(node.getTransferred());
             // 查委托关系：如果审批人有活跃委托，显示原审批人→被委托人
             Long resolvedId = approvalDelegateService.resolveApprover(node.getApproverId());
             if (resolvedId != null && !resolvedId.equals(node.getApproverId())) {
@@ -629,10 +644,12 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
                 nvo.setOriginalApproverName(approverResolver.getEmployeeName(node.getApproverId()));
                 nvo.setApproverId(resolvedId);
                 nvo.setApproverName(approverResolver.getEmployeeName(resolvedId));
+                nvo.setTransferred(isTransfer);
             } else {
                 nvo.setOriginalApproverId(node.getOriginalApproverId());
                 nvo.setOriginalApproverName(node.getOriginalApproverId() != null
                         ? approverResolver.getEmployeeName(node.getOriginalApproverId()) : null);
+                nvo.setTransferred(isTransfer);
             }
             nvo.setStatus(node.getStatus());
             NodeStatus ns = NodeStatus.fromCode(node.getStatus());
@@ -673,6 +690,8 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
                     return enrichResignation(resignationApplicationMapper.selectById(bizId));
                 case LEAVE:
                     return enrichLeave(leaveRequestMapper.selectById(bizId));
+                case CARD_REPLENISH:
+                    return enrichSupplementCard(supplementCardRequestMapper.selectById(bizId));
                 default:
                     return Collections.emptyMap();
             }
@@ -786,6 +805,17 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
         if (app.getEndTime() != null) {
             map.put("endTime", app.getEndTime().toString().replace("T", " "));
         }
+        return map;
+    }
+
+    /** 补卡申请：补员工姓名、卡类型描述 */
+    private Map<String, Object> enrichSupplementCard(SupplementCardRequest app) {
+        if (app == null) return Collections.emptyMap();
+        Map<String, Object> map = beanToMap(app);
+        if (app.getEmployeeId() != null) {
+            map.put("employeeName", approverResolver.getEmployeeName(app.getEmployeeId()));
+        }
+        map.put("cardTypeDesc", app.getCardType() == 1 ? "上班卡" : "下班卡");
         return map;
     }
 
@@ -907,10 +937,12 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
      */
     private List<PendingItemVO> buildPendingVOs(List<ApprovalNode> nodes, Set<Long> delegateNodeIds, Set<Long> actionableNodeIds) {
         return nodes.stream()
-                // 只展示当前活跃节点（node_order = instance.current_node_order）
+                // 只展示当前活跃节点（node_order = instance.current_node_order），排除已撤回
                 .filter(node -> {
                     ApprovalInstance instance = approvalInstanceMapper.selectById(node.getInstanceId());
-                    return instance != null && node.getNodeOrder().equals(instance.getCurrentNodeOrder());
+                    return instance != null
+                        && node.getNodeOrder().equals(instance.getCurrentNodeOrder())
+                        && (instance.getStatus() == null || !instance.getStatus().equals(ApprovalStatus.CANCELLED.getCode()));
                 })
                 .map(node -> {
             ApprovalInstance instance = approvalInstanceMapper.selectById(node.getInstanceId());

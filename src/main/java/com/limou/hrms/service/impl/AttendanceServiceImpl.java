@@ -20,8 +20,11 @@ import com.limou.hrms.model.vo.AttendanceRecordVO;
 import com.limou.hrms.model.vo.ClockResultVO;
 import com.limou.hrms.model.vo.SupplementCardListVO;
 import com.limou.hrms.model.vo.SupplementCardVO;
+import com.limou.hrms.service.ApprovalCallback;
+import com.limou.hrms.service.ApprovalFlowService;
 import com.limou.hrms.service.AttendanceService;
 import com.limou.hrms.service.DepartmentService;
+import com.limou.hrms.model.enums.ApprovalBizType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -40,7 +43,7 @@ import java.util.stream.Collectors;
 @Service
 @Slf4j
 @RequiredArgsConstructor
-public class AttendanceServiceImpl implements AttendanceService {
+public class AttendanceServiceImpl implements AttendanceService, ApprovalCallback {
 
     private final AttendanceRecordMapper attendanceRecordMapper;
     private final AttendanceGroupRuleMapper attendanceGroupRuleMapper;
@@ -53,6 +56,7 @@ public class AttendanceServiceImpl implements AttendanceService {
     private final DepartmentService departmentService;
     private final WorkCalendarMapper workCalendarMapper;
     private final SupplementCardRequestMapper supplementCardRequestMapper;
+    private final ApprovalFlowService approvalFlowService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -270,18 +274,31 @@ public class AttendanceServiceImpl implements AttendanceService {
 
             AttendanceRecord record = recordMap.get(d);
             if (record != null) {
-                item.setStartStatus(record.getStartStatus());
-                item.setStartStatusDesc(getStartStatusDesc(record.getStartStatus()));
-                item.setEndStatus(record.getEndStatus());
-                item.setEndStatusDesc(getEndStatusDesc(record.getEndStatus()));
+                // 上下班都缺卡 → 视为旷工
+                Integer startSt = record.getStartStatus();
+                Integer endSt = record.getEndStatus();
+                if (isMissing(startSt) && isMissing(endSt)) {
+                    startSt = 3; // 旷工半天
+                    endSt = 3;
+                }
+                item.setStartStatus(startSt);
+                item.setStartStatusDesc(getStartStatusDesc(startSt));
+                item.setEndStatus(endSt);
+                item.setEndStatusDesc(getEndStatusDesc(endSt));
+                if (record.getActualStartTime() != null) {
+                    item.setClockIn(record.getActualStartTime().toLocalTime().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")));
+                }
+                if (record.getActualEndTime() != null) {
+                    item.setClockOut(record.getActualEndTime().toLocalTime().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")));
+                }
 
-                if (isNormal(record.getStartStatus())) normalDays++;
-                if (record.getStartStatus() != null && record.getStartStatus() == 2) lateDays++;
-                if (record.getEndStatus() != null && record.getEndStatus() == 2) earlyLeaveDays++;
-                if (isAbsent(record.getStartStatus())) absentDays++;
-                if (isAbsent(record.getEndStatus())) absentDays++;
-                if (isMissing(record.getStartStatus())) cardMissingDays++;
-                if (isMissing(record.getEndStatus())) cardMissingDays++;
+                if (isNormal(startSt)) normalDays++;
+                if (startSt != null && startSt == 2) lateDays++;
+                if (endSt != null && endSt == 2) earlyLeaveDays++;
+                if (isAbsent(startSt)) absentDays++;
+                if (isAbsent(endSt)) absentDays++;
+                if (isMissing(startSt)) cardMissingDays++;
+                if (isMissing(endSt)) cardMissingDays++;
             }
             if (item.getHasLeave()) leaveDays++;
 
@@ -392,8 +409,14 @@ public class AttendanceServiceImpl implements AttendanceService {
             throw new BusinessException(ErrorCode.OPERATION_ERROR, "提交补卡申请失败");
         }
 
-        log.info("员工 {} 提交了补卡申请 (id={}), 日期={}, 类型={}",
-                employeeId, entity.getId(), attendanceDate, cardType == 1 ? "上班卡" : "下班卡");
+        // ⑤ 创建审批实例
+        ApprovalInstance instance = approvalFlowService.createInstance(
+                ApprovalBizType.CARD_REPLENISH, entity.getId(), employeeId);
+        entity.setApprovalInstanceId(instance.getId());
+        supplementCardRequestMapper.updateById(entity);
+
+        log.info("员工 {} 提交了补卡申请 (id={}), 日期={}, 类型={}, 审批实例={}",
+                employeeId, entity.getId(), attendanceDate, cardType == 1 ? "上班卡" : "下班卡", instance.getId());
 
         SupplementCardVO vo = new SupplementCardVO();
         vo.setId(entity.getId());
@@ -419,8 +442,12 @@ public class AttendanceServiceImpl implements AttendanceService {
         QueryWrapper<SupplementCardRequest> wrapper = new QueryWrapper<>();
         wrapper.orderByDesc("create_time");
 
-        // 数据权限
-        DataScopeEnum scope = dataScopeContext.getAttendanceScope();
+        // 强制只看指定员工（个人中心用）
+        if (employeeId != null) {
+            wrapper.eq("employee_id", employeeId);
+        } else {
+            // 数据权限
+            DataScopeEnum scope = dataScopeContext.getAttendanceScope();
         switch (scope) {
             case DEPT: {
                 Set<Long> deptIds = dataScopeContext.getManagedDepartmentIds();
@@ -439,10 +466,8 @@ public class AttendanceServiceImpl implements AttendanceService {
                 break;
             // ALL: no filter
         }
+        } // end else (data scope)
 
-        if (employeeId != null) {
-            wrapper.eq("employee_id", employeeId);
-        }
         if (status != null) {
             wrapper.eq("status", status);
         }
@@ -657,5 +682,59 @@ public class AttendanceServiceImpl implements AttendanceService {
             i++;
         }
         return sb.toString();
+    }
+
+    // ==================== 补卡审批回调 ====================
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void onApproved(ApprovalBizType bizType, Long bizId) {
+        if (bizType != ApprovalBizType.CARD_REPLENISH) return;
+
+        SupplementCardRequest card = supplementCardRequestMapper.selectById(bizId);
+        if (card == null) return;
+        card.setStatus(3); // 已通过
+        supplementCardRequestMapper.updateById(card);
+
+        // 补卡：取考勤组规定的上下班时间作为实际打卡时间
+        AttendanceRecord record = attendanceRecordMapper.selectOne(
+                Wrappers.<AttendanceRecord>lambdaQuery()
+                        .eq(AttendanceRecord::getEmployeeId, card.getEmployeeId())
+                        .eq(AttendanceRecord::getAttendanceDate, card.getAttendanceDate()));
+        if (record != null) {
+            AttendanceGroup group = matchAttendanceGroup(card.getEmployeeId());
+            LocalTime scheduledTime;
+            if (card.getCardType() == 1) {
+                // 上班卡：取规定上班时间
+                scheduledTime = group != null && group.getStartTime() != null
+                        ? group.getStartTime() : LocalTime.of(9, 0);
+                record.setActualStartTime(LocalDateTime.of(card.getAttendanceDate(), scheduledTime));
+                int status = judgeStartStatus(record.getActualStartTime(),
+                        scheduledTime, group != null ? group.getLateThreshold() : 15);
+                record.setStartStatus(status);
+            } else {
+                // 下班卡：取规定下班时间
+                scheduledTime = group != null && group.getEndTime() != null
+                        ? group.getEndTime() : LocalTime.of(18, 0);
+                record.setActualEndTime(LocalDateTime.of(card.getAttendanceDate(), scheduledTime));
+                int status = judgeEndStatus(record.getActualEndTime(),
+                        scheduledTime, group != null ? group.getEarlyLeaveThreshold() : 15);
+                record.setEndStatus(status);
+            }
+            attendanceRecordMapper.updateById(record);
+        }
+        log.info("补卡审批通过: cardId={}, employeeId={}, date={}, cardType={}",
+                bizId, card.getEmployeeId(), card.getAttendanceDate(), card.getCardType());
+    }
+
+    @Override
+    public void onRejected(ApprovalBizType bizType, Long bizId) {
+        if (bizType != ApprovalBizType.CARD_REPLENISH) return;
+
+        SupplementCardRequest card = supplementCardRequestMapper.selectById(bizId);
+        if (card == null) return;
+        card.setStatus(4); // 已拒绝
+        supplementCardRequestMapper.updateById(card);
+        log.info("补卡审批已拒绝: cardId={}", bizId);
     }
 }

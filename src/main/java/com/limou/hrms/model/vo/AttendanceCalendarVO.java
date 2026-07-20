@@ -29,6 +29,10 @@ public class AttendanceCalendarVO implements Serializable {
         private Integer endStatus;
         private String endStatusDesc;
         private Boolean hasLeave;
+        /** 上班打卡时间 HH:mm */
+        private String clockIn;
+        /** 下班打卡时间 HH:mm */
+        private String clockOut;
         private static final long serialVersionUID = 1L;
     }
 

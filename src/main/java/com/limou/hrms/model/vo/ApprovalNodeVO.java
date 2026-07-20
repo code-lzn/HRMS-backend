@@ -15,6 +15,8 @@ public class ApprovalNodeVO {
     private String approverName;
     private Long originalApproverId;
     private String originalApproverName;
+    /** 是否转交（true=转交，false=委托） */
+    private Boolean transferred;
     private Integer status;
     private String statusDesc;
     private String comment;

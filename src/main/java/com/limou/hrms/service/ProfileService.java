@@ -54,6 +54,13 @@ public interface ProfileService {
      */
     void cancelLeave(User loginUser, Long leaveId);
 
+    // ==================== 我的补卡 ====================
+
+    /**
+     * 我的补卡记录（强制只看当前用户）
+     */
+    Page<SupplementCardListVO> getMySupplementCards(User loginUser, int page, int size);
+
     // ==================== 我的薪资 ====================
 
     /**

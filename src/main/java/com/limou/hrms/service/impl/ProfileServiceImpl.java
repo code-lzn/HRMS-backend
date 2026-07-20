@@ -72,6 +72,7 @@ public class ProfileServiceImpl implements ProfileService {
     private final DepartmentMapper departmentMapper;
     private final PositionMapper positionMapper;
     private final LeaveRequestMapper leaveRequestMapper;
+    private final SupplementCardRequestMapper supplementCardRequestMapper;
 
     private final EmployeeService employeeService;
     private final AttendanceService attendanceService;
@@ -217,6 +218,7 @@ public class ProfileServiceImpl implements ProfileService {
     @Override
     public Page<LeaveRequestVO> getMyLeaves(User loginUser, LeaveQueryDTO query) {
         LeaveQuery lq = new LeaveQuery();
+        lq.setEmployeeId(dataScopeContext.getCurrentEmployeeId());
         lq.setStatus(query.getStatus());
         lq.setCurrent(query.getPage() != null ? query.getPage() : 1);
         lq.setPageSize(query.getSize() != null ? query.getSize() : 20);
@@ -227,6 +229,45 @@ public class ProfileServiceImpl implements ProfileService {
     @Transactional(rollbackFor = Exception.class)
     public void cancelLeave(User loginUser, Long leaveId) {
         leaveService.cancel(leaveId);
+    }
+
+    // ==================== 我的补卡 ====================
+
+    @Override
+    public Page<SupplementCardListVO> getMySupplementCards(User loginUser, int page, int size) {
+        Long employeeId = dataScopeContext.getCurrentEmployeeId();
+        Page<SupplementCardRequest> pageResult = supplementCardRequestMapper.selectPage(
+                new Page<>(page, size),
+                new QueryWrapper<SupplementCardRequest>()
+                        .eq("employee_id", employeeId)
+                        .orderByDesc("create_time"));
+        List<SupplementCardListVO> records = pageResult.getRecords().stream().map(r -> {
+            SupplementCardListVO vo = new SupplementCardListVO();
+            vo.setId(r.getId());
+            vo.setEmployeeId(r.getEmployeeId());
+            vo.setAttendanceDate(r.getAttendanceDate());
+            vo.setCardType(r.getCardType());
+            vo.setCardTypeDesc(r.getCardType() == 1 ? "上班卡" : "下班卡");
+            vo.setReason(r.getReason());
+            vo.setStatus(r.getStatus());
+            vo.setStatusDesc(getSupplementStatusDesc(r.getStatus()));
+            vo.setCreateTime(r.getCreateTime());
+            return vo;
+        }).collect(Collectors.toList());
+        Page<SupplementCardListVO> result = new Page<>(page, size, pageResult.getTotal());
+        result.setRecords(records);
+        return result;
+    }
+
+    private String getSupplementStatusDesc(Integer status) {
+        if (status == null) return "";
+        switch (status) {
+            case 1: return "草稿";
+            case 2: return "审批中";
+            case 3: return "已通过";
+            case 4: return "已拒绝";
+            default: return "未知";
+        }
     }
 
     // ==================== 我的薪资 ====================

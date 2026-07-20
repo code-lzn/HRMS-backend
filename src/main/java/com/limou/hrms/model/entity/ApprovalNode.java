@@ -23,6 +23,8 @@ public class ApprovalNode implements Serializable {
     private Long approverId;
     /** 原审批人ID（转交场景记录） */
     private Long originalApproverId;
+    /** 是否转交（true=转交，false/null=委托或正常） */
+    private Boolean transferred;
     /** 节点状态：1=待审批 2=已通过 3=已拒绝 4=已转交 */
     private Integer status;
     /** 审批意见 */
