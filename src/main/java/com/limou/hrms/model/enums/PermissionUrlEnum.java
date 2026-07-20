@@ -59,7 +59,7 @@ public enum PermissionUrlEnum {
     SALARY_BATCH_APPROVE("/api/salary-manage/batches/*/approve",   PermissionConstant.SALARY_AUDIT, "薪资批次审批"),
     SALARY_BATCH_REJECT("/api/salary-manage/batches/*/reject",    PermissionConstant.SALARY_AUDIT, "薪资批次驳回"),
     SALARY_BATCH_MARK_PAID("/api/salary-manage/batches/*/mark-paid", PermissionConstant.SALARY_AUDIT, "薪资批次标记已发放"),
-    SALARY_BATCH_SUBMIT("/api/salary-manage/batches/*/submit",    PermissionConstant.SALARY_AUDIT, "薪资批次提交审批"),
+    SALARY_BATCH_SUBMIT("/api/salary-manage/batches/*/submit",    PermissionConstant.SALARY_LIST, "薪资批次提交审批"),
     // 核算操作（list 权限）
     SALARY_BATCH_CALCULATE("/api/salary-manage/batches/*/calculate", PermissionConstant.SALARY_LIST, "薪资批次核算"),
     SALARY_BATCH_ADJUST("/api/salary-manage/batches/*/adjust",    PermissionConstant.SALARY_LIST, "薪资批次调整"),
