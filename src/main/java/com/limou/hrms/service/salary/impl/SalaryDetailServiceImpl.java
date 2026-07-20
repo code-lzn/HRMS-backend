@@ -12,6 +12,8 @@ import com.limou.hrms.model.vo.salary.PayslipVO;
 import com.limou.hrms.model.vo.salary.SalaryItemDetailVO;
 import com.limou.hrms.service.salary.SalaryDetailService;
 import cn.hutool.json.JSONUtil;
+
+import java.math.BigDecimal;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -52,7 +54,7 @@ public class SalaryDetailServiceImpl extends ServiceImpl<SalaryDetailMapper, Sal
     /** 最大失败次数 */
     private static final int MAX_FAILURES = 3;
 
-    private static final String SALT = "pwd";
+    private static final String SALT = "limou";
 
     @Resource
     private SalaryBatchMapper salaryBatchMapper;
@@ -65,6 +67,12 @@ public class SalaryDetailServiceImpl extends ServiceImpl<SalaryDetailMapper, Sal
 
     @Resource
     private UserMapper userMapper;
+
+    @Resource
+    private EmployeeWorkInfoMapper employeeWorkInfoMapper;
+
+    @Resource
+    private DepartmentMapper departmentMapper;
 
     @Resource
     private StringRedisTemplate stringRedisTemplate;
@@ -201,17 +209,6 @@ public class SalaryDetailServiceImpl extends ServiceImpl<SalaryDetailMapper, Sal
             throw new BusinessException(ErrorCode.FORBIDDEN_ERROR, "工资条尚未审批通过");
         }
 
-        // ③ 二次验证：必须已验证过才能查看详情
-        if (!isPayslipVerified(employeeId, detailId)) {
-            throw new BusinessException(ErrorCode.FORBIDDEN_ERROR, "请先完成二次验证");
-        }
-
-        // ④ 更新数据库查看状态
-        if (detail.getPayslipViewed() == null || detail.getPayslipViewed() == 0) {
-            detail.setPayslipViewed(2); // 已查看
-            this.updateById(detail);
-        }
-
         return toPayslipVO(detail, batch);
     }
 
@@ -241,16 +238,8 @@ public class SalaryDetailServiceImpl extends ServiceImpl<SalaryDetailMapper, Sal
                 .orderByDesc("create_time");
         List<SalaryDetail> details = this.list(wrapper);
 
-        // 查询员工信息（姓名、工号、部门）
-        EmployeePersonalInfo personalInfo = employeePersonalInfoMapper.selectOne(
-                new QueryWrapper<EmployeePersonalInfo>().eq("employee_id", employeeId));
-
         return details.stream().map(detail -> {
-            PayslipVO vo = toPayslipVO(detail, findBatch(batches, detail.getBatchId()));
-            if (personalInfo != null) {
-                vo.setEmployeeName(personalInfo.getName());
-            }
-            return vo;
+            return toPayslipVO(detail, findBatch(batches, detail.getBatchId()));
         }).collect(Collectors.toList());
     }
 
@@ -279,6 +268,12 @@ public class SalaryDetailServiceImpl extends ServiceImpl<SalaryDetailMapper, Sal
         stringRedisTemplate.delete(String.format(VERIFY_FAIL_KEY, employeeId, detailId));
         stringRedisTemplate.opsForValue().set(
                 String.format(VIEWED_KEY, employeeId, detailId), "true", VIEWED_TTL);
+        // 同步更新数据库查看状态，避免前端重复弹窗
+        SalaryDetail detail = this.getById(detailId);
+        if (detail != null && (detail.getPayslipViewed() == null || detail.getPayslipViewed() == 0)) {
+            detail.setPayslipViewed(2);
+            this.updateById(detail);
+        }
         log.info("工资条 {} 验证通过，标记已查看（{}小时有效）", detailId, VIEWED_TTL.toHours());
     }
 
@@ -293,17 +288,60 @@ public class SalaryDetailServiceImpl extends ServiceImpl<SalaryDetailMapper, Sal
         vo.setPayslipViewed(detail.getPayslipViewed());
         vo.setCreateTime(detail.getCreateTime());
 
+        // 查询员工基本信息
+        Long employeeId = detail.getEmployeeId();
+        Employee employee = employeeMapper.selectById(employeeId);
+        if (employee != null) {
+            vo.setEmployeeNo(employee.getEmployeeNo());
+        }
+        EmployeePersonalInfo personalInfo = employeePersonalInfoMapper.selectOne(
+                new QueryWrapper<EmployeePersonalInfo>().eq("employee_id", employeeId));
+        if (personalInfo != null) {
+            vo.setEmployeeName(personalInfo.getName());
+        }
+        EmployeeWorkInfo workInfo = employeeWorkInfoMapper.selectOne(
+                new QueryWrapper<EmployeeWorkInfo>().eq("employee_id", employeeId));
+        if (workInfo != null && workInfo.getDepartmentId() != null) {
+            Department department = departmentMapper.selectById(workInfo.getDepartmentId());
+            if (department != null) {
+                vo.setDepartmentName(department.getName());
+            }
+        }
+
         // 解析工资项目明细
         if (StringUtils.isNotBlank(detail.getSalaryItems())) {
             List<SalaryItemDetailVO> allItems = JSONUtil.toList(detail.getSalaryItems(), SalaryItemDetailVO.class);
             vo.setIncomeItems(allItems.stream()
-                    .filter(i -> i.getType() != null && i.getType() <= 2)
+                    .filter(i -> isIncomeItem(i))
                     .collect(Collectors.toList()));
             vo.setDeductionItems(allItems.stream()
-                    .filter(i -> i.getType() != null && i.getType() >= 3)
+                    .filter(i -> !isIncomeItem(i))
                     .collect(Collectors.toList()));
         }
         return vo;
+    }
+
+    /**
+     * 判断是否为收入项：type=1,2 为收入，type>=3 为扣除；
+     * 无 type 时依次按名称关键词、金额正负判断
+     */
+    private boolean isIncomeItem(SalaryItemDetailVO item) {
+        if (item.getType() != null) {
+            return item.getType() <= 2;
+        }
+        // 无 type：按名称关键词判断扣除项
+        if (item.getName() != null) {
+            String name = item.getName();
+            if (name.contains("养老") || name.contains("医疗") || name.contains("失业")
+                    || name.contains("工伤") || name.contains("生育") || name.contains("保险")
+                    || name.contains("公积金") || name.contains("个税") || name.contains("所得税")
+                    || name.contains("扣款") || name.contains("事假") || name.contains("病假")
+                    || name.contains("迟到") || name.contains("旷工")) {
+                return false; // 扣除项
+            }
+        }
+        // 默认按金额：正=收入，负=扣除
+        return item.getAmount() == null || item.getAmount().compareTo(BigDecimal.ZERO) >= 0;
     }
 
     private SalaryBatch findBatch(List<SalaryBatch> batches, Long batchId) {
