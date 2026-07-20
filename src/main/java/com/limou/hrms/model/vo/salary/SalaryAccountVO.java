@@ -19,7 +19,7 @@ public class SalaryAccountVO implements Serializable {
 
     private String scopeTypeLabel;
 
-    private String scopeIds;
+    private List<Long> scopeIds;
 
     private Date effectiveDate;
 
