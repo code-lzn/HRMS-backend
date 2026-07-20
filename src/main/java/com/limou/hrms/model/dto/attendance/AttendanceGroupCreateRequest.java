@@ -30,15 +30,13 @@ public class AttendanceGroupCreateRequest implements Serializable {
     private Integer shiftType;
 
     /**
-     * 上班时间，格式 HH:mm
+     * 上班时间，格式 HH:mm（弹性班可省略）
      */
-    @NotBlank(message = "上班时间不能为空")
     private String startTime;
 
     /**
-     * 下班时间，格式 HH:mm
+     * 下班时间，格式 HH:mm（弹性班可省略）
      */
-    @NotBlank(message = "下班时间不能为空")
     private String endTime;
 
     /**
@@ -87,6 +85,11 @@ public class AttendanceGroupCreateRequest implements Serializable {
      * 核心工作结束时间（弹性班适用）
      */
     private String coreEndTime;
+
+    /**
+     * 每日必须工作时长（小时），仅弹性班使用，支持小数如 8.5，默认 8
+     */
+    private java.math.BigDecimal workHours;
 
     /**
      * 适用人员规则列表

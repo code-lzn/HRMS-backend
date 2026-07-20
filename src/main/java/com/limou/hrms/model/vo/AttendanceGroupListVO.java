@@ -23,6 +23,12 @@ public class AttendanceGroupListVO implements Serializable {
 
     private String endTime;
 
+    private String coreStartTime;
+
+    private String coreEndTime;
+
+    private java.math.BigDecimal workHours;
+
     private Integer lateThreshold;
 
     private Integer earlyLeaveThreshold;

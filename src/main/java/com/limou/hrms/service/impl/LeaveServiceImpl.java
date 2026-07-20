@@ -13,6 +13,7 @@ import com.limou.hrms.model.dto.leave.LeaveRequestSubmitDTO;
 import com.limou.hrms.model.entity.EmployeeLeaveBalance;
 import com.limou.hrms.model.entity.EmployeePersonalInfo;
 import com.limou.hrms.model.entity.EmployeeWorkInfo;
+import com.limou.hrms.model.entity.Employee;
 import com.limou.hrms.model.entity.LeaveRequest;
 import com.limou.hrms.model.entity.Department;
 import com.limou.hrms.model.entity.WorkCalendar;
@@ -31,6 +32,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -48,9 +50,39 @@ public class LeaveServiceImpl implements LeaveService {
     private final EmployeePersonalInfoMapper employeePersonalInfoMapper;
     private final DepartmentService departmentService;
     private final WorkCalendarMapper workCalendarMapper;
+    private final EmployeeMapper employeeMapper;
     private final DataScopeContext dataScopeContext;
 
     private static final Set<Integer> ATTACHMENT_REQUIRED_TYPES = new HashSet<>(Arrays.asList(2, 4, 5));
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public LeaveRequestVO saveDraft(LeaveRequestSubmitDTO dto) {
+        Long employeeId = dataScopeContext.getCurrentEmployeeId();
+        if (employeeId == null) {
+            throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
+        }
+
+        // 草稿不校验余额、附件、天数，直接保存
+        LeaveRequest entity = new LeaveRequest();
+        BeanUtils.copyProperties(dto, entity);
+        entity.setEmployeeId(employeeId);
+        entity.setLeaveDays(BigDecimal.ZERO);
+        entity.setStatus(1); // 草稿
+
+        boolean saved = leaveRequestMapper.insert(entity) > 0;
+        if (!saved) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "保存草稿失败");
+        }
+
+        log.info("员工 {} 保存了请假草稿 (id={}), 类型={}", employeeId, entity.getId(), dto.getLeaveType());
+
+        LeaveRequestVO vo = new LeaveRequestVO();
+        BeanUtils.copyProperties(entity, vo);
+        vo.setLeaveTypeDesc(getLeaveTypeDesc(entity.getLeaveType()));
+        vo.setStatusDesc("草稿");
+        return vo;
+    }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -119,6 +151,11 @@ public class LeaveServiceImpl implements LeaveService {
                                                LocalDate startDate, LocalDate endDate, int page, int size) {
         QueryWrapper<LeaveRequest> wrapper = new QueryWrapper<>();
         wrapper.orderByDesc("create_time");
+
+        // 默认排除草稿和已取消状态（前端明确传 status 参数时则不过滤）
+        if (status == null) {
+            wrapper.notIn("status", 1, 5);
+        }
 
         // 数据权限
         DataScopeEnum scope = dataScopeContext.getAttendanceScope();
@@ -255,6 +292,7 @@ public class LeaveServiceImpl implements LeaveService {
     // ==================== 查询余额 ====================
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public LeaveBalanceVO getBalances(Long employeeId, Integer year) {
         if (year == null) {
             year = LocalDate.now().getYear();
@@ -264,6 +302,8 @@ public class LeaveServiceImpl implements LeaveService {
         }
 
         DataScopeEnum scope = dataScopeContext.getAttendanceScope();
+        Long selfEmployeeId = dataScopeContext.getCurrentEmployeeId();
+        boolean isSelf = employeeId.equals(selfEmployeeId);
 
         // dept_head：只能查管辖部门员工
         if (scope == DataScopeEnum.DEPT) {
@@ -274,7 +314,7 @@ public class LeaveServiceImpl implements LeaveService {
             }
         }
         // user：只能查自己
-        if (scope == DataScopeEnum.SELF && !employeeId.equals(dataScopeContext.getCurrentEmployeeId())) {
+        if (scope == DataScopeEnum.SELF && !isSelf) {
             throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
         }
 
@@ -282,6 +322,36 @@ public class LeaveServiceImpl implements LeaveService {
                 Wrappers.<EmployeeLeaveBalance>lambdaQuery()
                         .eq(EmployeeLeaveBalance::getEmployeeId, employeeId)
                         .eq(EmployeeLeaveBalance::getYear, year));
+
+        // 年假：自动创建或更新（仅自己查时写入，HR/部门主管查他人仅计算展示）
+        Employee employee = employeeMapper.selectById(employeeId);
+        if (employee != null && employee.getHireDate() != null) {
+            BigDecimal annualDays = calcAnnualLeaveDays(employee, year);
+            EmployeeLeaveBalance annualBalance = balances.stream()
+                    .filter(b -> b.getLeaveType() == 1)
+                    .findFirst().orElse(null);
+
+            if (annualBalance == null) {
+                // 无记录 → 创建（自己的写入 DB，他人的仅内存临时对象）
+                annualBalance = new EmployeeLeaveBalance();
+                annualBalance.setEmployeeId(employeeId);
+                annualBalance.setYear(year);
+                annualBalance.setLeaveType(1);
+                annualBalance.setTotalDays(annualDays);
+                annualBalance.setUsedDays(BigDecimal.ZERO);
+                annualBalance.setRemainingDays(annualDays);
+                if (isSelf) {
+                    leaveBalanceMapper.insert(annualBalance);
+                }
+                balances.add(annualBalance);
+            } else if (isSelf && annualBalance.getTotalDays().compareTo(annualDays) != 0) {
+                // 有记录但值变了（工龄跨档等）→ 更新总天数和剩余天数
+                BigDecimal delta = annualDays.subtract(annualBalance.getTotalDays());
+                annualBalance.setTotalDays(annualDays);
+                annualBalance.setRemainingDays(annualBalance.getRemainingDays().add(delta));
+                leaveBalanceMapper.updateById(annualBalance);
+            }
+        }
 
         List<BalanceItem> items = balances.stream().map(b -> {
             BalanceItem item = new BalanceItem();
@@ -384,6 +454,49 @@ public class LeaveServiceImpl implements LeaveService {
 
     private boolean isAfternoon(LocalDateTime time) {
         return time.toLocalTime().isAfter(LocalTime.NOON);
+    }
+
+    // ==================== 年假计算 ====================
+
+    /**
+     * 按工龄 + 入职月份折算计算年假天数
+     */
+    private BigDecimal calcAnnualLeaveDays(Employee employee, int year) {
+        LocalDate hireDate = employee.getHireDate();
+        // 计算到该年1月1日的工龄
+        long tenureYears = ChronoUnit.YEARS.between(hireDate, LocalDate.of(year, 1, 1));
+
+        int baseDays;
+        if (tenureYears >= 20) {
+            baseDays = 15;
+        } else if (tenureYears >= 10) {
+            baseDays = 10;
+        } else if (tenureYears >= 1) {
+            baseDays = 5;
+        } else {
+            // 入职不满1年（当年入职），按剩余月份折算
+            int joinYear = hireDate.getYear();
+            if (joinYear < year) {
+                // 跨年了但工龄不足1年（如12月入职），给 5 天基准
+                baseDays = 5;
+            } else {
+                int joinMonth = hireDate.getMonthValue();
+                int remainingMonths = 12 - joinMonth + 1;
+                return BigDecimal.valueOf(5L * remainingMonths)
+                        .divide(BigDecimal.valueOf(12), 1, RoundingMode.HALF_UP);
+            }
+        }
+
+        // 入职月份 > 1 月，当年按比例折算
+        int joinMonth = hireDate.getMonthValue();
+        int joinYearVal = hireDate.getYear();
+        if (joinYearVal < year && joinMonth > 1) {
+            int fullMonths = 12 - joinMonth + 1;
+            return BigDecimal.valueOf(baseDays * fullMonths)
+                    .divide(BigDecimal.valueOf(12), 1, RoundingMode.HALF_UP);
+        }
+
+        return BigDecimal.valueOf(baseDays);
     }
 
     // ==================== 工具 ====================

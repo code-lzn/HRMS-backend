@@ -61,63 +61,49 @@ public class AttendanceGroupServiceImpl extends ServiceImpl<AttendanceGroupMappe
         boolean isDeptHead = (scope == DataScopeEnum.DEPT);
         Set<Long> managedDeptIds = isDeptHead ? dataScopeContext.getManagedDepartmentIds() : null;
 
-        // 校验每条规则的权限和重复性
-        for (RuleDTO rule : dto.getRules()) {
-            int ruleType = rule.getRuleType();
-            Long targetId = rule.getTargetId();
+        List<RuleDTO> ruleList = dto.getRules();
 
-            // 重复校验：(ruleType, targetId) 全局唯一
-            checkRuleNotExists(ruleType, targetId);
+        // ① 批量校验：重复性 + 部门管理员权限
+        validateRulesBatch(ruleList, isDeptHead, managedDeptIds, null);
 
-            if (isDeptHead) {
-                validateDeptHeadRule(ruleType, targetId, managedDeptIds);
-            }
+        // ② 校验班次时间：弹性班(startTime/endTime 可为空)，其余必须填
+        boolean isFlex = dto.getShiftType() != null && dto.getShiftType() == 2;
+        if (!isFlex) {
+            if (!StringUtils.hasText(dto.getStartTime()))
+                throw new BusinessException(ErrorCode.PARAMS_ERROR, "固定班/排班制必须设置上班时间");
+            if (!StringUtils.hasText(dto.getEndTime()))
+                throw new BusinessException(ErrorCode.PARAMS_ERROR, "固定班/排班制必须设置下班时间");
         }
 
-        // 保存考勤组
+        // ③ 保存考勤组
         AttendanceGroup group = new AttendanceGroup();
         BeanUtils.copyProperties(dto, group, "rules");
-        group.setStartTime(LocalTime.parse(dto.getStartTime()));
-        group.setEndTime(LocalTime.parse(dto.getEndTime()));
-        if (dto.getRestStartTime() != null) {
-            group.setRestStartTime(LocalTime.parse(dto.getRestStartTime()));
-        }
-        if (dto.getRestEndTime() != null) {
-            group.setRestEndTime(LocalTime.parse(dto.getRestEndTime()));
-        }
-        if (dto.getFlexStartTime() != null) {
-            group.setFlexStartTime(LocalTime.parse(dto.getFlexStartTime()));
-        }
-        if (dto.getFlexEndTime() != null) {
-            group.setFlexEndTime(LocalTime.parse(dto.getFlexEndTime()));
-        }
-        if (dto.getCoreStartTime() != null) {
-            group.setCoreStartTime(LocalTime.parse(dto.getCoreStartTime()));
-        }
-        if (dto.getCoreEndTime() != null) {
-            group.setCoreEndTime(LocalTime.parse(dto.getCoreEndTime()));
-        }
+        if (dto.getStartTime() != null) group.setStartTime(LocalTime.parse(dto.getStartTime()));
+        if (dto.getEndTime() != null) group.setEndTime(LocalTime.parse(dto.getEndTime()));
+        if (dto.getRestStartTime() != null) group.setRestStartTime(LocalTime.parse(dto.getRestStartTime()));
+        if (dto.getRestEndTime() != null) group.setRestEndTime(LocalTime.parse(dto.getRestEndTime()));
+        if (dto.getFlexStartTime() != null) group.setFlexStartTime(LocalTime.parse(dto.getFlexStartTime()));
+        if (dto.getFlexEndTime() != null) group.setFlexEndTime(LocalTime.parse(dto.getFlexEndTime()));
+        if (dto.getCoreStartTime() != null) group.setCoreStartTime(LocalTime.parse(dto.getCoreStartTime()));
+        if (dto.getCoreEndTime() != null) group.setCoreEndTime(LocalTime.parse(dto.getCoreEndTime()));
 
         boolean saved = this.save(group);
         if (!saved) {
             throw new BusinessException(ErrorCode.OPERATION_ERROR, "创建考勤组失败");
         }
 
-        // 批量保存规则
-        List<AttendanceGroupRule> rules = dto.getRules().stream().map(r -> {
+        // ③ 批量保存规则（MetaObjectHandler 自动填充 createTime）
+        List<AttendanceGroupRule> rules = ruleList.stream().map(r -> {
             AttendanceGroupRule rule = new AttendanceGroupRule();
             rule.setAttendanceGroupId(group.getId());
             rule.setRuleType(r.getRuleType());
             rule.setTargetId(r.getTargetId());
-            rule.setCreateTime(LocalDateTime.now());
             return rule;
         }).collect(Collectors.toList());
-        for (AttendanceGroupRule rule : rules) {
-            attendanceGroupRuleMapper.insert(rule);
-        }
+        this.batchInsertRules(rules);
 
         log.info("创建了考勤组: {} (id={}), 规则数={}", group.getName(), group.getId(), rules.size());
-        return toCreateVO(group, dto.getRules());
+        return toCreateVO(group, ruleList);
     }
 
     // ==================== 更新考勤组 ====================
@@ -179,32 +165,30 @@ public class AttendanceGroupServiceImpl extends ServiceImpl<AttendanceGroupMappe
         if (dto.getCoreEndTime() != null) {
             existGroup.setCoreEndTime(LocalTime.parse(dto.getCoreEndTime()));
         }
+        if (dto.getWorkHours() != null) {
+            existGroup.setWorkHours(dto.getWorkHours());
+        }
 
         this.updateById(existGroup);
 
         // rules：传则全量替换
         if (dto.getRules() != null) {
-            // 校验新规则
-            for (RuleDTO rule : dto.getRules()) {
-                checkRuleNotExistsExceptSelf(rule.getRuleType(), rule.getTargetId(), id);
-                if (isDeptHead) {
-                    validateDeptHeadRule(rule.getRuleType(), rule.getTargetId(), managedDeptIds);
-                }
-            }
+            // 批量校验
+            validateRulesBatch(dto.getRules(), isDeptHead, managedDeptIds, id);
 
-            // 删除旧规则 + 插入新规则
+            // 删除旧规则 + 批量插入新规则
             attendanceGroupRuleMapper.delete(
                     Wrappers.<AttendanceGroupRule>lambdaQuery()
                             .eq(AttendanceGroupRule::getAttendanceGroupId, id));
 
-            for (RuleDTO rule : dto.getRules()) {
+            List<AttendanceGroupRule> entities = dto.getRules().stream().map(r -> {
                 AttendanceGroupRule entity = new AttendanceGroupRule();
                 entity.setAttendanceGroupId(id);
-                entity.setRuleType(rule.getRuleType());
-                entity.setTargetId(rule.getTargetId());
-                entity.setCreateTime(LocalDateTime.now());
-                attendanceGroupRuleMapper.insert(entity);
-            }
+                entity.setRuleType(r.getRuleType());
+                entity.setTargetId(r.getTargetId());
+                return entity;
+            }).collect(Collectors.toList());
+            this.batchInsertRules(entities);
         }
 
         log.info("更新了考勤组: {} (id={})", existGroup.getName(), id);
@@ -255,6 +239,9 @@ public class AttendanceGroupServiceImpl extends ServiceImpl<AttendanceGroupMappe
             vo.setShiftTypeDesc(getShiftTypeDesc(g.getShiftType()));
             if (g.getStartTime() != null) vo.setStartTime(g.getStartTime().toString());
             if (g.getEndTime() != null) vo.setEndTime(g.getEndTime().toString());
+            if (g.getCoreStartTime() != null) vo.setCoreStartTime(g.getCoreStartTime().toString());
+            if (g.getCoreEndTime() != null) vo.setCoreEndTime(g.getCoreEndTime().toString());
+            vo.setWorkHours(g.getWorkHours());
             vo.setLateThreshold(g.getLateThreshold());
             vo.setEarlyLeaveThreshold(g.getEarlyLeaveThreshold());
             vo.setRuleSummary(summaryMap.getOrDefault(g.getId(), ""));
@@ -495,44 +482,100 @@ public class AttendanceGroupServiceImpl extends ServiceImpl<AttendanceGroupMappe
     // ==================== 权限校验 ====================
 
     /**
-     * 部门管理员校验单条规则的权限
+     * 批量校验所有规则：一次查询完成重复检查 + 关联数据加载，替代 N 次单条 SQL
      */
-    private void validateDeptHeadRule(int ruleType, Long targetId, Set<Long> managedDeptIds) {
-        switch (ruleType) {
-            case 1:
-                // 按部门：targetId 必须在管辖范围内
-                if (!managedDeptIds.contains(targetId)) {
-                    throw new BusinessException(ErrorCode.ATTENDANCE_GROUP_RULE_DEPT_OUT_OF_SCOPE);
+    private void validateRulesBatch(List<RuleDTO> ruleList, boolean isDeptHead,
+                                     Set<Long> managedDeptIds, Long excludeGroupId) {
+        if (ruleList.isEmpty()) return;
+
+        // ① 重复校验：一次性查出所有匹配的已有规则，用 Set 判重
+        Set<String> dtoKeys = new HashSet<>();
+        Set<String> dupSet = new HashSet<>();
+        for (RuleDTO r : ruleList) {
+            String key = r.getRuleType() + "_" + r.getTargetId();
+            if (!dtoKeys.add(key)) {
+                throw new BusinessException(ErrorCode.ATTENDANCE_GROUP_RULE_DUPLICATE,
+                        "同一请求中存在重复的规则");
+            }
+        }
+
+        LambdaQueryWrapper<AttendanceGroupRule> dupQuery = Wrappers.<AttendanceGroupRule>lambdaQuery();
+        // 构造 OR 条件：(ruleType=1 AND targetId=101) OR (ruleType=2 AND targetId=201) ...
+        dupQuery.and(w -> {
+            for (int i = 0; i < ruleList.size(); i++) {
+                RuleDTO r = ruleList.get(i);
+                if (i > 0) w.or();
+                w.eq(AttendanceGroupRule::getRuleType, r.getRuleType())
+                 .eq(AttendanceGroupRule::getTargetId, r.getTargetId());
+            }
+        });
+        if (excludeGroupId != null) {
+            dupQuery.ne(AttendanceGroupRule::getAttendanceGroupId, excludeGroupId);
+        }
+        List<AttendanceGroupRule> existingRules = attendanceGroupRuleMapper.selectList(dupQuery);
+        for (AttendanceGroupRule existing : existingRules) {
+            String key = existing.getRuleType() + "_" + existing.getTargetId();
+            if (dtoKeys.contains(key)) {
+                throw new BusinessException(ErrorCode.ATTENDANCE_GROUP_RULE_DUPLICATE);
+            }
+        }
+
+        // ② dept_head 权限校验：按类型批量预加载关联数据
+        if (isDeptHead) {
+            // 收集需要查询的 positionId 和 employeeId
+            Set<Long> posIds = new HashSet<>();
+            Set<Long> empIds = new HashSet<>();
+            for (RuleDTO r : ruleList) {
+                if (r.getRuleType() == 2) posIds.add(r.getTargetId());
+                else if (r.getRuleType() == 3) empIds.add(r.getTargetId());
+            }
+
+            // 批量查职位
+            Map<Long, Position> posMap = Collections.emptyMap();
+            if (!posIds.isEmpty()) {
+                posMap = positionMapper.selectBatchIds(posIds).stream()
+                        .collect(Collectors.toMap(Position::getId, p -> p));
+            }
+            // 批量查员工工作信息
+            Map<Long, EmployeeWorkInfo> workInfoMap = Collections.emptyMap();
+            if (!empIds.isEmpty()) {
+                workInfoMap = employeeWorkInfoMapper.selectList(
+                        Wrappers.<EmployeeWorkInfo>lambdaQuery()
+                                .in(EmployeeWorkInfo::getEmployeeId, empIds))
+                        .stream()
+                        .collect(Collectors.toMap(EmployeeWorkInfo::getEmployeeId, wi -> wi, (a, b) -> a));
+            }
+
+            // 内存校验
+            for (RuleDTO r : ruleList) {
+                switch (r.getRuleType()) {
+                    case 1:
+                        if (!managedDeptIds.contains(r.getTargetId())) {
+                            throw new BusinessException(ErrorCode.ATTENDANCE_GROUP_RULE_DEPT_OUT_OF_SCOPE);
+                        }
+                        break;
+                    case 2:
+                        validatePositionScopeFromCache(r.getTargetId(), managedDeptIds, posMap);
+                        break;
+                    case 3:
+                        validateEmployeeScopeFromCache(r.getTargetId(), managedDeptIds, workInfoMap);
+                        break;
                 }
-                break;
-            case 2:
-                // 按职位
-                validatePositionScope(targetId, managedDeptIds);
-                break;
-            case 3:
-                // 按个人：员工的 department_id 必须在管辖范围内
-                validateEmployeeScope(targetId, managedDeptIds);
-                break;
-            default:
-                throw new BusinessException(ErrorCode.PARAMS_ERROR, "无效的适用类型");
+            }
         }
     }
 
-    /**
-     * 校验职位是否在管辖范围内
-     */
-    private void validatePositionScope(Long positionId, Set<Long> managedDeptIds) {
-        Position position = positionMapper.selectById(positionId);
+    private void validatePositionScopeFromCache(Long positionId, Set<Long> managedDeptIds,
+                                                  Map<Long, Position> posMap) {
+        Position position = posMap.get(positionId);
         if (position == null) {
             throw new BusinessException(ErrorCode.POSITION_NOT_FOUND);
         }
         if (position.getDepartmentId() != null) {
-            // 部门专属职位：部门必须在管辖范围内
             if (!managedDeptIds.contains(position.getDepartmentId())) {
                 throw new BusinessException(ErrorCode.ATTENDANCE_GROUP_RULE_DEPT_OUT_OF_SCOPE);
             }
         } else {
-            // 全公司通用职位：校验管辖范围内是否有在职员工持有此职位
             Long count = employeeWorkInfoMapper.selectCount(
                     Wrappers.<EmployeeWorkInfo>lambdaQuery()
                             .eq(EmployeeWorkInfo::getPositionId, positionId)
@@ -543,13 +586,9 @@ public class AttendanceGroupServiceImpl extends ServiceImpl<AttendanceGroupMappe
         }
     }
 
-    /**
-     * 校验员工是否在管辖范围内
-     */
-    private void validateEmployeeScope(Long employeeId, Set<Long> managedDeptIds) {
-        EmployeeWorkInfo workInfo = employeeWorkInfoMapper.selectOne(
-                Wrappers.<EmployeeWorkInfo>lambdaQuery()
-                        .eq(EmployeeWorkInfo::getEmployeeId, employeeId));
+    private void validateEmployeeScopeFromCache(Long employeeId, Set<Long> managedDeptIds,
+                                                  Map<Long, EmployeeWorkInfo> workInfoMap) {
+        EmployeeWorkInfo workInfo = workInfoMap.get(employeeId);
         if (workInfo == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "员工工作信息不存在");
         }
@@ -558,32 +597,12 @@ public class AttendanceGroupServiceImpl extends ServiceImpl<AttendanceGroupMappe
         }
     }
 
-    // ==================== 重复校验 ====================
-
     /**
-     * 检查 (ruleType, targetId) 是否已存在
+     * 批量插入规则（复用当前事务，MetaObjectHandler 自动填充 createTime）
      */
-    private void checkRuleNotExists(int ruleType, Long targetId) {
-        Long count = attendanceGroupRuleMapper.selectCount(
-                Wrappers.<AttendanceGroupRule>lambdaQuery()
-                        .eq(AttendanceGroupRule::getRuleType, ruleType)
-                        .eq(AttendanceGroupRule::getTargetId, targetId));
-        if (count != null && count > 0) {
-            throw new BusinessException(ErrorCode.ATTENDANCE_GROUP_RULE_DUPLICATE);
-        }
-    }
-
-    /**
-     * 检查 (ruleType, targetId) 是否在其他考勤组中已存在（更新时用）
-     */
-    private void checkRuleNotExistsExceptSelf(int ruleType, Long targetId, Long excludeGroupId) {
-        Long count = attendanceGroupRuleMapper.selectCount(
-                Wrappers.<AttendanceGroupRule>lambdaQuery()
-                        .eq(AttendanceGroupRule::getRuleType, ruleType)
-                        .eq(AttendanceGroupRule::getTargetId, targetId)
-                        .ne(AttendanceGroupRule::getAttendanceGroupId, excludeGroupId));
-        if (count != null && count > 0) {
-            throw new BusinessException(ErrorCode.ATTENDANCE_GROUP_RULE_DUPLICATE);
+    private void batchInsertRules(List<AttendanceGroupRule> rules) {
+        for (AttendanceGroupRule rule : rules) {
+            attendanceGroupRuleMapper.insert(rule);
         }
     }
 
@@ -598,6 +617,25 @@ public class AttendanceGroupServiceImpl extends ServiceImpl<AttendanceGroupMappe
         if (group.getEndTime() != null) {
             vo.setEndTime(group.getEndTime().toString());
         }
+        if (group.getRestStartTime() != null) {
+            vo.setRestStartTime(group.getRestStartTime().toString());
+        }
+        if (group.getRestEndTime() != null) {
+            vo.setRestEndTime(group.getRestEndTime().toString());
+        }
+        if (group.getFlexStartTime() != null) {
+            vo.setFlexStartTime(group.getFlexStartTime().toString());
+        }
+        if (group.getFlexEndTime() != null) {
+            vo.setFlexEndTime(group.getFlexEndTime().toString());
+        }
+        if (group.getCoreStartTime() != null) {
+            vo.setCoreStartTime(group.getCoreStartTime().toString());
+        }
+        if (group.getCoreEndTime() != null) {
+            vo.setCoreEndTime(group.getCoreEndTime().toString());
+        }
+        vo.setShiftTypeDesc(getShiftTypeDesc(group.getShiftType()));
         vo.setRules(rules);
         return vo;
     }

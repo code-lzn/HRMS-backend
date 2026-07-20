@@ -81,6 +81,11 @@ public class AttendanceGroupUpdateRequest implements Serializable {
     private String coreEndTime;
 
     /**
+     * 每日必须工作时长（小时），仅弹性班使用，支持小数如 8.5
+     */
+    private java.math.BigDecimal workHours;
+
+    /**
      * 适用人员规则列表（传则全量替换，重新校验权限）
      */
     @Valid

@@ -20,7 +20,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.Duration;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -44,6 +47,9 @@ public class OvertimeRecordServiceImpl implements OvertimeRecordService {
         if (dto.getEndTime().isBefore(dto.getStartTime())) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "结束时间不能早于开始时间");
         }
+
+        BigDecimal hours = calcHours(dto.getStartTime(), dto.getEndTime());
+        BigDecimal compDays = hoursToDays(hours);
 
         // 保存加班记录
         OvertimeRecord record = new OvertimeRecord();
@@ -72,23 +78,23 @@ public class OvertimeRecordServiceImpl implements OvertimeRecordService {
             balance = new EmployeeLeaveBalance();
             balance.setEmployeeId(dto.getEmployeeId());
             balance.setYear(year);
-            balance.setLeaveType(7); // 调休
-            balance.setTotalDays(dto.getHours());
+            balance.setLeaveType(7);
+            balance.setTotalDays(compDays);
             balance.setUsedDays(BigDecimal.ZERO);
-            balance.setRemainingDays(dto.getHours());
+            balance.setRemainingDays(compDays);
             leaveBalanceMapper.insert(balance);
         } else {
-            balance.setTotalDays(balance.getTotalDays().add(dto.getHours()));
-            balance.setRemainingDays(balance.getRemainingDays().add(dto.getHours()));
+            balance.setTotalDays(balance.getTotalDays().add(compDays));
+            balance.setRemainingDays(balance.getRemainingDays().add(compDays));
             leaveBalanceMapper.updateById(balance);
         }
 
-        log.info("HR 创建了加班记录 (id={}), 员工={}, {}小时, 转入调休{}.0天, 有效期至{}",
-                record.getId(), dto.getEmployeeId(), dto.getHours(), dto.getHours(), expireDate);
+        log.info("HR 创建了加班记录 (id={}), 员工={}, {}小时, 转入调休{}天, 有效期至{}",
+                record.getId(), dto.getEmployeeId(), hours, compDays, expireDate);
 
         OvertimeRecordVO vo = new OvertimeRecordVO();
         BeanUtils.copyProperties(record, vo);
-        vo.setCompTimeAdded(dto.getHours());
+        vo.setCompTimeAdded(compDays);
         return vo;
     }
 
@@ -100,39 +106,37 @@ public class OvertimeRecordServiceImpl implements OvertimeRecordService {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "加班记录不存在");
         }
 
-        BigDecimal oldHours = exist.getHours();
+        BigDecimal oldHours = calcHours(exist.getStartTime(), exist.getEndTime());
 
         if (dto.getOvertimeDate() != null) {
             exist.setOvertimeDate(dto.getOvertimeDate());
-            // 重新计算有效期
             LocalDate d = dto.getOvertimeDate();
             exist.setExpireDate(d.plusMonths(1).withDayOfMonth(d.plusMonths(1).lengthOfMonth()));
         }
         if (dto.getStartTime() != null) exist.setStartTime(dto.getStartTime());
         if (dto.getEndTime() != null) exist.setEndTime(dto.getEndTime());
-        if (dto.getHours() != null) exist.setHours(dto.getHours());
 
         overtimeRecordMapper.updateById(exist);
 
         // 差额调整调休余额
-        if (dto.getHours() != null) {
-            BigDecimal delta = dto.getHours().subtract(oldHours);
-            if (delta.compareTo(BigDecimal.ZERO) != 0) {
-                int year = exist.getOvertimeDate().getYear();
-                EmployeeLeaveBalance balance = leaveBalanceMapper.selectOne(
-                        Wrappers.<EmployeeLeaveBalance>lambdaQuery()
-                                .eq(EmployeeLeaveBalance::getEmployeeId, exist.getEmployeeId())
-                                .eq(EmployeeLeaveBalance::getYear, year)
-                                .eq(EmployeeLeaveBalance::getLeaveType, 7));
-                if (balance != null) {
-                    balance.setTotalDays(balance.getTotalDays().add(delta));
-                    balance.setRemainingDays(balance.getRemainingDays().add(delta));
-                    leaveBalanceMapper.updateById(balance);
-                }
+        BigDecimal newHours = calcHours(exist.getStartTime(), exist.getEndTime());
+        BigDecimal delta = newHours.subtract(oldHours);
+        if (delta.compareTo(BigDecimal.ZERO) != 0) {
+            BigDecimal compDelta = hoursToDays(delta);
+            int year = exist.getOvertimeDate().getYear();
+            EmployeeLeaveBalance balance = leaveBalanceMapper.selectOne(
+                    Wrappers.<EmployeeLeaveBalance>lambdaQuery()
+                            .eq(EmployeeLeaveBalance::getEmployeeId, exist.getEmployeeId())
+                            .eq(EmployeeLeaveBalance::getYear, year)
+                            .eq(EmployeeLeaveBalance::getLeaveType, 7));
+            if (balance != null) {
+                balance.setTotalDays(balance.getTotalDays().add(compDelta));
+                balance.setRemainingDays(balance.getRemainingDays().add(compDelta));
+                leaveBalanceMapper.updateById(balance);
             }
         }
 
-        log.info("HR 更新了加班记录 (id={}), 原{}.0h → {}.0h", id, oldHours, exist.getHours());
+        log.info("HR 更新了加班记录 (id={}), 原{}h → {}h", id, oldHours, newHours);
 
         OvertimeRecordVO vo = new OvertimeRecordVO();
         BeanUtils.copyProperties(exist, vo);
@@ -147,6 +151,9 @@ public class OvertimeRecordServiceImpl implements OvertimeRecordService {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "加班记录不存在");
         }
 
+        BigDecimal hours = calcHours(exist.getStartTime(), exist.getEndTime());
+        BigDecimal compDays = hoursToDays(hours);
+
         int year = exist.getOvertimeDate().getYear();
         EmployeeLeaveBalance balance = leaveBalanceMapper.selectOne(
                 Wrappers.<EmployeeLeaveBalance>lambdaQuery()
@@ -154,17 +161,17 @@ public class OvertimeRecordServiceImpl implements OvertimeRecordService {
                         .eq(EmployeeLeaveBalance::getYear, year)
                         .eq(EmployeeLeaveBalance::getLeaveType, 7));
         if (balance != null) {
-            BigDecimal newRemaining = balance.getRemainingDays().subtract(exist.getHours());
+            BigDecimal newRemaining = balance.getRemainingDays().subtract(compDays);
             if (newRemaining.compareTo(BigDecimal.ZERO) < 0) {
                 throw new BusinessException(ErrorCode.OPERATION_ERROR, "该加班记录对应的调休已被使用，无法删除");
             }
-            balance.setTotalDays(balance.getTotalDays().subtract(exist.getHours()));
+            balance.setTotalDays(balance.getTotalDays().subtract(compDays));
             balance.setRemainingDays(newRemaining);
             leaveBalanceMapper.updateById(balance);
         }
 
         overtimeRecordMapper.deleteById(id);
-        log.info("HR 删除了加班记录 (id={}), 员工={}, 扣减调休{}.0h", id, exist.getEmployeeId(), exist.getHours());
+        log.info("HR 删除了加班记录 (id={}), 员工={}, 扣减调休{}h", id, exist.getEmployeeId(), hours);
     }
 
     @Override
@@ -197,6 +204,24 @@ public class OvertimeRecordServiceImpl implements OvertimeRecordService {
         Page<OvertimeRecordListVO> result = new Page<>(page, size, resultPage.getTotal());
         result.setRecords(voList);
         return result;
+    }
+
+    // ==================== 工具 ====================
+
+    /**
+     * 根据起止时间计算小时数，精度 0.1h
+     */
+    private BigDecimal calcHours(LocalDateTime start, LocalDateTime end) {
+        if (start == null || end == null) return BigDecimal.ZERO;
+        long minutes = Duration.between(start, end).toMinutes();
+        return BigDecimal.valueOf(minutes).divide(BigDecimal.valueOf(60), 1, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * 小时 → 天（8h = 1天），精度 0.1 天
+     */
+    private BigDecimal hoursToDays(BigDecimal hours) {
+        return hours.divide(BigDecimal.valueOf(8), 1, RoundingMode.HALF_UP);
     }
 
     private Map<Long, String> loadEmpNames(Set<Long> empIds) {

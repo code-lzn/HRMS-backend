@@ -43,6 +43,8 @@ public class AttendanceGroupVO implements Serializable {
 
     private String coreEndTime;
 
+    private java.math.BigDecimal workHours;
+
     /**
      * 适用规则列表
      */

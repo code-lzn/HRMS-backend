@@ -34,7 +34,7 @@ public class OvertimeRecordController {
      * GET /api/overtime-records — 查询加班记录列表（分页，仅HR）
      */
     @GetMapping
-    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE,UserConstant.ADMIN_ROLE})
     public BaseResponse<Page<OvertimeRecordListVO>> queryRecords(
             @RequestParam(required = false) Long employeeId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
@@ -52,9 +52,9 @@ public class OvertimeRecordController {
      * POST /api/overtime-records — 创建加班记录（自动 1:1 转入调休余额）
      */
     @PostMapping
-    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE,UserConstant.ADMIN_ROLE})
     public BaseResponse<OvertimeRecordVO> createOvertimeRecord(@Valid @RequestBody OvertimeRecordCreateDTO dto) {
-        log.info("{} 创建加班记录, employeeId={}, hours={}", UserContext.getCurrentUser(), dto.getEmployeeId(), dto.getHours());
+        log.info("{} 创建加班记录, employeeId={}, startTime={}, endTime={}", UserContext.getCurrentUser(), dto.getEmployeeId(), dto.getStartTime(), dto.getEndTime());
         OvertimeRecordVO vo = overtimeRecordService.createOvertimeRecord(dto);
         return ResultUtils.success(vo);
     }
@@ -63,7 +63,7 @@ public class OvertimeRecordController {
      * PUT /api/overtime-records/{id} — 编辑加班记录（差额调整调休余额）
      */
     @PutMapping("/{id}")
-    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE,UserConstant.ADMIN_ROLE})
     public BaseResponse<OvertimeRecordVO> updateOvertimeRecord(@PathVariable Long id,
                                                                 @Valid @RequestBody OvertimeRecordUpdateDTO dto) {
         log.info("{} 更新加班记录, id={}", UserContext.getCurrentUser(), id);
@@ -75,7 +75,7 @@ public class OvertimeRecordController {
      * DELETE /api/overtime-records/{id} — 删除加班记录（扣减对应调休余额，已使用则拒绝）
      */
     @DeleteMapping("/{id}")
-    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE,UserConstant.ADMIN_ROLE})
     public BaseResponse<Void> deleteOvertimeRecord(@PathVariable Long id) {
         log.info("{} 删除加班记录, id={}", UserContext.getCurrentUser(), id);
         overtimeRecordService.deleteOvertimeRecord(id);

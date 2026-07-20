@@ -13,6 +13,11 @@ import java.time.LocalDate;
 public interface LeaveService {
 
     /**
+     * 保存请假草稿（不做校验，状态=草稿）
+     */
+    LeaveRequestVO saveDraft(LeaveRequestSubmitDTO dto);
+
+    /**
      * 提交请假申请
      */
     LeaveRequestVO submitLeaveRequest(LeaveRequestSubmitDTO dto);

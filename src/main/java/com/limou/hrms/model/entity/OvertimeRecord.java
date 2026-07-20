@@ -23,8 +23,6 @@ public class OvertimeRecord implements Serializable {
 
     private LocalDateTime endTime;
 
-    private BigDecimal hours;
-
     private Integer isUsed;
 
     private LocalDate expireDate;
