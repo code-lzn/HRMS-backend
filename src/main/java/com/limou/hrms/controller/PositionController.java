@@ -48,7 +48,7 @@ public class PositionController {
      * GET /api/positions — 查询职位列表（分页 + 模糊搜索）
      */
     @GetMapping
-    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.DEPT_HEAD_ROLE})
     public BaseResponse<Page<PositionVO>> getPositionList(PositionQueryRequest queryReq) {
         log.info("{} 查询职位列表, keyword={}", UserContext.getCurrentUser(), queryReq.getKeyword());
         Page<PositionVO> page = positionService.getPositionList(queryReq);

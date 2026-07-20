@@ -5,6 +5,8 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.limou.hrms.common.ErrorCode;
+import com.limou.hrms.constant.DataScopeContext;
+import com.limou.hrms.constant.DataScopeEnum;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.mapper.EmployeeMapper;
 import com.limou.hrms.mapper.EmployeeWorkInfoMapper;
@@ -44,6 +46,8 @@ public class PositionServiceImpl extends ServiceImpl<PositionMapper, Position> i
     private final EmployeeMapper employeeMapper;
 
     private final EmployeeWorkInfoMapper employeeWorkInfoMapper;
+
+    private final DataScopeContext dataScopeContext;
 
     // ==================== 创建职位 ====================
 
@@ -155,6 +159,21 @@ public class PositionServiceImpl extends ServiceImpl<PositionMapper, Position> i
         if (queryReq.getDepartmentId() != null) {
             query.eq(Position::getDepartmentId, queryReq.getDepartmentId());
         }
+
+        // 部门主管数据权限：只能看管辖部门的职位 + 全公司通用职位
+        DataScopeEnum scope = dataScopeContext.canManageOrganization();
+        if (scope == DataScopeEnum.DEPT) {
+            Set<Long> managedDeptIds = dataScopeContext.getManagedDepartmentIds();
+            if (managedDeptIds == null || managedDeptIds.isEmpty()) {
+                query.isNull(Position::getDepartmentId); // 只看全公司通用
+            } else {
+                query.and(w -> w.in(Position::getDepartmentId, managedDeptIds)
+                        .or().isNull(Position::getDepartmentId));
+            }
+        } else if (scope == DataScopeEnum.NONE) {
+            return new Page<>(queryReq.getCurrent(), queryReq.getPageSize(), 0);
+        }
+
         query.orderByAsc(Position::getSequence, Position::getId);
 
         Page<Position> page = this.page(
