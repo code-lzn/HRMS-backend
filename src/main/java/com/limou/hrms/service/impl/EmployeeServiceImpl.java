@@ -82,18 +82,7 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
             return new Page<>(request.getPage(), request.getSize(), 0);
         }
 
-        LambdaQueryWrapper<Employee> wrapper = new LambdaQueryWrapper<Employee>()
-                .and(StringUtils.hasText(request.getKeyword()),
-                        w -> w.like(Employee::getEmployeeName, request.getKeyword())
-                             .or().like(Employee::getEmployeeNo, request.getKeyword())
-                             .or().like(Employee::getPhone, request.getKeyword()))
-                .in(isNotEmpty(request.getDepartmentIds()), Employee::getDepartmentId, request.getDepartmentIds())
-                .in(isNotEmpty(request.getPositionIds()), Employee::getPositionId, request.getPositionIds())
-                .in(isNotEmpty(request.getStatuses()), Employee::getStatus, request.getStatuses())
-                .in(isNotEmpty(request.getJobLevels()), Employee::getJobLevel, request.getJobLevels())
-                .ge(request.getHireDateStart() != null, Employee::getHireDate, request.getHireDateStart())
-                .le(request.getHireDateEnd() != null, Employee::getHireDate, request.getHireDateEnd())
-                .last("ORDER BY FIELD(status, 2, 1, 3, 4), createTime DESC");
+        LambdaQueryWrapper<Employee> wrapper = buildEmployeeQueryWrapper(request);
 
         // DEPARTMENT(3)：按可见部门过滤
         if (dataScope == DataScopeEnum.DEPARTMENT.getCode()) {
@@ -120,6 +109,62 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
             return vo;
         }).collect(Collectors.toList()));
         return voPage;
+    }
+
+    @Override
+    public List<EmployeeExcelVO> exportEmployees(EmployeeQueryRequest request, Long userId) {
+        Integer dataScope = permissionService.getUserDataScope(userId);
+
+        // SELF(5)：普通员工，无导出权限
+        if (dataScope == DataScopeEnum.SELF.getCode()) {
+            return Collections.emptyList();
+        }
+
+        LambdaQueryWrapper<Employee> wrapper = buildEmployeeQueryWrapper(request);
+
+        // DEPARTMENT(3)：按可见部门过滤
+        if (dataScope == DataScopeEnum.DEPARTMENT.getCode()) {
+            List<Long> visibleDeptIds = departmentService.getVisibleDeptIds(userId);
+            if (visibleDeptIds.isEmpty()) {
+                return Collections.emptyList();
+            }
+            wrapper.in(Employee::getDepartmentId, visibleDeptIds);
+        }
+
+        List<Employee> list = this.list(wrapper);
+        return list.stream().map(e -> {
+            EmployeeExcelVO vo = new EmployeeExcelVO();
+            vo.setEmployeeNo(e.getEmployeeNo());
+            vo.setEmployeeName(e.getEmployeeName());
+            vo.setGenderDesc(e.getGender() != null && e.getGender() == 1 ? "男" : "女");
+            vo.setPhone(e.getPhone());
+            vo.setEmail(e.getEmail());
+            vo.setDepartmentName(getDeptName(e.getDepartmentId()));
+            vo.setPositionName(getPosName(e.getPositionId()));
+            vo.setJobLevel(e.getJobLevel());
+            vo.setEmploymentTypeDesc(EmploymentType.getDesc(e.getEmploymentType()));
+            vo.setStatusDesc(EmployeeStatus.getDesc(e.getStatus()));
+            vo.setHireDate(e.getHireDate());
+            return vo;
+        }).collect(Collectors.toList());
+    }
+
+    /**
+     * 构建员工查询的公共条件（复用：列表查询 / 导出）
+     */
+    private LambdaQueryWrapper<Employee> buildEmployeeQueryWrapper(EmployeeQueryRequest request) {
+        return new LambdaQueryWrapper<Employee>()
+                .and(StringUtils.hasText(request.getKeyword()),
+                        w -> w.like(Employee::getEmployeeName, request.getKeyword())
+                             .or().like(Employee::getEmployeeNo, request.getKeyword())
+                             .or().like(Employee::getPhone, request.getKeyword()))
+                .in(isNotEmpty(request.getDepartmentIds()), Employee::getDepartmentId, request.getDepartmentIds())
+                .in(isNotEmpty(request.getPositionIds()), Employee::getPositionId, request.getPositionIds())
+                .in(isNotEmpty(request.getStatuses()), Employee::getStatus, request.getStatuses())
+                .in(isNotEmpty(request.getJobLevels()), Employee::getJobLevel, request.getJobLevels())
+                .ge(request.getHireDateStart() != null, Employee::getHireDate, request.getHireDateStart())
+                .le(request.getHireDateEnd() != null, Employee::getHireDate, request.getHireDateEnd())
+                .last("ORDER BY FIELD(status, 2, 1, 3, 4), createTime DESC");
     }
 
     @Override
