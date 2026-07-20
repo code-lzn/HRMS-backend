@@ -16,7 +16,7 @@ import lombok.Data;
 @Data
 public class SalaryBatch implements Serializable {
 
-    @TableId(type = IdType.ASSIGN_ID)
+    @TableId(type = IdType.AUTO)
     private Long id;
 
     /**

@@ -209,6 +209,22 @@ public class SalaryAccountServiceImpl extends ServiceImpl<SalaryAccountMapper, S
     private SalaryAccountVO toVO(SalaryAccount account) {
         SalaryAccountVO vo = new SalaryAccountVO();
         BeanUtils.copyProperties(account, vo);
+        // 清除 BeanUtils 的 String 拷贝，手动处理 scopeIds
+        vo.setScopeIds(null);
+        if (StringUtils.isNotBlank(account.getScopeIds())) {
+            String raw = account.getScopeIds().trim();
+            if (raw.startsWith("[")) {
+                // JSON 格式: "[1,2,3]"
+                vo.setScopeIds(JSONUtil.toList(raw, Long.class));
+            } else {
+                // 逗号分隔格式: "1,2,3"
+                vo.setScopeIds(java.util.Arrays.stream(raw.split(","))
+                        .map(String::trim)
+                        .filter(s -> !s.isEmpty())
+                        .map(Long::parseLong)
+                        .collect(java.util.stream.Collectors.toList()));
+            }
+        }
         ScopeTypeEnum scopeType = ScopeTypeEnum.fromValue(account.getScopeType());
         vo.setScopeTypeLabel(scopeType != null ? scopeType.getLabel() : "");
         vo.setItems(getSalaryItems(account.getId()));

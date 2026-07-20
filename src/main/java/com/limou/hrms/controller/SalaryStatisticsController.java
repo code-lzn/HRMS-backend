@@ -30,6 +30,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -90,20 +91,16 @@ public class SalaryStatisticsController {
 
     @GetMapping("/department-distribution")
     @AuthCheck(mustRole = {UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE, UserConstant.DEPT_HEAD_ROLE})
-    public BaseResponse<List<Map<String, Object>>> departmentDistribution() {
-        // 查找最新已通过/已发放的批次
-        QueryWrapper<SalaryBatch> batchWrapper = new QueryWrapper<>();
-        batchWrapper.in("status", BatchStatusEnum.APPROVED.getValue(), BatchStatusEnum.PAID.getValue())
-                .orderByDesc("salary_month")
-                .last("LIMIT 1");
-        SalaryBatch latestBatch = salaryBatchMapper.selectOne(batchWrapper);
-        if (latestBatch == null) {
+    public BaseResponse<List<Map<String, Object>>> departmentDistribution(
+            @RequestParam(required = false) String salaryMonth) {
+        SalaryBatch targetBatch = getTargetBatch(salaryMonth);
+        if (targetBatch == null) {
             return ResultUtils.success(new ArrayList<>());
         }
 
         // 查询该批次所有明细
         QueryWrapper<SalaryDetail> detailWrapper = new QueryWrapper<>();
-        detailWrapper.eq("batch_id", latestBatch.getId());
+        detailWrapper.eq("batch_id", targetBatch.getId());
         List<SalaryDetail> details = salaryDetailMapper.selectList(detailWrapper);
 
         // 加载所有部门
@@ -136,20 +133,16 @@ public class SalaryStatisticsController {
 
     @GetMapping("/composition")
     @AuthCheck(mustRole = {UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE})
-    public BaseResponse<List<Map<String, Object>>> composition() {
-        // 查找最新已通过/已发放的批次
-        QueryWrapper<SalaryBatch> batchWrapper = new QueryWrapper<>();
-        batchWrapper.in("status", BatchStatusEnum.APPROVED.getValue(), BatchStatusEnum.PAID.getValue())
-                .orderByDesc("salary_month")
-                .last("LIMIT 1");
-        SalaryBatch latestBatch = salaryBatchMapper.selectOne(batchWrapper);
-        if (latestBatch == null) {
+    public BaseResponse<List<Map<String, Object>>> composition(
+            @RequestParam(required = false) String salaryMonth) {
+        SalaryBatch targetBatch = getTargetBatch(salaryMonth);
+        if (targetBatch == null) {
             return ResultUtils.success(new ArrayList<>());
         }
 
         // 查询该批次所有明细
         QueryWrapper<SalaryDetail> detailWrapper = new QueryWrapper<>();
-        detailWrapper.eq("batch_id", latestBatch.getId());
+        detailWrapper.eq("batch_id", targetBatch.getId());
         List<SalaryDetail> details = salaryDetailMapper.selectList(detailWrapper);
 
         // 汇总各工资项目金额（按名称归并）
@@ -185,20 +178,16 @@ public class SalaryStatisticsController {
 
     @GetMapping("/variation-distribution")
     @AuthCheck(mustRole = {UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE})
-    public BaseResponse<List<Map<String, Object>>> variationDistribution() {
-        // 查找最新已通过/已发放的批次
-        QueryWrapper<SalaryBatch> batchWrapper = new QueryWrapper<>();
-        batchWrapper.in("status", BatchStatusEnum.APPROVED.getValue(), BatchStatusEnum.PAID.getValue())
-                .orderByDesc("salary_month")
-                .last("LIMIT 1");
-        SalaryBatch latestBatch = salaryBatchMapper.selectOne(batchWrapper);
-        if (latestBatch == null) {
+    public BaseResponse<List<Map<String, Object>>> variationDistribution(
+            @RequestParam(required = false) String salaryMonth) {
+        SalaryBatch targetBatch = getTargetBatch(salaryMonth);
+        if (targetBatch == null) {
             return ResultUtils.success(new ArrayList<>());
         }
 
         // 查询该批次所有明细
         QueryWrapper<SalaryDetail> detailWrapper = new QueryWrapper<>();
-        detailWrapper.eq("batch_id", latestBatch.getId());
+        detailWrapper.eq("batch_id", targetBatch.getId());
         List<SalaryDetail> details = salaryDetailMapper.selectList(detailWrapper);
 
         // 按实发工资区间分布统计
@@ -231,5 +220,37 @@ public class SalaryStatisticsController {
             data.add(item);
         }
         return ResultUtils.success(data);
+    }
+
+    // ==================== 辅助方法 ====================
+
+    /**
+     * 获取目标批次：指定月份或最新已通过/已发放批次
+     */
+    private SalaryBatch getTargetBatch(String salaryMonth) {
+        QueryWrapper<SalaryBatch> wrapper = new QueryWrapper<>();
+        wrapper.in("status", BatchStatusEnum.APPROVED.getValue(), BatchStatusEnum.PAID.getValue());
+        if (StringUtils.isNotBlank(salaryMonth)) {
+            wrapper.eq("salary_month", salaryMonth);
+        }
+        wrapper.orderByDesc("salary_month").last("LIMIT 1");
+        return salaryBatchMapper.selectOne(wrapper);
+    }
+
+    /**
+     * 获取所有可统计的月份列表（已通过/已发放的批次月份）
+     */
+    @GetMapping("/available-months")
+    @AuthCheck(mustRole = {UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE})
+    public BaseResponse<List<String>> availableMonths() {
+        QueryWrapper<SalaryBatch> wrapper = new QueryWrapper<>();
+        wrapper.in("status", BatchStatusEnum.APPROVED.getValue(), BatchStatusEnum.PAID.getValue())
+                .orderByDesc("salary_month");
+        wrapper.select("DISTINCT salary_month");
+        List<SalaryBatch> batches = salaryBatchMapper.selectList(wrapper);
+        List<String> months = batches.stream()
+                .map(SalaryBatch::getSalaryMonth)
+                .collect(Collectors.toList());
+        return ResultUtils.success(months);
     }
 }
