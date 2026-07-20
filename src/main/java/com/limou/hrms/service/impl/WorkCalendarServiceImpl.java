@@ -1,6 +1,7 @@
 package com.limou.hrms.service.impl;
 
-import cn.hutool.http.HttpUtil;
+import cn.hutool.http.HttpRequest;
+import cn.hutool.http.HttpResponse;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -122,11 +123,21 @@ public class WorkCalendarServiceImpl implements WorkCalendarService {
     public int syncFromExternal(int year) {
         String url = HOLIDAY_API + "?year=" + year + "&holiday_type=legal";
         String respBody;
-        try {
-            respBody = HttpUtil.get(url, 10000);
+        try (HttpResponse response = HttpRequest.get(url)
+                .setConnectionTimeout(15000)
+                .setReadTimeout(30000)
+                .execute()) {
+            if (response.getStatus() != 200) {
+                throw new BusinessException(ErrorCode.SYSTEM_ERROR,
+                        "节假日服务返回异常状态码 " + response.getStatus());
+            }
+            respBody = response.body();
+        } catch (BusinessException e) {
+            throw e;
         } catch (Exception e) {
-            log.error("调用节假日 API 失败: {}", e.getMessage());
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "外部节假日服务不可用，请稍后重试");
+            log.error("调用节假日 API 失败: {}", e.toString());
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR,
+                    "外部节假日服务不可用：" + e.getMessage());
         }
 
         JsonNode root;
