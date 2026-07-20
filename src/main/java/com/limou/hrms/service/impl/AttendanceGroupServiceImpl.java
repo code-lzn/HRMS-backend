@@ -217,7 +217,15 @@ public class AttendanceGroupServiceImpl extends ServiceImpl<AttendanceGroupMappe
 
     private AttendanceGroupVO convertToVO(AttendanceGroup group) {
         AttendanceGroupVO vo = new AttendanceGroupVO();
-        BeanUtils.copyProperties(group, vo);
+        BeanUtils.copyProperties(group, vo, "workStartTime", "workEndTime",
+                "lunchStartTime", "lunchEndTime", "flexibleStart", "flexibleEnd");
+
+        vo.setWorkStartTime(formatTime(group.getWorkStartTime()));
+        vo.setWorkEndTime(formatTime(group.getWorkEndTime()));
+        vo.setLunchStartTime(formatTime(group.getLunchStartTime()));
+        vo.setLunchEndTime(formatTime(group.getLunchEndTime()));
+        vo.setFlexibleStart(formatTime(group.getFlexibleStart()));
+        vo.setFlexibleEnd(formatTime(group.getFlexibleEnd()));
 
         vo.setShiftTypeText(getShiftTypeText(group.getShiftType()));
         vo.setStatusText(Integer.valueOf(1).equals(group.getStatus()) ? "启用" : "禁用");
@@ -248,6 +256,10 @@ public class AttendanceGroupServiceImpl extends ServiceImpl<AttendanceGroupMappe
         }
 
         return vo;
+    }
+
+    private String formatTime(Date date) {
+        return date != null ? DateUtil.format(date, "HH:mm") : null;
     }
 
     private String getShiftTypeText(Integer shiftType) {

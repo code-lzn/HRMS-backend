@@ -40,6 +40,16 @@ public class AttendanceScheduledTask {
         } catch (Exception e) {
             log.error("生成当日考勤记录失败 date={}", today, e);
         }
+
+        // 修正已生成记录中因考勤规则不同而被误标为迟到的记录
+        try {
+            int corrected = attendanceService.correctTodayLateStatus();
+            if (corrected > 0) {
+                log.info("当日考勤记录迟到修正完成, 修正 {} 条", corrected);
+            }
+        } catch (Exception e) {
+            log.error("当日考勤记录迟到修正失败 date={}", today, e);
+        }
     }
 
     /**

@@ -17,17 +17,17 @@ public class AttendanceGroupVO implements Serializable {
 
     private String shiftTypeText;
 
-    private Date workStartTime;
+    private String workStartTime;
 
-    private Date workEndTime;
+    private String workEndTime;
 
-    private Date lunchStartTime;
+    private String lunchStartTime;
 
-    private Date lunchEndTime;
+    private String lunchEndTime;
 
-    private Date flexibleStart;
+    private String flexibleStart;
 
-    private Date flexibleEnd;
+    private String flexibleEnd;
 
     private Integer lateThreshold;
 

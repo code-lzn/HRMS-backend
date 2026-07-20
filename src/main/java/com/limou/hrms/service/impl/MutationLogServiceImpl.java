@@ -10,8 +10,7 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -30,6 +29,8 @@ public class MutationLogServiceImpl implements MutationLogService {
     @Resource
     private ApprovalDetailMapper approvalDetailMapper;
     @Resource
+    private ApprovalRecordMapper approvalRecordMapper;
+    @Resource
     private EmployeeService employeeService;
 
     @Override
@@ -39,12 +40,49 @@ public class MutationLogServiceImpl implements MutationLogService {
             return new ArrayList<>();
         }
 
-        List<EmpMutationLog> logs = empMutationLogMapper.selectList(
+        Set<Long> logIds = new LinkedHashSet<>();
+
+        // 1. 员工作为异动当事人
+        List<EmpMutationLog> ownLogs = empMutationLogMapper.selectList(
                 new LambdaQueryWrapper<EmpMutationLog>()
-                        .eq(EmpMutationLog::getEmployeeId, emp.getId())
+                        .eq(EmpMutationLog::getEmployeeId, emp.getId()));
+        ownLogs.forEach(log -> logIds.add(log.getId()));
+
+        // 2. 员工作为发起人（HR）
+        List<EmpMutationLog> operatorLogs = empMutationLogMapper.selectList(
+                new LambdaQueryWrapper<EmpMutationLog>()
+                        .eq(EmpMutationLog::getOperatorId, emp.getId()));
+        operatorLogs.forEach(log -> logIds.add(log.getId()));
+
+        // 3. 员工作为审批人
+        List<ApprovalDetail> approverDetails = approvalDetailMapper.selectList(
+                new LambdaQueryWrapper<ApprovalDetail>()
+                        .eq(ApprovalDetail::getApproverId, emp.getId()));
+        if (!approverDetails.isEmpty()) {
+            List<Long> recordIds = approverDetails.stream()
+                    .map(ApprovalDetail::getRecordId).distinct().collect(Collectors.toList());
+            List<ApprovalRecord> approvalRecords = approvalRecordMapper.selectList(
+                    new LambdaQueryWrapper<ApprovalRecord>()
+                            .in(ApprovalRecord::getId, recordIds));
+            for (ApprovalRecord ar : approvalRecords) {
+                List<EmpMutationLog> approverLogs = empMutationLogMapper.selectList(
+                        new LambdaQueryWrapper<EmpMutationLog>()
+                                .eq(EmpMutationLog::getBusinessType, ar.getBusinessType())
+                                .eq(EmpMutationLog::getBusinessId, ar.getBusinessId()));
+                approverLogs.forEach(log -> logIds.add(log.getId()));
+            }
+        }
+
+        if (logIds.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        List<EmpMutationLog> allLogs = empMutationLogMapper.selectList(
+                new LambdaQueryWrapper<EmpMutationLog>()
+                        .in(EmpMutationLog::getId, logIds)
                         .orderByDesc(EmpMutationLog::getCreateTime));
 
-        return logs.stream().map(log -> {
+        return allLogs.stream().map(log -> {
             MutationLogVO vo = new MutationLogVO();
             BeanUtils.copyProperties(log, vo);
 

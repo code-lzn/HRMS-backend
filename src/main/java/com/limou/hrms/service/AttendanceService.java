@@ -47,4 +47,10 @@ public interface AttendanceService extends IService<Attendance> {
      * 查询已完成的 ATTENDANCE_ANOMALY 审批，若拒绝则恢复考勤状态为正常
      */
     int syncAnomalyApprovals();
+
+    /**
+     * 修正今日因定时任务误标记为迟到的记录
+     * 仅处理未打卡的记录，按个人考勤规则重新判断
+     */
+    int correctTodayLateStatus();
 }

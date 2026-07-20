@@ -110,6 +110,10 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
         if (isPunchIn) {
             ThrowUtils.throwIf(record.getPunchInTime() != null,
                     ErrorCode.ATTENDANCE_DUPLICATE_ERROR);
+            int hour = DateUtil.hour(now, true);
+            int minute = DateUtil.minute(now);
+            ThrowUtils.throwIf(hour < 8,
+                    ErrorCode.ATTENDANCE_TIME_ERROR, "上班打卡时间不得早于8:00");
             record.setPunchInTime(now);
             record.setPunchInLocation(location);
 
@@ -117,17 +121,22 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
             boolean isAmLeave = record.getHalfDayLeave() != null && record.getHalfDayLeave() == 1;
             if (!isAmLeave) {
                 int workStartHour = AttendanceConstant.DEFAULT_WORK_START_HOUR;
+                int workStartMinute = 0;
                 int lateGrace = AttendanceConstant.LATE_GRACE_MINUTES;
                 if (group != null && group.getWorkStartTime() != null) {
                     workStartHour = DateUtil.hour(group.getWorkStartTime(), true);
+                    workStartMinute = DateUtil.minute(group.getWorkStartTime());
                     lateGrace = group.getLateThreshold() != null ? group.getLateThreshold() : lateGrace;
                 }
 
-                int hour = DateUtil.hour(now, true);
-                int minute = DateUtil.minute(now);
-                int thresholdMinutes = workStartHour * 60 + lateGrace;
+                int workStartTotal = workStartHour * 60 + workStartMinute;
+                int thresholdMinutes = workStartTotal + lateGrace;
                 if (hour * 60 + minute > thresholdMinutes) {
                     record.setStatus(AttendanceStatusEnum.LATE.getValue());
+                    record.setLateMinutes(hour * 60 + minute - workStartTotal);
+                } else if (Objects.equals(record.getStatus(), AttendanceStatusEnum.LATE.getValue())) {
+                    record.setStatus(AttendanceStatusEnum.NORMAL.getValue());
+                    record.setLateMinutes(null);
                 }
             }
         } else {
@@ -140,15 +149,18 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
             boolean isPmLeave = record.getHalfDayLeave() != null && record.getHalfDayLeave() == 2;
             if (!isPmLeave) {
                 int workEndHour = AttendanceConstant.DEFAULT_WORK_END_HOUR;
+                int workEndMinute = 0;
                 int earlyThreshold = AttendanceConstant.LATE_GRACE_MINUTES;
                 if (group != null && group.getWorkEndTime() != null) {
                     workEndHour = DateUtil.hour(group.getWorkEndTime(), true);
+                    workEndMinute = DateUtil.minute(group.getWorkEndTime());
                     earlyThreshold = group.getEarlyThreshold() != null ? group.getEarlyThreshold() : earlyThreshold;
                 }
 
                 int hour = DateUtil.hour(now, true);
                 int minute = DateUtil.minute(now);
-                int earlyMinutes = workEndHour * 60 - (hour * 60 + minute);
+                int workEndTotal = workEndHour * 60 + workEndMinute;
+                int earlyMinutes = workEndTotal - (hour * 60 + minute);
 
                 if (earlyMinutes > earlyThreshold) {
                     record.setEarlyMinutes(earlyMinutes);
@@ -161,6 +173,16 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
                         record.setStatus(AttendanceStatusEnum.NORMAL.getValue());
                     }
                 }
+            }
+        }
+
+        // 上下班打卡间隔不足2小时，直接算旷工
+        if (record.getPunchInTime() != null && record.getPunchOutTime() != null) {
+            long intervalMs = record.getPunchOutTime().getTime() - record.getPunchInTime().getTime();
+            if (intervalMs < 2 * 60 * 60 * 1000) {
+                record.setStatus(AttendanceStatusEnum.ABSENT.getValue());
+                record.setLateMinutes(null);
+                record.setEarlyMinutes(null);
             }
         }
 
@@ -194,11 +216,13 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
         vo.setMissingDays(0);
 
         Map<String, Integer> dailyStatus = new LinkedHashMap<>();
+        Map<String, String> dailyStatusText = new LinkedHashMap<>();
         List<String> makeupDates = new ArrayList<>();
 
         for (Attendance r : records) {
             String dateStr = DateUtil.formatDate(r.getAttendanceDate());
             dailyStatus.put(dateStr, r.getStatus());
+            dailyStatusText.put(dateStr, resolveStatusText(r));
 
             switch (r.getStatus()) {
                 case 0: vo.setNormalDays(vo.getNormalDays() + 1); break;
@@ -216,6 +240,7 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
         }
 
         vo.setDailyStatus(dailyStatus);
+        vo.setDailyStatusText(dailyStatusText);
         vo.setMakeupAvailableDates(makeupDates);
         return vo;
     }
@@ -294,11 +319,11 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
                     .map(Leave::getEmployeeId).collect(Collectors.toSet());
         }
 
-        int defaultStatus = isWorkDay ? AttendanceStatusEnum.LATE.getValue()
-                                      : AttendanceStatusEnum.REST.getValue();
-
         int created = 0;
         Date now = new Date();
+        int nowHour = DateUtil.hour(now, true);
+        int nowMinute = DateUtil.minute(now);
+        int nowTotalMinutes = nowHour * 60 + nowMinute;
 
         // 非工作日：修正已有记录中无打卡的非休息状态 → 休息
         if (!isWorkDay) {
@@ -321,7 +346,30 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
             record.setEmployeeId(emp.getId());
             record.setUserId(emp.getUserId());
             record.setAttendanceDate(targetDate);
-            record.setStatus(defaultStatus);
+
+            if (isWorkDay) {
+                // 根据员工个人考勤规则判断当前时刻是否已迟到
+                AttendanceGroup group = attendanceGroupService.getGroupByEmployeeId(emp.getId());
+                int workStartHour = AttendanceConstant.DEFAULT_WORK_START_HOUR;
+                int workStartMinute = 0;
+                int lateGrace = AttendanceConstant.LATE_GRACE_MINUTES;
+                if (group != null && group.getWorkStartTime() != null) {
+                    workStartHour = DateUtil.hour(group.getWorkStartTime(), true);
+                    workStartMinute = DateUtil.minute(group.getWorkStartTime());
+                    lateGrace = group.getLateThreshold() != null ? group.getLateThreshold() : lateGrace;
+                }
+                int workStartTotal = workStartHour * 60 + workStartMinute;
+                int thresholdMinutes = workStartTotal + lateGrace;
+                if (nowTotalMinutes > thresholdMinutes) {
+                    record.setStatus(AttendanceStatusEnum.LATE.getValue());
+                    record.setLateMinutes(nowTotalMinutes - workStartTotal);
+                } else {
+                    record.setStatus(AttendanceStatusEnum.NORMAL.getValue());
+                }
+            } else {
+                record.setStatus(AttendanceStatusEnum.REST.getValue());
+            }
+
             record.setCreateTime(now);
             record.setUpdateTime(now);
             this.save(record);
@@ -432,6 +480,47 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
         return synced;
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int correctTodayLateStatus() {
+        String today = DateUtil.formatDate(new Date());
+        Date now = new Date();
+        int nowHour = DateUtil.hour(now, true);
+        int nowMinute = DateUtil.minute(now);
+        int nowTotalMinutes = nowHour * 60 + nowMinute;
+
+        List<Attendance> records = this.lambdaQuery()
+                .eq(Attendance::getAttendanceDate, today)
+                .eq(Attendance::getStatus, AttendanceStatusEnum.LATE.getValue())
+                .isNull(Attendance::getPunchInTime)
+                .isNull(Attendance::getPunchOutTime)
+                .list();
+
+        int corrected = 0;
+        for (Attendance r : records) {
+            AttendanceGroup group = attendanceGroupService.getGroupByEmployeeId(r.getEmployeeId());
+            int workStartHour = AttendanceConstant.DEFAULT_WORK_START_HOUR;
+            int workStartMinute = 0;
+            int lateGrace = AttendanceConstant.LATE_GRACE_MINUTES;
+            if (group != null && group.getWorkStartTime() != null) {
+                workStartHour = DateUtil.hour(group.getWorkStartTime(), true);
+                workStartMinute = DateUtil.minute(group.getWorkStartTime());
+                lateGrace = group.getLateThreshold() != null ? group.getLateThreshold() : lateGrace;
+            }
+            int workStartTotal = workStartHour * 60 + workStartMinute;
+            int thresholdMinutes = workStartTotal + lateGrace;
+            if (nowTotalMinutes <= thresholdMinutes) {
+                r.setStatus(AttendanceStatusEnum.NORMAL.getValue());
+                r.setLateMinutes(null);
+                r.setUpdateTime(now);
+                this.updateById(r);
+                corrected++;
+            }
+        }
+
+        return corrected;
+    }
+
     /**
      * 为缺卡异常创建审批记录，上报部门负责人
      */
@@ -459,11 +548,19 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
 
     // ========== 私有方法 ==========
 
+    private String resolveStatusText(Attendance record) {
+        if (record.getLateMinutes() != null && record.getLateMinutes() > 0
+                && record.getEarlyMinutes() != null && record.getEarlyMinutes() > 0) {
+            return "迟到&早退";
+        }
+        AttendanceStatusEnum status = AttendanceStatusEnum.getEnumByValue(record.getStatus());
+        return status != null ? status.getText() : "未知";
+    }
+
     private AttendanceVO convertToVO(Attendance record, Employee emp) {
         AttendanceVO vo = new AttendanceVO();
         BeanUtils.copyProperties(record, vo);
-        AttendanceStatusEnum status = AttendanceStatusEnum.getEnumByValue(record.getStatus());
-        vo.setStatusText(status != null ? status.getText() : "未知");
+        vo.setStatusText(resolveStatusText(record));
         vo.setEmployeeName(emp != null ? emp.getEmployeeName() : null);
         if (emp != null && emp.getDepartmentId() != null) {
             Department dept = departmentMapper.selectById(emp.getDepartmentId());

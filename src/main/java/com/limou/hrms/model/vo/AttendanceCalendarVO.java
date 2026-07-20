@@ -28,6 +28,9 @@ public class AttendanceCalendarVO implements Serializable {
     /** 日期 -> 考勤状态 映射，key为'yyyy-MM-dd'，value为状态 0=正常 1=迟到 2=早退 3=缺卡 4=请假 5=旷工 */
     private Map<String, Integer> dailyStatus;
 
+    /** 日期 -> 状态文本 映射，key为'yyyy-MM-dd'，value为状态文本（如"迟到&早退"） */
+    private Map<String, String> dailyStatusText;
+
     /** 可补卡日期列表（缺卡的日期） */
     private java.util.List<String> makeupAvailableDates;
 

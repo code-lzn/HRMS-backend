@@ -135,4 +135,15 @@ public class AttendanceController {
         result.put("generated", count);
         return ResultUtils.success(result);
     }
+
+    /**
+     * 修正今日误标记为迟到的记录（按个人考勤规则重新判断）
+     */
+    @PostMapping("/correct-today-status")
+    public BaseResponse<Map<String, Object>> correctTodayLateStatus() {
+        int count = attendanceService.correctTodayLateStatus();
+        Map<String, Object> result = new HashMap<>();
+        result.put("corrected", count);
+        return ResultUtils.success(result);
+    }
 }
