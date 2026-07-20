@@ -15,6 +15,7 @@ import com.limou.hrms.model.entity.User;
 import com.limou.hrms.model.vo.EmpProfileVO;
 import com.limou.hrms.model.vo.EmployeeChangeLogVO;
 import com.limou.hrms.model.vo.EmployeeDetailVO;
+import com.limou.hrms.model.entity.Employee;
 import com.limou.hrms.model.vo.EmployeeExcelVO;
 import com.limou.hrms.model.vo.EmployeeVO;
 import com.limou.hrms.service.EmployeeService;
@@ -82,6 +83,14 @@ public class EmployeeController {
     }
 
     /**
+     * 获取可选为部门负责人的员工列表（角色：系统管理员/HR专员/部门主管）
+     */
+    @GetMapping("/manager-candidates")
+    public BaseResponse<List<Employee>> listManagerCandidates() {
+        return ResultUtils.success(employeeService.listManagerCandidates());
+    }
+
+    /**
      * 导出员工列表为 Excel
      */
     @GetMapping("/export")
@@ -119,9 +128,10 @@ public class EmployeeController {
      * 更新员工
      */
     @PutMapping("/update")
-    public BaseResponse<Boolean> updateEmployee(@RequestBody EmployeeUpdateRequest request) {
+    public BaseResponse<Boolean> updateEmployee(@RequestBody EmployeeUpdateRequest request, HttpServletRequest httpRequest) {
         if (request == null || request.getId() == null) throw new BusinessException(ErrorCode.PARAMS_ERROR);
-        employeeService.updateEmployee(request);
+        User loginUser = userService.getLoginUser(httpRequest);
+        employeeService.updateEmployee(request, loginUser.getId());
         return ResultUtils.success(true);
     }
     /**

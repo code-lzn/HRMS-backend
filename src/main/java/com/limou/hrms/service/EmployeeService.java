@@ -25,7 +25,7 @@ public interface EmployeeService extends IService<Employee> {
     Long addEmployee(EmployeeAddRequest request);
 
     /** 更新员工 */
-    void updateEmployee(EmployeeUpdateRequest request);
+    void updateEmployee(EmployeeUpdateRequest request, Long userId);
 
     /** 删除员工（软删除） */
     void deleteEmployee(Long id);
@@ -49,6 +49,9 @@ public interface EmployeeService extends IService<Employee> {
 
     /** 通过用户ID获取员工 */
     Employee getByUserId(Long userId);
+
+    /** 获取可选为部门负责人的员工列表（角色为系统管理员/HR专员/部门主管） */
+    List<Employee> listManagerCandidates();
 
     // ==================== 我的档案（新版） ====================
 

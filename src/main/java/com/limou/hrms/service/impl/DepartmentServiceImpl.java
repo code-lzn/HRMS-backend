@@ -9,24 +9,25 @@ import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.exception.ThrowUtils;
 import com.limou.hrms.mapper.DepartmentMapper;
 import com.limou.hrms.mapper.EmployeeMapper;
+import com.limou.hrms.mapper.RoleMapper;
+import com.limou.hrms.mapper.UserMapper;
 import com.limou.hrms.model.dto.department.DepartmentAddRequest;
 import com.limou.hrms.model.dto.department.DepartmentMergeRequest;
 import com.limou.hrms.model.dto.department.DepartmentUpdateRequest;
 import com.limou.hrms.model.entity.Department;
 import com.limou.hrms.model.entity.DepartmentMergeLog;
 import com.limou.hrms.model.entity.Employee;
+import com.limou.hrms.model.entity.Role;
+import com.limou.hrms.model.entity.User;
 import com.limou.hrms.model.vo.DepartmentMergeResultVO;
 import com.limou.hrms.model.vo.DepartmentTreeVO;
 import com.limou.hrms.service.DepartmentMergeLogService;
 import com.limou.hrms.service.DepartmentService;
-import com.limou.hrms.service.PermissionService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Lazy;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -41,15 +42,20 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
     private EmployeeMapper employeeMapper;
 
     @Resource
-    private DepartmentMergeLogService departmentMergeLogService;
+    private UserMapper userMapper;
 
-    @Autowired
-    @Lazy
-    private PermissionService permissionService;
+    @Resource
+    private RoleMapper roleMapper;
+
+    @Resource
+    private DepartmentMergeLogService departmentMergeLogService;
 
     @Override
     public List<DepartmentTreeVO> getDepartmentTree(Long userId) {
         List<Long> visibleIds = getVisibleDeptIds(userId);
+        log.info("数据权限调试: userId={}, dataScope={}, visibleIds={}",
+                userId, userId != null ? getDataScopeFromUser(userId) : "null",
+                visibleIds != null ? visibleIds.size() + "个部门" : "null(全部)");
         if (visibleIds != null && visibleIds.isEmpty()) {
             return Collections.emptyList();
         }
@@ -171,10 +177,9 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
         long nameCount = this.count(nameWrapper);
         ThrowUtils.throwIf(nameCount > 0, ErrorCode.OPERATION_ERROR, "同级部门名称 " + name + " 已存在");
 
-        // 4. 校验部门负责人是否存在
+        // 4. 校验部门负责人是否存在且角色合规
         if (request.getManagerId() != null) {
-            Employee manager = employeeMapper.selectById(request.getManagerId());
-            ThrowUtils.throwIf(manager == null, ErrorCode.NOT_FOUND_ERROR, "部门负责人ID " + request.getManagerId() + " 不存在");
+            validateManagerRole(request.getManagerId());
         }
 
         // 5. 创建部门
@@ -216,10 +221,9 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
         long nameCount = this.count(nameWrapper);
         ThrowUtils.throwIf(nameCount > 0, ErrorCode.OPERATION_ERROR, "同级部门名称 " + name + " 已存在");
 
-        // 校验部门负责人是否存在
+        // 校验部门负责人是否存在且角色合规
         if (request.getManagerId() != null) {
-            Employee manager = employeeMapper.selectById(request.getManagerId());
-            ThrowUtils.throwIf(manager == null, ErrorCode.NOT_FOUND_ERROR, "部门负责人ID " + request.getManagerId() + " 不存在");
+            validateManagerRole(request.getManagerId());
         }
 
         dept.setDeptName(name);
@@ -331,7 +335,7 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
 
     @Override
     public List<Long> getVisibleDeptIds(Long userId) {
-        Integer dataScope = permissionService.getUserDataScope(userId);
+        Integer dataScope = getDataScopeFromUser(userId);
 
         // SELF(5) 和 SALARY(4)：无权限查看组织架构
         if (dataScope == DataScopeEnum.SELF.getCode() ||
@@ -369,6 +373,36 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
         }
 
         return new ArrayList<>(visibleIds);
+    }
+
+    /** 允许担任部门负责人的角色ID：1=系统管理员 2=HR专员 3=部门主管 */
+    private static final Set<Long> MANAGER_ROLE_IDS = Set.of(1L, 2L, 3L);
+
+    /**
+     * 校验部门负责人：员工存在且其系统角色为系统管理员、HR专员或部门主管
+     */
+    private void validateManagerRole(Long managerId) {
+        Employee manager = employeeMapper.selectById(managerId);
+        ThrowUtils.throwIf(manager == null, ErrorCode.NOT_FOUND_ERROR, "部门负责人不存在");
+        if (manager.getUserId() != null) {
+            User managerUser = userMapper.selectById(manager.getUserId());
+            ThrowUtils.throwIf(managerUser == null || managerUser.getRoleId() == null
+                            || !MANAGER_ROLE_IDS.contains(managerUser.getRoleId()),
+                    ErrorCode.PARAMS_ERROR, "部门负责人必须是系统管理员、HR专员或部门主管");
+        }
+    }
+
+    /**
+     * 直接通过 Mapper 查用户角色 dataScope（不经过 PermissionService，避免循环依赖）
+     */
+    private Integer getDataScopeFromUser(Long userId) {
+        if (userId == null) return DataScopeEnum.SELF.getCode();
+        User user = userMapper.selectById(userId);
+        if (user == null || user.getRoleId() == null) return DataScopeEnum.SELF.getCode();
+        Role role = roleMapper.selectById(user.getRoleId());
+        if (role == null || role.getStatus() == null || role.getStatus() != 1 || role.getDataScope() == null)
+            return DataScopeEnum.SELF.getCode();
+        return role.getDataScope();
     }
 
     // ==================== 私有辅助方法 ====================

@@ -10,6 +10,8 @@
 | 2026-07-12 | 1.1 | 修订：API路径、校验规则、DB列名映射、技术栈、代码结构 | - |
 | 2026-07-13 | 1.2 | 修正员工状态枚举值、部门更新NPE保护、接口路径精简 | - |
 | 2026-07-14 | 1.3 | 枚举统一迁移至 model/enums、代码结构更新 | - |
+| 2026-07-16 | 1.4 | 新增数据权限过滤；所有查询接口按 dataScope 限制可见范围 | - |
+| 2026-07-20 | 1.5 | 更新 API 参数（新增 userId）；部门编辑支持 parentId；补充数据权限说明 | - |
 
 ## 项目背景
 
@@ -36,7 +38,7 @@
 |---|---|
 | 框架 | Spring Boot 2.7.2 |
 | ORM | MyBatis-Plus 3.5.2（逻辑删除：全局字段 `isDelete`） |
-| 数据库 | MySQL 8.0（下划线命名，`map-underscore-to-camel-case: false`） |
+| 数据库 | MySQL 8.0（驼峰列名，`map-underscore-to-camel-case: false`） |
 | 缓存 | Redis（Lettuce 客户端） |
 | 接口文档 | Knife4j（Swagger 仅保留 `@Api` + `@ApiOperation`，DTO/VO 无额外注解） |
 | Java | JDK 11（编译目标） |
@@ -52,31 +54,37 @@
 3. **部门人数统计**：实时统计该部门及下属部门在职员工数（在职 + 试用期）
 4. **职位管理**：定义职位名称、职位序列（M/P/S）、职级范围、默认试用期
 5. **职位序列职级对照**：管理序列 M1-M5、专业序列 P1-P10、支持序列 S1-S5
+6. **数据权限过滤**：按角色 dataScope 控制可见的部门范围和职位范围
 
 ### 功能模块树
 
 ```plain
 组织架构管理
 ├── 部门管理
-│   ├── 部门树查询
-│   ├── 部门详情查询（单独查询单个部门）
+│   ├── 部门树查询（按数据权限过滤）
+│   ├── 部门详情查询（单独查询单个部门，按数据权限校验）
 │   ├── 部门新增
-│   ├── 部门编辑
+│   ├── 部门编辑（含 parentId 修改）
 │   ├── 部门删除（校验：无下属部门 + 无在职员工）
 │   ├── 部门合并（含员工批量转移 + 子部门转移）
 │   └── 部门人数统计（含递归汇总）
-└── 职位管理
-    ├── 职位列表查询
-    ├── 职位新增
-    ├── 职位编辑
-    ├── 职位删除（校验：无在职员工引用）
-    └── 职位序列职级对照查询
+├── 职位管理
+│   ├── 职位列表查询（按数据权限过滤）
+│   ├── 职位新增
+│   ├── 职位编辑
+│   ├── 职位删除（校验：无在职员工引用）
+│   └── 职位序列职级对照查询
+└── 数据权限
+    ├── getVisibleDeptIds(userId) 按 dataScope 返回可见部门ID
+    ├── dataScope=1,2 → 全部可见
+    ├── dataScope=3 → 本部门及子部门
+    └── dataScope=4,5 → 无权限
 ```
 
 ## 数据库设计
 
-> 组织架构管理模块涉及的核心数据表。所有表使用下划线列名（snake_case），
-> Java 实体通过 `@TableField` 注解映射到驼峰字段名。
+> 组织架构管理模块涉及的核心数据表。所有表使用驼峰列名，
+> Java 实体通过字段直接映射。
 
 ### 1. 部门表 department
 
@@ -140,8 +148,6 @@ create index idx_sequence
     on position (sequence);
 ```
 
-
-
 ---
 
 ### 3. 部门合并日志表 department_merge_log
@@ -172,6 +178,20 @@ CREATE TABLE IF NOT EXISTS `department_merge_log` (
 主表存储列表查询核心字段（id, employeeName, employeeNo, phone, departmentId, positionId, status, gender, hireDate, employmentType 等），
 详情表 `employee_detail` 存储敏感/补充字段（idCard, birthday, contractType, baseSalary, bankAccount, emergencyContact 等），
 一对一通过 `employee_detail.employeeId` UNIQUE KEY 关联。
+
+---
+
+### 5. 角色表 role（数据权限）
+
+`role.dataScope` 字段控制数据可见范围：
+
+| dataScope | 含义 | 对应角色 |
+|-----------|------|---------|
+| 1 | 全量 | 系统管理员、HR |
+| 2 | 全部员工 | - |
+| 3 | 本部门及下属 | 部门管理员 |
+| 4 | 薪资相关 | 财务专员 |
+| 5 | 仅本人 | 普通员工 |
 
 ---
 
@@ -207,7 +227,13 @@ INSERT IGNORE INTO `position` (`id`, `name`, `sequence`, `department_id`, `level
 GET /api/departments/tree
 ```
 
-**请求参数**：无
+**权限说明**：后端从 session 获取当前登录用户，根据 dataScope 过滤可见部门。
+
+| dataScope | 可见部门 |
+|-----------|---------|
+| 1,2（系统管理员/HR） | 全部部门 |
+| 3（部门管理员） | 仅本部门及子部门 |
+| 4,5（财务专员/普通员工） | 空列表 |
 
 **响应格式**：
 
@@ -261,6 +287,8 @@ GET /api/departments/detail?id=7
 | **参数** | **类型** | **必填** | **描述** |
 | --- | --- | --- | --- |
 | id | Long | 是 | 部门ID |
+
+**权限说明**：按 dataScope 校验可见性，无权时返回"部门不存在"。
 
 **响应格式**：同部门树节点的 `data` 对象格式，`children` 为空数组。
 
@@ -325,6 +353,7 @@ Content-Type: application/json
 {
   "id": 7,
   "name": "技术部",
+  "parentId": 2,
   "managerId": 100,
   "sortOrder": 0,
   "description": "负责技术研发"
@@ -335,11 +364,12 @@ Content-Type: application/json
 | --- | --- | --- | --- |
 | id | Long | 是 | 部门ID（在请求体中） |
 | name | String | 是 | 部门名称，不能为空 |
+| parentId | Long | 否 | 上级部门ID，null=根部门；变更需校验目标部门存在、非自身及子孙 |
 | managerId | Long | 否 | 部门负责人ID，若填写必须真实存在 |
 | sortOrder | Integer | 是 | 排序序号 |
 | description | String | 否 | 部门描述 |
 
-> **说明**：部门编码和上级部门不支持直接修改。编码创建后锁定，上级部门变更需走合并流程。
+> **说明**：部门编码创建后锁定不可修改。
 
 **成功响应**：
 
@@ -364,7 +394,7 @@ Content-Type: application/json
 
 **校验规则**：
 - 有子部门时拒绝删除（提示"请先删除子部门"）
-- 该部门及子部门下有在职员工时拒绝删除（提示"请先转移员工至其他部门"）
+- 该部门及子部门下有在职员工时拒绝删除（`status IN (1,2)`，提示"请先转移员工至其他部门"）
 
 > 逻辑删除（`is_deleted = 1`），编码保留不回收。
 
@@ -433,7 +463,15 @@ GET /api/positions/list?sequence=2&departmentId=10
 | **参数** | **类型** | **必填** | **描述** |
 | --- | --- | --- | --- |
 | sequence | Integer | 否 | 职位序列过滤：1=M管理 2=P专业 3=S支持 |
-| departmentId | Long | 否 | 部门ID过滤，不传返回所有 |
+| departmentId | Long | 否 | 部门ID过滤，不传返回当前用户可见范围内的所有 |
+
+**权限说明**：按 dataScope 过滤可见部门内的职位 + 全局通用职位。
+
+| dataScope | 可见职位 |
+|-----------|---------|
+| 1,2 | 全部（可按 departmentId 参数过滤） |
+| 3 | 仅可见部门内的 + 全局通用职位 |
+| 4,5 | 空列表 |
 
 **响应格式**：
 
@@ -569,6 +607,8 @@ Content-Type: application/json
 GET /api/positions/sequences
 ```
 
+> 公共数据，所有人可见，无需权限过滤。
+
 **响应格式**：
 
 ```json
@@ -604,107 +644,84 @@ GET /api/positions/sequences
 
 ## API 汇总
 
-| # | 方法 | 路径 | 说明 |
-|---|---|---|---|
-| 1 | GET | `/api/departments/tree` | 获取部门树（全量，含递归人数） |
-| 2 | GET | `/api/departments/detail` | 查询单个部门详情 |
-| 3 | POST | `/api/departments/add` | 新增部门 |
-| 4 | PUT | `/api/departments/update` | 更新部门（id在请求体） |
-| 5 | POST | `/api/departments/delete` | 删除部门（id在请求体） |
-| 6 | POST | `/api/departments/merge` | 合并部门 |
-| 7 | GET | `/api/positions/list` | 获取职位列表 |
-| 8 | POST | `/api/positions/add` | 新增职位 |
-| 9 | PUT | `/api/positions/update` | 更新职位（id在请求体） |
-| 10 | POST | `/api/positions/delete` | 删除职位（id在请求体） |
-| 11 | GET | `/api/positions/sequences` | 获取序列职级对照 |
+| # | 方法 | 路径 | 说明 | 数据权限 |
+|---|---|---|---|---|
+| 1 | GET | `/api/departments/tree` | 获取部门树（全量，含递归人数） | ✅ 按 dataScope 过滤 |
+| 2 | GET | `/api/departments/detail` | 查询单个部门详情 | ✅ 按 dataScope 校验 |
+| 3 | POST | `/api/departments/add` | 新增部门 | 功能权限（@AuthCheck） |
+| 4 | PUT | `/api/departments/update` | 更新部门（id在请求体） | 功能权限（@AuthCheck） |
+| 5 | POST | `/api/departments/delete` | 删除部门（id在请求体） | 功能权限（@AuthCheck） |
+| 6 | POST | `/api/departments/merge` | 合并部门 | 功能权限（@AuthCheck） |
+| 7 | GET | `/api/positions/list` | 获取职位列表 | ✅ 按 dataScope 过滤 |
+| 8 | POST | `/api/positions/add` | 新增职位 | 功能权限（@AuthCheck） |
+| 9 | PUT | `/api/positions/update` | 更新职位（id在请求体） | 功能权限（@AuthCheck） |
+| 10 | POST | `/api/positions/delete` | 删除职位（id在请求体） | 功能权限（@AuthCheck） |
+| 11 | GET | `/api/positions/sequences` | 获取序列职级对照 | 公共数据 |
+
+## 数据权限设计
+
+### getVisibleDeptIds 方法
+
+```java
+List<Long> getVisibleDeptIds(Long userId)
+
+返回值：
+  null    → 不限制，全部可见（dataScope=1,2）
+  empty[] → 无权限（dataScope=4,5）
+  [id..]  → 仅这些部门可见（dataScope=3）
+```
+
+**dataScope=3 的可见范围计算**：
+1. 先找该员工管理的部门（`Department.managerId = Employee.id`）
+2. 以管理的部门为根，递归收集所有子部门
+3. 若该员工未管理任何部门，以其所属部门为根展开
+
+### 权限矩阵
+
+| 接口 | 系统管理员/HR | 部门管理员 | 财务专员 | 普通员工 |
+|------|:-----------:|:---------:|:-------:|:-------:|
+| 部门树/详情 | 全部 | 本部门及子部门 | 空 | 空 |
+| 职位列表 | 全部 | 可见部门内的 | 空 | 空 |
+| 序列职级对照 | 全部 | 全部 | 全部 | 全部 |
 
 ## 时序图
 
 > 以下时序图使用 PlantUML 绘制，可在 [PlantUML 在线编辑器](https://www.plantuml.com/plantuml) 中渲染。
 
-### 部门树查询
+### 部门树查询（含数据权限过滤）
 
 ```plantuml
 @startuml
 actor 前端
 participant "DepartmentController" as DC
 participant "DepartmentService" as DS
+participant "PermissionService" as PS
 participant "EmployeeMapper" as EM
 database "MySQL" as DB
 
 前端 -> DC: GET /api/departments/tree
-DC -> DS: getDepartmentTree()
-DS -> DB: SELECT * FROM department\nWHERE is_deleted=0\nORDER BY parent_id, sort_order
-DB --> DS: List<Department>
-DS -> DS: 内存中按 parentId 分组构建树
+DC -> DC: userService.getLoginUser(request)
+DC -> DS: getDepartmentTree(userId)
+DS -> PS: getUserDataScope(userId)
+PS --> DS: dataScope (1~5)
 
-loop 每个部门
-    DS -> DS: collectChildIds() 收集子孙部门ID
-    DS -> EM: countActiveByDeptIds(deptIds)
-    EM -> DB: SELECT COUNT(*) FROM employee\nWHERE is_deleted=0 AND status IN(1,2)\nAND department_id IN (...)
-    DB --> EM: count
-    EM --> DS: 员工数
+alt dataScope=4,5
+    DS --> DC: 空列表
+else dataScope=1,2
+    DS -> DB: SELECT * FROM department\nWHERE is_deleted=0
+else dataScope=3
+    DS -> DS: 查员工管理部门 → 递归收集子部门ID
+    DS -> DB: SELECT * FROM department\nWHERE id IN (visibleIds)
 end
 
-DS -> EM: selectBatchIds(managerIds)
-EM -> DB: SELECT * FROM employee WHERE id IN (...)
-DB --> EM: List<Employee>
-EM --> DS: 负责人姓名映射
-
+DB --> DS: List<Department>
+DS -> DS: 内存中按 parentId 分组构建树（过滤后的部门）
+DS -> EM: countActiveByDeptIds(子部门ID集)
+EM -> DB: SELECT COUNT(*) FROM employee\nWHERE status IN(1,2) AND department_id IN (...)
+DB --> EM: count
+EM --> DS: 员工数
 DS --> DC: List<DepartmentTreeVO>
 DC --> 前端: { code:0, data: [...] }
-@enduml
-```
-
-### 部门新增（含校验）
-
-```plantuml
-@startuml
-actor 前端
-participant "DepartmentController" as DC
-participant "DepartmentService" as DS
-participant "DepartmentMapper" as DM
-participant "EmployeeMapper" as EM
-database "MySQL" as DB
-
-前端 -> DC: POST /api/departments/add\n{name,code,parentId,managerId,...}
-DC -> DS: addDepartment(request)
-
-== 1. 校验编码唯一 ==
-DS -> DM: countByCodeIgnoreDelete(code)
-DM -> DB: SELECT COUNT(*) FROM department\nWHERE code=? (含已删除)
-DB --> DM: count
-DM --> DS: count
-DS -> DS: throwIf(count>0, "编码已存在")
-
-== 2. 校验上级部门存在 ==
-alt parentId != null
-    DS -> DB: SELECT * FROM department\nWHERE id=? AND is_deleted=0
-    DB --> DS: parentDept / null
-    DS -> DS: throwIf(null, "上级部门不存在")
-    DS -> DS: calculateDepth(parentId) 递归算层级
-    DS -> DS: throwIf(depth+1>5, "超最大层级")
-end
-
-== 3. 校验同级名称不重复 ==
-DS -> DB: SELECT COUNT(*) FROM department\nWHERE parent_id IS NULL/eq ?\nAND name=? AND is_deleted=0
-DB --> DS: count
-DS -> DS: throwIf(count>0, "同级名称重复")
-
-== 4. 校验负责人存在 ==
-alt managerId != null
-    DS -> EM: selectById(managerId)
-    EM -> DB: SELECT * FROM employee\nWHERE id=? AND is_deleted=0
-    DB --> EM: employee / null
-    EM --> DS: employee
-    DS -> DS: throwIf(null, "负责人不存在")
-end
-
-== 5. 创建部门 ==
-DS -> DB: INSERT INTO department (...)
-DB --> DS: ok
-DS --> DC: id
-DC --> 前端: { code:0, data:{id:15} }
 @enduml
 ```
 
@@ -761,139 +778,16 @@ DC --> 前端: { code:0, data:{transferredEmployees:12,transferredChildDepts:2} 
 @enduml
 ```
 
-### 部门删除（含校验）
-
-```plantuml
-@startuml
-actor 前端
-participant "DepartmentController" as DC
-participant "DepartmentService" as DS
-participant "EmployeeMapper" as EM
-database "MySQL" as DB
-
-前端 -> DC: POST /api/departments/delete\n{id}
-DC -> DS: deleteDepartment(id)
-
-== 1. 校验部门存在 ==
-DS -> DB: SELECT * FROM department\nWHERE id=? AND is_deleted=0
-DB --> DS: dept
-DS -> DS: throwIf(null, "部门不存在")
-
-== 2. 校验无子部门 ==
-DS -> DB: SELECT COUNT(*) FROM department\nWHERE parent_id=? AND is_deleted=0
-DB --> DS: childCount
-DS -> DS: throwIf(childCount>0, "请先删除子部门")
-
-== 3. 校验无在职员工 ==
-DS -> DS: collectChildDeptIds(id) 递归收集
-DS -> EM: countActiveByDeptIds(deptIds)
-EM -> DB: SELECT COUNT(*) FROM employee\nWHERE is_deleted=0 AND status IN(1,2)\nAND department_id IN (...)
-DB --> EM: count
-EM --> DS: employeeCount
-DS -> DS: throwIf(employeeCount>0, "请先转移员工")
-
-== 4. 软删除 ==
-DS -> DB: UPDATE department SET is_deleted=1\nWHERE id=?
-DB --> DS: ok
-DS --> DC: ok
-DC --> 前端: { code:0, data:true }
-@enduml
-```
-
-### 职位新增（含校验）
-
-```plantuml
-@startuml
-actor 前端
-participant "PositionController" as PC
-participant "PositionService" as PS
-participant "DepartmentMapper" as DM
-database "MySQL" as DB
-
-前端 -> PC: POST /api/positions/add\n{name,sequence,departmentId,levelMin,...}
-PC -> PS: addPosition(request)
-
-== 1. 校验名称不为空 ==
-PS -> PS: throwIf(name.isEmpty(), "名称不能为空")
-
-== 2. 校验序列有效性 ==
-PS -> PS: PositionSequence.fromCode(sequence)
-PS -> PS: throwIf(null, "无效序列")
-
-== 3. 校验职级在序列范围内 ==
-PS -> PS: seq.inRange(levelMin)
-PS -> PS: throwIf(!inRange, "职级下限超范围")
-PS -> PS: seq.inRange(levelMax)
-PS -> PS: throwIf(!inRange, "职级上限超范围")
-
-== 4. 校验下限 <= 上限 ==
-PS -> PS: levels.indexOf(levelMin) <= levels.indexOf(levelMax)
-PS -> PS: throwIf(minIdx>maxIdx, "下限不能高于上限")
-
-== 5. 校验所属部门存在 ==
-alt departmentId != null
-    PS -> DM: selectById(departmentId)
-    DM -> DB: SELECT * FROM department\nWHERE id=? AND is_deleted=0
-    DB --> DM: dept / null
-    DM --> PS: dept
-    PS -> PS: throwIf(null, "所属部门不存在")
-end
-
-== 6. 校验同序列+名称+部门唯一 ==
-PS -> DB: SELECT COUNT(*) FROM position\nWHERE sequence=? AND name=?\nAND department_id IS NULL/eq ?\nAND is_deleted=0
-DB --> PS: count
-PS -> PS: throwIf(count>0, "已存在相同职位")
-
-== 7. 创建职位 ==
-PS -> DB: INSERT INTO position (...)
-DB --> PS: ok
-PS --> PC: id
-PC --> 前端: { code:0, data:{id:6} }
-@enduml
-```
-
-### 职位删除（含校验）
-
-```plantuml
-@startuml
-actor 前端
-participant "PositionController" as PC
-participant "PositionService" as PS
-participant "EmployeeMapper" as EM
-database "MySQL" as DB
-
-前端 -> PC: POST /api/positions/delete\n{id}
-PC -> PS: deletePosition(id)
-
-== 1. 校验职位存在 ==
-PS -> DB: SELECT * FROM position\nWHERE id=? AND is_deleted=0
-DB --> PS: position
-PS -> PS: throwIf(null, "职位不存在")
-
-== 2. 校验无员工引用 ==
-PS -> EM: countActiveByPositionId(id)
-EM -> DB: SELECT COUNT(*) FROM employee\nWHERE is_deleted=0 AND status IN(1,2)\nAND position_id=?
-DB --> EM: count
-EM --> PS: employeeCount
-PS -> PS: throwIf(employeeCount>0, "该职位被N名员工引用")
-
-== 3. 软删除 ==
-PS -> DB: UPDATE position SET is_deleted=1\nWHERE id=?
-DB --> PS: ok
-PS --> PC: ok
-PC --> 前端: { code:0, data:true }
-@enduml
-```
-
 ## 关键技术设计
 
 ### 部门树查询方案
 
 1. `SELECT * FROM department WHERE isDeleted = 0 ORDER BY parentId, sortOrder`（MyBatis-Plus 自动追加 `isDeleted=0`）
 2. 内存中按 `parentId` 分组，递归构建树
-3. 部门人数：收集部门+所有子孙部门ID → `SELECT COUNT(*) FROM employee WHERE isDeleted = 0 AND status IN (1, 2) AND departmentId IN (...)`
-4. 负责人姓名：收集所有 `managerId` → 批量查 `employee` 表获取 `name`
-5. 孤儿子部门（parent 已删）：自动归入根层级，打印日志
+3. 受限角色（dataScope=3）：查询前先获取可见部门ID列表，过滤后再构建树
+4. 部门人数：收集部门+所有子孙部门ID → `SELECT COUNT(*) FROM employee WHERE status IN (1, 2) AND departmentId IN (...)`
+5. 负责人姓名：收集所有 `managerId` → 批量查 `employee` 表获取 `name`
+6. 孤儿子部门（parent 已删）：自动归入根层级，打印日志
 
 ### 部门层级深度校验
 
@@ -922,7 +816,7 @@ PC --> 前端: { code:0, data:true }
 |---|---|---|
 | 部门名称不为空 | add/update | `name.isEmpty()` 拒绝 |
 | 部门编码含已删除不可重复 | add | `countByCodeIgnoreDelete` |
-| 上级部门逻辑存在 | add | `getById(parentId)` |
+| 上级部门逻辑存在 | add/update | `getById(parentId)` |
 | 层级深度 ≤ 5 | add | `calculateDepth` 递归 |
 | 同级名称不重复 | add/update | `isNull` / `eq` 分别处理 null |
 | 负责人逻辑存在 | add/update | `selectById(managerId)` |
@@ -945,27 +839,30 @@ src/main/java/com/limou/hrms/
 │   ├── DepartmentController.java   # 部门管理（6个端点）
 │   └── PositionController.java     # 职位管理（5个端点）
 ├── service/
-│   ├── DepartmentService.java
+│   ├── DepartmentService.java      # 含 getVisibleDeptIds
 │   ├── PositionService.java
 │   ├── DepartmentMergeLogService.java
 │   └── impl/
-│       ├── DepartmentServiceImpl.java
-│       ├── PositionServiceImpl.java
+│       ├── DepartmentServiceImpl.java  # 数据权限：getVisibleDeptIds
+│       ├── PositionServiceImpl.java    # 职位过滤：调 departmentService.getVisibleDeptIds
 │       └── DepartmentMergeLogServiceImpl.java
 ├── mapper/
 │   ├── DepartmentMapper.java       # 含 countByCodeIgnoreDelete（绕过@TableLogic）
 │   ├── PositionMapper.java
 │   ├── DepartmentMergeLogMapper.java
-│   └── EmployeeMapper.java         # 含 countActiveByDeptIds、batchUpdateDeptId 原生SQL
+│   └── EmployeeMapper.java         # 含 countActiveByDeptIds、batchUpdateDeptId
 ├── model/
 │   ├── entity/                     # Department, Position, DepartmentMergeLog, Employee
 │   ├── dto/department/             # DepartmentAdd/Update/MergeRequest
 │   ├── dto/position/               # PositionAdd/Update/QueryRequest
 │   └── vo/                         # DepartmentTreeVO, DepartmentMergeResultVO, PositionVO, SequenceLevelVO
 ├── model/enums/
+│   ├── DataScopeEnum.java          # 数据范围枚举
 │   ├── OrgEnum.java                # 最大层级深度常量
 │   ├── PositionSequence.java       # 职位序列枚举（M/P/S）
 │   └── EmployeeStatus.java         # 员工状态枚举
+├── config/
+│   └── PermissionService.java      # 数据范围查询
 └── sql/
     └── org_structure.sql           # 建表 + 初始化数据
 ```

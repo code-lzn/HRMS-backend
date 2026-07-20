@@ -59,6 +59,8 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
     @Resource
     private PositionMapper positionMapper;
     @Resource
+    private EmployeeMapper employeeMapper;
+    @Resource
     private EmployeeChangeLogService employeeChangeLogService;
     @Resource
     private UserMapper userMapper;
@@ -316,7 +318,7 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void updateEmployee(EmployeeUpdateRequest request) {
+    public void updateEmployee(EmployeeUpdateRequest request, Long userId) {
         Employee emp = this.getById(request.getId());
         ThrowUtils.throwIf(emp == null, ErrorCode.NOT_FOUND_ERROR, "员工不存在");
 
@@ -410,7 +412,8 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
         employeeDetailMapper.updateById(detail);
 
         // 写变更日志
-        logChanges(oldEmp, emp, oldDetail, detail, 1L);
+        Long operatorEmployeeId = getEmployeeIdByUserId(userId);
+        logChanges(oldEmp, emp, oldDetail, detail, operatorEmployeeId);
 
         log.info("员工更新成功: id={}", emp.getId());
     }
@@ -450,6 +453,7 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
         vo.setLockedFields(new ArrayList<>(LOCKED_FIELDS));
         return vo;
     }
+    @Override
     public Page<EmployeeChangeLogVO> getChangeLogs(Long employeeId, int page, int size) {
         LambdaQueryWrapper<EmployeeChangeLog> wrapper = new LambdaQueryWrapper<EmployeeChangeLog>()
                 .eq(EmployeeChangeLog::getEmployeeId, employeeId)
@@ -459,6 +463,15 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
         voPage.setRecords(logPage.getRecords().stream().map(log -> {
             EmployeeChangeLogVO vo = new EmployeeChangeLogVO();
             BeanUtils.copyProperties(log, vo);
+            // 补充操作人姓名
+            if (log.getOperatorId() != null) {
+                Employee operator = employeeMapper.selectById(log.getOperatorId());
+                vo.setOperatorName(operator != null ? operator.getEmployeeName() : null);
+            }
+            // 补充字段中文描述
+            vo.setFieldDesc(getFieldDesc(log.getFieldName()));
+            // 补充变更类型中文描述
+            vo.setChangeTypeDesc(getChangeTypeDesc(log.getChangeType()));
             return vo;
         }).collect(Collectors.toList()));
         return voPage;
@@ -575,6 +588,11 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
     }
 
     @Override
+    public List<Employee> listManagerCandidates() {
+        return employeeMapper.selectManagerCandidates();
+    }
+
+    @Override
     public Employee getByUserId(Long userId) {
         Employee emp = this.lambdaQuery().eq(Employee::getUserId, userId).one();
         if (emp == null) throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "员工档案不存在");
@@ -612,12 +630,35 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
         log.setChangeType("DIRECT_EDIT");
         checkAndLog(oldEmp.getEmployeeName(), newEmp.getEmployeeName(), "employeeName", log);
         checkAndLog(oldEmp.getGender(), newEmp.getGender(), "gender", log);
+        checkAndLog(oldEmp.getPhone(), newEmp.getPhone(), "phone", log);
         checkAndLog(oldEmp.getEmail(), newEmp.getEmail(), "email", log);
         if (oldDetail != null && newDetail != null) {
+            checkAndLog(oldDetail.getIdCard(), newDetail.getIdCard(), "idCard", log);
+            checkAndLog(oldDetail.getBirthday(), newDetail.getBirthday(), "birthday", log);
+            checkAndLog(oldDetail.getRegisteredAddress(), newDetail.getRegisteredAddress(), "registeredAddress", log);
             checkAndLog(oldDetail.getCurrentAddress(), newDetail.getCurrentAddress(), "currentAddress", log);
+            checkAndLog(oldDetail.getDirectReportId(), newDetail.getDirectReportId(), "directReportId", log);
+            checkAndLog(oldDetail.getWorkLocation(), newDetail.getWorkLocation(), "workLocation", log);
+            checkAndLog(oldDetail.getJobLevel(), newDetail.getJobLevel(), "jobLevel", log);
+            checkAndLog(oldDetail.getContractType(), newDetail.getContractType(), "contractType", log);
+            checkAndLog(oldDetail.getContractExpireDate(), newDetail.getContractExpireDate(), "contractExpireDate", log);
+            checkAndLog(oldDetail.getProbationRatio(), newDetail.getProbationRatio(), "probationRatio", log);
+            checkAndLog(oldDetail.getBaseSalary(), newDetail.getBaseSalary(), "baseSalary", log);
+            checkAndLog(oldDetail.getBankAccount(), newDetail.getBankAccount(), "bankAccount", log);
+            checkAndLog(oldDetail.getBankName(), newDetail.getBankName(), "bankName", log);
             checkAndLog(oldDetail.getEmergencyContactName(), newDetail.getEmergencyContactName(), "emergencyContactName", log);
             checkAndLog(oldDetail.getEmergencyContactPhone(), newDetail.getEmergencyContactPhone(), "emergencyContactPhone", log);
         }
+    }
+
+    /**
+     * 根据 userId 查找员工ID（作为操作人记录）
+     */
+    private Long getEmployeeIdByUserId(Long userId) {
+        if (userId == null) return null;
+        Employee emp = employeeMapper.selectOne(
+                new LambdaQueryWrapper<Employee>().eq(Employee::getUserId, userId));
+        return emp != null ? emp.getId() : null;
     }
 
     private void checkAndLog(Object oldVal, Object newVal, String fieldName, EmployeeChangeLog log) {
@@ -626,6 +667,7 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
             log.setOldValue(oldVal != null ? oldVal.toString() : null);
             log.setNewValue(newVal != null ? newVal.toString() : null);
             employeeChangeLogService.save(log);
+            log.setId(null); // 重置 ID，避免共用对象下次 save 时主键冲突
         }
     }
 
@@ -708,5 +750,53 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
     private String maskBankAccount(String bankAccount) {
         if (bankAccount == null || bankAccount.length() < 4) return bankAccount;
         return "****" + bankAccount.substring(bankAccount.length() - 4);
+    }
+
+    /**
+     * 字段名 → 中文描述
+     */
+    private String getFieldDesc(String fieldName) {
+        if (fieldName == null) return null;
+        switch (fieldName) {
+            case "employeeName": return "姓名";
+            case "gender": return "性别";
+            case "phone": return "手机号";
+            case "email": return "邮箱";
+            case "departmentId": return "所属部门";
+            case "positionId": return "职位";
+            case "hireDate": return "入职日期";
+            case "employmentType": return "录用类型";
+            case "status": return "在职状态";
+            case "idCard": return "身份证号";
+            case "birthday": return "生日";
+            case "registeredAddress": return "户籍地址";
+            case "currentAddress": return "现居住地址";
+            case "directReportId": return "直接汇报人";
+            case "workLocation": return "工作地点";
+            case "jobLevel": return "职级";
+            case "contractType": return "合同类型";
+            case "contractExpireDate": return "合同到期日";
+            case "probationRatio": return "试用期待遇比例";
+            case "baseSalary": return "基本工资";
+            case "bankAccount": return "银行账号";
+            case "bankName": return "开户行";
+            case "emergencyContactName": return "紧急联系人姓名";
+            case "emergencyContactPhone": return "紧急联系人电话";
+            default: return fieldName;
+        }
+    }
+
+    /**
+     * 变更类型 → 中文描述
+     */
+    private String getChangeTypeDesc(String changeType) {
+        if (changeType == null) return null;
+        switch (changeType) {
+            case "DIRECT_EDIT": return "直接编辑";
+            case "FLOW_CHANGE": return "流程变更";
+            case "SYSTEM": return "系统自动变更";
+            case "SELF_EDIT": return "本人编辑";
+            default: return changeType;
+        }
     }
 }
