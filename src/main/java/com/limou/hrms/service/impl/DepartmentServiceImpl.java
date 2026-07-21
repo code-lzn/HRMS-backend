@@ -2,7 +2,6 @@ package com.limou.hrms.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.constant.DataScopeContext;
@@ -14,7 +13,6 @@ import com.limou.hrms.mapper.EmployeePersonalInfoMapper;
 import com.limou.hrms.mapper.EmployeeWorkInfoMapper;
 import com.limou.hrms.mapper.UserMapper;
 import com.limou.hrms.model.dto.department.DepartmentCreateRequest;
-import com.limou.hrms.model.dto.department.DepartmentQueryRequest;
 import com.limou.hrms.model.dto.department.DepartmentUpdateRequest;
 import com.limou.hrms.model.entity.Department;
 import com.limou.hrms.model.entity.DeptEmployeeCount;
@@ -30,6 +28,7 @@ import com.limou.hrms.service.DepartmentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
+import org.springframework.aop.framework.AopContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -62,11 +61,11 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Department createDepartment(DepartmentCreateRequest dto, User loginUser) {
-        checkNameUnique(dto.getName(), dto.getParentId(), null);
-        checkCodeUnique(dto.getCode(), null);
-        checkSortOrderUnique(dto.getParentId(), dto.getSortOrder(), null);
-        Department parent = validateParentAndDepth(dto.getParentId());
-        validateManagerActive(dto.getManagerId());
+        checkNameUnique(dto.getName(), dto.getParentId(), null);//判断是否存在该部门名称
+        checkCodeUnique(dto.getCode(), null);//判断是否存在该部门编码
+        checkSortOrderUnique(dto.getParentId(), dto.getSortOrder(), null);//判断是否存在该部门序号
+        Department parent = validateParentAndDepth(dto.getParentId());//判断层级是否过深
+        validateManagerActive(dto.getManagerId());//判断是否能够成为部门经理
 
         Department department = new Department();
         BeanUtils.copyProperties(dto, department);
@@ -88,7 +87,7 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
 
         // 父部门变更（用于后续同名/同序号校验）
         Long effectiveParentId = existDept.getParentId();
-        if (dto.getParentId() != null && !dto.getParentId().equals(existDept.getParentId())) {
+        if (dto.getParentId() != null && !dto.getParentId().equals(existDept.getParentId())) {//判断是否变更了父部门
             checkNotCircularRef(id, dto.getParentId());
             Department newParent = getUndeletedDeptOrThrow(dto.getParentId());
             effectiveParentId = dto.getParentId();
@@ -107,7 +106,7 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
             }
             existDept.setLevel(newRootLevel);
         }
-        if (StringUtils.hasText(dto.getName())) {
+        if (StringUtils.hasText(dto.getName())) {//判断部门名称是否重复
             checkNameUnique(dto.getName(), effectiveParentId, id);
         }
         if (StringUtils.hasText(dto.getCode())) {
@@ -258,7 +257,7 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
     private Map<Long, Integer> aggregateEmployeeCount(List<Department> depts,
                                                        Map<Long, Integer> directCountMap) {
         List<Department> levelDesc = new ArrayList<>(depts);
-        levelDesc.sort((a, b) -> Integer.compare(b.getLevel(), a.getLevel()));
+        levelDesc.sort((a, b) -> Integer.compare(b.getLevel(), a.getLevel()));//降序排序
 
         Map<Long, Integer> totalMap = new HashMap<>();
         for (Department d : levelDesc) {
@@ -326,8 +325,8 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
         Department dept = getUndeletedDeptOrThrow(id);
         List<Department> allDepts = this.lambdaQuery().list();
         Map<Long, Department> deptMap = allDepts.stream()
-                .collect(Collectors.toMap(Department::getId, d -> d));
-        Map<Long, Integer> countMap = loadCountMap();
+                .collect(Collectors.toMap(Department::getId, d -> d));//部门id->部门
+        Map<Long, Integer> countMap = loadCountMap();//部门id->人数
         Map<Long, String> managerNameMap = loadManagerNameMap(allDepts);
 
         DepartmentVO vo = toDepartmentVO(dept, deptMap, countMap, managerNameMap);
@@ -426,8 +425,8 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
         if (deptId.equals(newParentId)) {
             throw new BusinessException(ErrorCode.DEPARTMENT_CIRCULAR_REF);
         }
-        Set<Long> descendants = collectDescendantIds(deptId);
-        if (descendants.contains(newParentId)) {
+        Set<Long> descendants = collectDescendantIds(deptId);//递归获取所有子部门及子孙部门id
+        if (descendants.contains(newParentId)) {//如果将新的父部门设置为当前部门的子部门或子孙部门，则无法完成
             throw new BusinessException(ErrorCode.DEPARTMENT_CIRCULAR_REF);
         }
     }
@@ -467,7 +466,7 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
         for (Department d : subtree) {
             d.setLevel(d.getLevel() + levelDiff);
         }
-        this.updateBatchById(subtree);
+        ((DepartmentService) AopContext.currentProxy()).updateBatchById(subtree);//解决事务失效
     }
 
     // ==================== 数据加载辅助 ====================
@@ -504,7 +503,7 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
     private Map<Long, String> loadManagerNameMap(List<Department> depts) {
         Set<Long> managerIds = depts.stream()
                 .map(Department::getManagerId)
-                .filter(Objects::nonNull)
+                .filter(Objects::nonNull)// 过滤 null
                 .collect(Collectors.toSet());
         if (managerIds.isEmpty()) {
             return Collections.emptyMap();

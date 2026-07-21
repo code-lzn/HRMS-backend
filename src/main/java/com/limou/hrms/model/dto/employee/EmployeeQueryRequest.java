@@ -1,8 +1,10 @@
 package com.limou.hrms.model.dto.employee;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.limou.hrms.common.PageRequest;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import org.springframework.format.annotation.DateTimeFormat;
 
 import java.io.Serializable;
 import java.time.LocalDate;
@@ -37,16 +39,18 @@ public class EmployeeQueryRequest extends PageRequest implements Serializable {
     /**
      * 职级列表，如 P5、M2
      */
-    private String[] jobLevels;
+    private String[] jobLevels;//未使用,项目没有职级
 
     /**
      * 入职日期起始
      */
+    @DateTimeFormat(pattern = "yyyy-MM-dd")
     private LocalDate hireDateStart;
 
     /**
      * 入职日期截止
      */
+    @DateTimeFormat(pattern = "yyyy-MM-dd")
     private LocalDate hireDateEnd;
 
     /**

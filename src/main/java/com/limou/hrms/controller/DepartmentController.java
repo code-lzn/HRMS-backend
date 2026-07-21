@@ -49,9 +49,6 @@ public class DepartmentController {
     @GetMapping("/{id}")
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.DEPT_HEAD_ROLE})
     public BaseResponse<DepartmentVO> getDepartmentDetail(@PathVariable Long id) {
-        if (id <= 0) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR);
-        }
         log.info("{} 查询部门详情, id={}", UserContext.getCurrentUser(), id);
         DepartmentVO vo = departmentService.getDepartmentDetail(id);
         return ResultUtils.success(vo);
@@ -76,9 +73,6 @@ public class DepartmentController {
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
     public BaseResponse<Department> updateDepartment(@PathVariable Long id,
                                                       @Valid @RequestBody DepartmentUpdateRequest dto) {
-        if (id <= 0) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR);
-        }
         User loginUser = UserContext.getCurrentUser();
         log.info("{} 更新部门, id={}", loginUser, id);
         Department department = departmentService.updateDepartment(id, dto, loginUser);
@@ -91,9 +85,6 @@ public class DepartmentController {
     @DeleteMapping("/{id}")
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
     public BaseResponse<Void> deleteDepartment(@PathVariable Long id) {
-        if (id <= 0) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR);
-        }
         User loginUser = UserContext.getCurrentUser();
         log.info("{} 删除部门, id={}", loginUser, id);
         departmentService.deleteDepartment(id, loginUser);

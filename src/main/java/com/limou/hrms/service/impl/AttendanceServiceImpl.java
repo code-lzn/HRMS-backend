@@ -607,7 +607,7 @@ public class AttendanceServiceImpl implements AttendanceService, ApprovalCallbac
      * 检查当天是否有已通过的请假记录，冲突则拒绝
      */
     private void checkLeaveConflict(Long employeeId, LocalDate today, LocalDateTime now, int clockType) {
-        LocalDateTime todayStart = today.atStartOfDay();
+        LocalDateTime todayStart = today.atStartOfDay();//精确时间
         LocalDateTime todayEnd = todayStart.plusDays(1);
 
         List<LeaveRequest> leaves = leaveRequestMapper.selectList(
