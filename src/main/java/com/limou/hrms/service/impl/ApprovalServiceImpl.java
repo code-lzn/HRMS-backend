@@ -12,6 +12,7 @@ import com.limou.hrms.model.enums.ApprovalActionEnum;
 import com.limou.hrms.model.enums.ApprovalRecordStatusEnum;
 import com.limou.hrms.model.enums.ApprovalStatusEnum;
 import com.limou.hrms.model.enums.ApproverTypeEnum;
+import com.limou.hrms.model.enums.DelegationStatusEnum;
 import com.limou.hrms.model.enums.BusinessTypeEnum;
 import com.limou.hrms.model.vo.ApprovalDetailVO;
 import com.limou.hrms.model.vo.ApprovalPendingVO;
@@ -96,11 +97,12 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
         // 2. 委托审批：当前人是被委托人，且委托在有效期内
         List<ApprovalDelegation> activeDelegations = approvalDelegationService.lambdaQuery()
                 .eq(ApprovalDelegation::getDelegateId, employeeId)
-                .eq(ApprovalDelegation::getStatus, 1)
+                .eq(ApprovalDelegation::getStatus, DelegationStatusEnum.ACTIVE.getValue())
                 .le(ApprovalDelegation::getStartDate, new Date())
                 .ge(ApprovalDelegation::getEndDate, new Date())
                 .list();
 
+        //去重--找到委托人id
         Set<Long> delegatorIds = activeDelegations.stream()
                 .map(ApprovalDelegation::getDelegatorId)
                 .collect(Collectors.toSet());
@@ -108,6 +110,7 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
         // 获取委托人所辖的待审批项
         List<ApprovalDetail> delegatedList = new ArrayList<>();
         if (!delegatorIds.isEmpty()) {
+            //委托人id,业务类型去重
             Map<Long, Set<String>> delegatorBusinessTypes = new HashMap<>();
             for (ApprovalDelegation d : activeDelegations) {
                 Set<String> types = d.getBusinessTypes() != null
@@ -115,12 +118,12 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
                         : null;
                 delegatorBusinessTypes.put(d.getDelegatorId(), types);
             }
-
+            //拿到对应的需要审批的数据
             List<ApprovalDetail> tempList = approvalDetailService.lambdaQuery()
                     .in(ApprovalDetail::getApproverId, delegatorIds)
                     .eq(ApprovalDetail::getAction, ApprovalActionEnum.PENDING.getValue())
                     .list();
-
+            //加入到对应的list返回
             for (ApprovalDetail detail : tempList) {
                 ApprovalRecord record = this.getById(detail.getRecordId());
                 if (record == null) continue;

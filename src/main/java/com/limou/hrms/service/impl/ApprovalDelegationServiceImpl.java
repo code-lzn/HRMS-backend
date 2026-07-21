@@ -6,6 +6,7 @@ import com.limou.hrms.exception.ThrowUtils;
 import com.limou.hrms.mapper.ApprovalDelegationMapper;
 import com.limou.hrms.model.entity.ApprovalDelegation;
 import com.limou.hrms.model.entity.Employee;
+import com.limou.hrms.model.enums.DelegationStatusEnum;
 import com.limou.hrms.model.vo.ApprovalDelegationVO;
 import com.limou.hrms.service.ApprovalDelegationService;
 import com.limou.hrms.service.EmployeeService;
@@ -42,7 +43,7 @@ public class ApprovalDelegationServiceImpl extends ServiceImpl<ApprovalDelegatio
         delegation.setBusinessTypes(businessTypes);
         delegation.setStartDate(startDate);
         delegation.setEndDate(endDate);
-        delegation.setStatus(1);
+        delegation.setStatus(DelegationStatusEnum.ACTIVE.getValue());
         this.save(delegation);
         return delegation;
     }
@@ -53,7 +54,7 @@ public class ApprovalDelegationServiceImpl extends ServiceImpl<ApprovalDelegatio
         ThrowUtils.throwIf(delegation == null, ErrorCode.DELEGATION_NOT_FOUND);
         ThrowUtils.throwIf(!Objects.equals(delegation.getDelegatorId(), delegatorEmployeeId),
                 ErrorCode.NO_AUTH_ERROR);
-        delegation.setStatus(0);
+        delegation.setStatus(DelegationStatusEnum.CANCELLED.getValue());
         this.updateById(delegation);
     }
 
@@ -61,7 +62,8 @@ public class ApprovalDelegationServiceImpl extends ServiceImpl<ApprovalDelegatio
     public List<ApprovalDelegationVO> getMyDelegations(Long employeeId) {
         List<ApprovalDelegation> list = this.lambdaQuery()
                 .eq(ApprovalDelegation::getDelegatorId, employeeId)
-                .eq(ApprovalDelegation::getStatus, 1)
+                .eq(ApprovalDelegation::getStatus, DelegationStatusEnum.ACTIVE.getValue())
+                .ge(ApprovalDelegation::getEndDate, new Date())
                 .orderByDesc(ApprovalDelegation::getCreateTime)
                 .list();
 
@@ -85,7 +87,7 @@ public class ApprovalDelegationServiceImpl extends ServiceImpl<ApprovalDelegatio
         List<ApprovalDelegation> delegations = this.lambdaQuery()
                 .eq(ApprovalDelegation::getDelegatorId, delegatorId)
                 .eq(ApprovalDelegation::getDelegateId, delegateId)
-                .eq(ApprovalDelegation::getStatus, 1)
+                .eq(ApprovalDelegation::getStatus, DelegationStatusEnum.ACTIVE.getValue())
                 .le(ApprovalDelegation::getStartDate, now)
                 .ge(ApprovalDelegation::getEndDate, now)
                 .list();

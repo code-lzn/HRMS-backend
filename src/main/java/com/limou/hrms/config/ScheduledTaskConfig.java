@@ -4,7 +4,9 @@ import com.limou.hrms.mapper.DepartmentMapper;
 import com.limou.hrms.mapper.EmpMutationLogMapper;
 import com.limou.hrms.model.entity.*;
 import com.limou.hrms.model.enums.ApprovalActionEnum;
+import com.limou.hrms.model.enums.DelegationStatusEnum;
 import com.limou.hrms.model.enums.ApprovalRecordStatusEnum;
+import com.limou.hrms.service.ApprovalDelegationService;
 import com.limou.hrms.service.ApprovalDetailService;
 import com.limou.hrms.service.ApprovalService;
 import com.limou.hrms.service.RegularizationService;
@@ -39,6 +41,9 @@ public class ScheduledTaskConfig {
     private ApprovalDetailService approvalDetailService;
     @Resource
     private ApprovalService approvalService;
+
+    @Resource
+    private ApprovalDelegationService approvalDelegationService;
 
     @Value("${server.port}")
     private String serverPort;
@@ -86,6 +91,24 @@ public class ScheduledTaskConfig {
             log.info("审批超时扫描完成，发现 {} 条超时记录", overdueDetails.size());
         } catch (Exception e) {
             log.error("扫描超时审批失败", e);
+        }
+    }
+
+    /** 每天0:01扫描已过期的委托审批，自动置为已取消 */
+    @Scheduled(cron = "0 1 0 * * ?")
+    public void expireDelegations() {
+        log.info("定时任务: 扫描已过期的委托审批");
+        try {
+            boolean updated = approvalDelegationService.lambdaUpdate()
+                    .eq(ApprovalDelegation::getStatus, DelegationStatusEnum.ACTIVE.getValue())
+                    .lt(ApprovalDelegation::getEndDate, new Date())
+                    .set(ApprovalDelegation::getStatus, DelegationStatusEnum.CANCELLED.getValue())
+                    .update();
+            if (updated) {
+                log.info("过期委托处理完成");
+            }
+        } catch (Exception e) {
+            log.error("扫描过期委托失败", e);
         }
     }
 

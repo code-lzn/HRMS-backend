@@ -224,6 +224,7 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
         vo.setLateDays(0);
         vo.setLeaveDays(0);
         vo.setMissingDays(0);
+        vo.setAbsentDays(0);
 
         Map<String, Integer> dailyStatus = new LinkedHashMap<>();
         Map<String, String> dailyStatusText = new LinkedHashMap<>();
@@ -234,18 +235,21 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
             dailyStatus.put(dateStr, r.getStatus());
             dailyStatusText.put(dateStr, resolveStatusText(r));
 
-            switch (r.getStatus()) {
-                case 0: vo.setNormalDays(vo.getNormalDays() + 1); break;
-                case 1: vo.setLateDays(vo.getLateDays() + 1); break;
-                case 4: vo.setLeaveDays(vo.getLeaveDays() + 1); break;
-                // 缺卡/上班缺卡/下班缺卡 — 可以进行补卡
-                case 3:
-                case 6:
-                case 7:
-                    vo.setMissingDays(vo.getMissingDays() + 1);
-                    makeupDates.add(dateStr);
-                    break;
-                default: break;
+            AttendanceStatusEnum statusEnum = AttendanceStatusEnum.getEnumByValue(r.getStatus());
+            if (statusEnum != null) {
+                switch (statusEnum) {
+                    case NORMAL: vo.setNormalDays(vo.getNormalDays() + 1); break;
+                    case LATE: vo.setLateDays(vo.getLateDays() + 1); break;
+                    case LEAVE: vo.setLeaveDays(vo.getLeaveDays() + 1); break;
+                    case ABSENT: vo.setAbsentDays(vo.getAbsentDays() + 1); break;
+                    case MISSING:
+                    case MISS_IN:
+                    case MISS_OUT:
+                        vo.setMissingDays(vo.getMissingDays() + 1);
+                        makeupDates.add(dateStr);
+                        break;
+                    default: break;
+                }
             }
         }
 
@@ -545,7 +549,7 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
     private String resolveStatusText(Attendance record) {
         if (record.getLateMinutes() != null && record.getLateMinutes() > 0
                 && record.getEarlyMinutes() != null && record.getEarlyMinutes() > 0) {
-            return "迟到&早退";
+            return AttendanceStatusEnum.LATE_AND_EARLY.getText();
         }
         AttendanceStatusEnum status = AttendanceStatusEnum.getEnumByValue(record.getStatus());
         return status != null ? status.getText() : "未知";

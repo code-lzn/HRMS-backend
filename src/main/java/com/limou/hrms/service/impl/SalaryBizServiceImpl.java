@@ -17,11 +17,14 @@ import com.limou.hrms.service.ApprovalService;
 import com.limou.hrms.model.enums.BusinessTypeEnum;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 import java.math.BigDecimal;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.math.RoundingMode;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -79,6 +82,13 @@ public class SalaryBizServiceImpl implements SalaryBizService {
     private ApprovalRecordMapper approvalRecordMapper;
     @Resource
     private ApprovalDetailMapper approvalDetailMapper;
+
+    @Resource(name = "salaryCalcExecutor")
+    private Executor salaryCalcExecutor;
+
+    @Resource
+    @Lazy
+    private SalaryBizServiceImpl self;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -203,8 +213,16 @@ public class SalaryBizServiceImpl implements SalaryBizService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public void calculateBatch(Long batchId) {
+        CompletableFuture.runAsync(() -> self.doCalculateBatch(batchId), salaryCalcExecutor)
+                .exceptionally(ex -> {
+                    log.error("薪资计算异步任务失败: batchId={}", batchId, ex);
+                    return null;
+                });
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void doCalculateBatch(Long batchId) {
         SalaryBatch batch = salaryBatchMapper.selectById(batchId);
         ThrowUtils.throwIf(batch == null, ErrorCode.NOT_FOUND_ERROR, "批次不存在");
         ThrowUtils.throwIf(!"DRAFT".equals(batch.getStatus()) && !"CALCULATING".equals(batch.getStatus()),

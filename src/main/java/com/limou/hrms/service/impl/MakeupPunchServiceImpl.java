@@ -62,6 +62,10 @@ public class MakeupPunchServiceImpl extends ServiceImpl<MakeupPunchMapper, Makeu
                                        String punchTime, String reason) {
         Employee emp = getEmployee(userId);
 
+        // 不能补卡未来的日期
+        ThrowUtils.throwIf(punchDate.compareTo(DateUtil.formatDate(new Date())) > 0,
+                ErrorCode.PARAMS_ERROR, "不能补卡未来的日期");
+
         // 每月最多2次补卡
         String month = punchDate.substring(0, 7);
         long monthCount = this.lambdaQuery()

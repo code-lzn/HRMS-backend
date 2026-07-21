@@ -25,6 +25,9 @@ public class AttendanceCalendarVO implements Serializable {
     /** 当月考勤统计：缺卡天数 */
     private int missingDays;
 
+    /** 当月考勤统计：旷工天数 */
+    private int absentDays;
+
     /** 日期 -> 考勤状态 映射，key为'yyyy-MM-dd'，value为状态 0=正常 1=迟到 2=早退 3=缺卡 4=请假 5=旷工 */
     private Map<String, Integer> dailyStatus;
 

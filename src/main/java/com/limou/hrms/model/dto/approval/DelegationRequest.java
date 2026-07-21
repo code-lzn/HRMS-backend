@@ -1,5 +1,6 @@
 package com.limou.hrms.model.dto.approval;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -18,9 +19,11 @@ public class DelegationRequest implements Serializable {
     private String businessTypes;
 
     /** 委托开始日期 */
+    @JsonFormat(pattern = "yyyy-MM-dd")
     private Date startDate;
 
     /** 委托结束日期 */
+    @JsonFormat(pattern = "yyyy-MM-dd")
     private Date endDate;
 
     private static final long serialVersionUID = 1L;
