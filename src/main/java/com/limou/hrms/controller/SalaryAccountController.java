@@ -59,7 +59,7 @@ public class SalaryAccountController {
     }
 
     @PostMapping
-    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
     public BaseResponse<Long> createAccount(@RequestBody SalaryAccountAddRequest request) {
         if (request == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -69,7 +69,7 @@ public class SalaryAccountController {
     }
 
     @PutMapping("/{id}")
-    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
     public BaseResponse<Boolean> updateAccount(
             @PathVariable Long id,
             @RequestBody SalaryAccountUpdateRequest request) {
@@ -82,7 +82,7 @@ public class SalaryAccountController {
     }
 
     @DeleteMapping("/{id}")
-    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
     public BaseResponse<Boolean> deleteAccount(@PathVariable Long id) {
         if (id == null || id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -105,7 +105,7 @@ public class SalaryAccountController {
     }
 
     @PostMapping("/{id}/items")
-    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
     public BaseResponse<Long> addItem(
             @PathVariable Long id,
             @RequestBody SalaryItemAddRequest request) {
@@ -117,7 +117,7 @@ public class SalaryAccountController {
     }
 
     @PutMapping("/items/{itemId}")
-    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
     public BaseResponse<Boolean> updateItem(
             @PathVariable Long itemId,
             @RequestBody SalaryItemUpdateRequest request) {
@@ -130,7 +130,7 @@ public class SalaryAccountController {
     }
 
     @DeleteMapping("/items/{itemId}")
-    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
     public BaseResponse<Boolean> deleteItem(@PathVariable Long itemId) {
         if (itemId == null || itemId <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -140,7 +140,7 @@ public class SalaryAccountController {
     }
 
     @PutMapping("/{id}/items/sort")
-    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
     public BaseResponse<Boolean> sortItems(
             @PathVariable Long id,
             @RequestBody SalaryItemSortRequest request) {

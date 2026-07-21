@@ -54,7 +54,7 @@ public class SalaryStatisticsController {
     private DepartmentMapper departmentMapper;
 
     @GetMapping("/monthly-trend")
-    @AuthCheck(mustRole = {UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE})
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE})
     public BaseResponse<List<Map<String, Object>>> monthlyTrend() {
         // 查询已通过和已发放的批次，按月份倒序取最近6个月
         QueryWrapper<SalaryBatch> wrapper = new QueryWrapper<>();
@@ -90,7 +90,7 @@ public class SalaryStatisticsController {
     }
 
     @GetMapping("/department-distribution")
-    @AuthCheck(mustRole = {UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE, UserConstant.DEPT_HEAD_ROLE})
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE, UserConstant.DEPT_HEAD_ROLE})
     public BaseResponse<List<Map<String, Object>>> departmentDistribution(
             @RequestParam(required = false) String salaryMonth) {
         SalaryBatch targetBatch = getTargetBatch(salaryMonth);
@@ -132,7 +132,7 @@ public class SalaryStatisticsController {
     }
 
     @GetMapping("/composition")
-    @AuthCheck(mustRole = {UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE})
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE})
     public BaseResponse<List<Map<String, Object>>> composition(
             @RequestParam(required = false) String salaryMonth) {
         SalaryBatch targetBatch = getTargetBatch(salaryMonth);
@@ -177,7 +177,7 @@ public class SalaryStatisticsController {
     }
 
     @GetMapping("/variation-distribution")
-    @AuthCheck(mustRole = {UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE})
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE})
     public BaseResponse<List<Map<String, Object>>> variationDistribution(
             @RequestParam(required = false) String salaryMonth) {
         SalaryBatch targetBatch = getTargetBatch(salaryMonth);
@@ -241,7 +241,7 @@ public class SalaryStatisticsController {
      * 获取所有可统计的月份列表（已通过/已发放的批次月份）
      */
     @GetMapping("/available-months")
-    @AuthCheck(mustRole = {UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE})
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE})
     public BaseResponse<List<String>> availableMonths() {
         QueryWrapper<SalaryBatch> wrapper = new QueryWrapper<>();
         wrapper.in("status", BatchStatusEnum.APPROVED.getValue(), BatchStatusEnum.PAID.getValue())

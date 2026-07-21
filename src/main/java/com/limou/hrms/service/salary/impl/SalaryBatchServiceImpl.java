@@ -7,6 +7,8 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.constant.DataScopeContext;
 import com.limou.hrms.exception.BusinessException;
+import com.limou.hrms.mapper.AttendanceStatisticsMapper;
+import com.limou.hrms.mapper.EmployeeSalaryInfoMapper;
 import com.limou.hrms.mapper.EmployeeSalaryMapper;
 import com.limou.hrms.mapper.IncomeTaxCumulativeMapper;
 import com.limou.hrms.mapper.SalaryBatchMapper;
@@ -14,10 +16,12 @@ import com.limou.hrms.mapper.SalaryDetailMapper;
 import com.limou.hrms.mapper.SalaryItemMapper;
 import com.limou.hrms.model.dto.salary.*;
 import com.limou.hrms.model.entity.EmployeeSalary;
+import com.limou.hrms.model.entity.EmployeeSalaryInfo;
 import com.limou.hrms.model.entity.IncomeTaxCumulative;
 import com.limou.hrms.model.entity.SalaryBatch;
 import com.limou.hrms.model.entity.SalaryDetail;
 import com.limou.hrms.model.entity.SalaryItem;
+import com.limou.hrms.model.entity.AttendanceStatistics;
 import com.limou.hrms.model.enums.AbnormalLevelEnum;
 import com.limou.hrms.model.enums.ApprovalBizType;
 import com.limou.hrms.model.enums.BatchStatusEnum;
@@ -33,7 +37,9 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.YearMonth;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import javax.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -58,6 +64,10 @@ public class SalaryBatchServiceImpl extends ServiceImpl<SalaryBatchMapper, Salar
     private SalaryItemMapper salaryItemMapper;
     @Resource
     private IncomeTaxCumulativeMapper incomeTaxCumulativeMapper;
+    @Resource
+    private AttendanceStatisticsMapper attendanceStatisticsMapper;
+    @Resource
+    private EmployeeSalaryInfoMapper employeeSalaryInfoMapper;
     @Resource
     private SalaryCalculatorEngine calculatorEngine;
     @Resource
@@ -120,6 +130,31 @@ public class SalaryBatchServiceImpl extends ServiceImpl<SalaryBatchMapper, Salar
             esWrapper.eq("is_deleted", 0).orderByDesc("effective_date");
             List<EmployeeSalary> salaryList = employeeSalaryMapper.selectList(esWrapper);
 
+            // 解析薪资月份，查询月考勤统计数据
+            YearMonth yearMonth = YearMonth.parse(batch.getSalaryMonth());
+            int statYear = yearMonth.getYear();
+            int statMonth = yearMonth.getMonthValue();
+
+            // 预取当月考勤统计数据（迟到次数、请假天数、加班工时）
+            QueryWrapper<AttendanceStatistics> attStatWrapper = new QueryWrapper<>();
+            attStatWrapper.eq("stat_year", statYear).eq("stat_month", statMonth);
+            List<AttendanceStatistics> attStats = attendanceStatisticsMapper.selectList(attStatWrapper);
+            Map<Long, AttendanceStatistics> attStatMap = new HashMap<>();
+            for (AttendanceStatistics stat : attStats) {
+                attStatMap.put(stat.getEmployeeId(), stat);
+            }
+
+            // 预取员工薪资信息（试用期比例）
+            QueryWrapper<EmployeeSalaryInfo> esiWrapper = new QueryWrapper<>();
+            esiWrapper.isNotNull("probation_ratio");
+            List<EmployeeSalaryInfo> salaryInfoList = employeeSalaryInfoMapper.selectList(esiWrapper);
+            Map<Long, BigDecimal> probationRatioMap = new HashMap<>();
+            for (EmployeeSalaryInfo info : salaryInfoList) {
+                if (info.getProbationRatio() != null) {
+                    probationRatioMap.put(info.getEmployeeId(), info.getProbationRatio());
+                }
+            }
+
             BigDecimal totalGross = BigDecimal.ZERO;
             BigDecimal totalNet = BigDecimal.ZERO;
             BigDecimal totalTax = BigDecimal.ZERO;
@@ -139,6 +174,19 @@ public class SalaryBatchServiceImpl extends ServiceImpl<SalaryBatchMapper, Salar
                     context.setEmployeeSalary(employeeSalary);
                     context.setSalaryItems(items);
                     context.setSalaryMonth(batch.getSalaryMonth());
+
+                    // 从考勤统计数据填充迟到次数、请假天数、加班工时
+                    AttendanceStatistics stat = attStatMap.get(employeeSalary.getEmployeeId());
+                    if (stat != null) {
+                        context.setLateCount(stat.getLateCount());
+                        context.setLeaveDays(stat.getLeaveDays() != null
+                                ? stat.getLeaveDays().doubleValue() : null);
+                        context.setOvertimeHours(stat.getOvertimeHours() != null
+                                ? stat.getOvertimeHours().doubleValue() : null);
+                    }
+                    // 设置试用期薪资比例
+                    BigDecimal probRatio = probationRatioMap.get(employeeSalary.getEmployeeId());
+                    context.setProbationRatio(probRatio != null ? probRatio.doubleValue() : null);
 
                     // 调用计算引擎逐项计算
                     BigDecimal grossPay = BigDecimal.ZERO;
