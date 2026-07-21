@@ -24,10 +24,10 @@ public class AttendanceScheduledTask {
     private HolidayConfigService holidayConfigService;
 
     /**
-     * 每天 9:05 生成当日考勤记录（由 isWorkDay 判断是否真的需要生成）
+     * 每天 19:00 日终评估：先生成所有员工当天记录，再评估打卡状态
      */
-    @Scheduled(cron = "0 5 9 * * *")
-    public void generateDailyAttendanceRecords() {
+    @Scheduled(cron = "0 0 19 * * *")
+    public void evaluateEndOfDayAttendance() {
         Date now = new Date();
         if (!holidayConfigService.isWorkDay(now)) {
             return;
@@ -35,33 +35,12 @@ public class AttendanceScheduledTask {
         String today = DateUtil.formatDate(now);
         log.info("定时任务: 生成当日考勤记录 date={}", today);
         try {
-            int count = attendanceService.generateDailyRecords(today);
-            log.info("当日考勤记录生成完成, 新增 {} 条", count);
+            int generated = attendanceService.generateDailyRecords(today);
+            log.info("当日考勤记录生成完成, 新增 {} 条", generated);
         } catch (Exception e) {
             log.error("生成当日考勤记录失败 date={}", today, e);
         }
 
-        // 修正已生成记录中因考勤规则不同而被误标为迟到的记录
-        try {
-            int corrected = attendanceService.correctTodayLateStatus();
-            if (corrected > 0) {
-                log.info("当日考勤记录迟到修正完成, 修正 {} 条", corrected);
-            }
-        } catch (Exception e) {
-            log.error("当日考勤记录迟到修正失败 date={}", today, e);
-        }
-    }
-
-    /**
-     * 每天 18:30 日终评估（由 isWorkDay 判断是否真的需要评估）
-     */
-    @Scheduled(cron = "0 30 18 * * *")
-    public void evaluateEndOfDayAttendance() {
-        Date now = new Date();
-        if (!holidayConfigService.isWorkDay(now)) {
-            return;
-        }
-        String today = DateUtil.formatDate(now);
         log.info("定时任务: 日终考勤评估 date={}", today);
         try {
             int count = attendanceService.evaluateEndOfDay(today);

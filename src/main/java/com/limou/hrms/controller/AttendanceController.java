@@ -84,6 +84,12 @@ public class AttendanceController {
     public BaseResponse<List<AttendanceVO>> getMonthRecords(
             @RequestParam String month,
             HttpServletRequest request) {
+        // 若查询月份包含今天且已过中午，先评估当天状态
+        String today = cn.hutool.core.date.DateUtil.formatDate(new java.util.Date());
+        if (month.equals(cn.hutool.core.date.DateUtil.format(new java.util.Date(), "yyyy-MM"))
+                && cn.hutool.core.date.DateUtil.hour(new java.util.Date(), true) >= 12) {
+            attendanceService.evaluateEndOfDay(today);
+        }
         User loginUser = userService.getLoginUser(request);
         List<AttendanceVO> list = attendanceService.getMonthRecords(loginUser.getId(), month);
         return ResultUtils.success(list);
@@ -124,15 +130,13 @@ public class AttendanceController {
     }
 
     /**
-     * 兜底：确保当天考勤记录已生成（页面加载时调用，幂等）
+     * 兜底：返回当前日期，考勤记录统一由 19:00 定时任务生成和评估
      */
     @PostMapping("/ensure-today")
     public BaseResponse<Map<String, Object>> ensureTodayRecords() {
         String today = cn.hutool.core.date.DateUtil.formatDate(new java.util.Date());
-        int count = attendanceService.generateDailyRecords(today);
         Map<String, Object> result = new HashMap<>();
         result.put("date", today);
-        result.put("generated", count);
         return ResultUtils.success(result);
     }
 
