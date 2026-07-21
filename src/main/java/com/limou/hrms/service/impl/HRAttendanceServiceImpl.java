@@ -10,6 +10,7 @@ import com.limou.hrms.constant.AttendanceConstant;
 import com.limou.hrms.exception.BusinessException;
 import com.limou.hrms.exception.ThrowUtils;
 import com.limou.hrms.mapper.AttendanceMapper;
+import com.limou.hrms.mapper.EmployeeMapper;
 import com.limou.hrms.model.dto.attendance.HRAttendanceDTO;
 import com.limou.hrms.model.dto.attendance.HRAttendanceQueryRequest;
 import com.limou.hrms.model.entity.*;
@@ -56,6 +57,15 @@ public class HRAttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Atten
     @Resource
     private AttendanceGroupService attendanceGroupService;
 
+    @Resource
+    private EmployeeMapper employeeMapper;
+
+    /**
+     * 分页查询考勤记录（HR管理端）
+     * @param request 查询条件（员工姓名、工号、部门、月份、状态、打卡类型等）
+     * @param httpRequest HTTP请求对象，用于获取当前登录用户
+     * @return 分页结果，包含考勤VO列表和总数
+     */
     @Override
     public PageResult<HRAttendanceVO> queryAttendance(HRAttendanceQueryRequest request, HttpServletRequest httpRequest) {
         int pageNum = request.getPageNum() != null ? request.getPageNum() : 1;
@@ -141,6 +151,11 @@ public class HRAttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Atten
         return PageResult.of(voList, pageResult.getTotal(), pageNum, pageSize);
     }
 
+    /**
+     * 获取考勤记录详情
+     * @param id 考勤记录ID
+     * @return 考勤详情VO
+     */
     @Override
     public HRAttendanceVO getDetail(Long id) {
         Attendance record = this.getById(id);
@@ -148,6 +163,11 @@ public class HRAttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Atten
         return convertToVO(record);
     }
 
+    /**
+     * 创建考勤记录（HR手动录入）
+     * @param dto 考勤数据（员工ID、打卡日期、上下班时间等）
+     * @return 创建后的考勤VO
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public HRAttendanceVO createAttendance(HRAttendanceDTO dto) {
@@ -183,6 +203,11 @@ public class HRAttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Atten
         return convertToVO(record);
     }
 
+    /**
+     * 更新考勤记录（HR编辑）
+     * @param dto 更新数据（ID、打卡时间等）
+     * @return 更新后的考勤VO
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public HRAttendanceVO updateAttendance(HRAttendanceDTO dto) {
@@ -209,6 +234,10 @@ public class HRAttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Atten
         return convertToVO(record);
     }
 
+    /**
+     * 删除考勤记录
+     * @param id 考勤记录ID
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void deleteAttendance(Long id) {
@@ -217,6 +246,10 @@ public class HRAttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Atten
         this.removeById(id);
     }
 
+    /**
+     * 批量删除考勤记录
+     * @param ids 考勤记录ID数组
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void batchDeleteAttendance(Long[] ids) {
@@ -296,8 +329,8 @@ public class HRAttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Atten
             return Collections.emptyList();
         }
 
-        Map<Long, Employee> employeeMap = employeeService.listByIds(
-                records.stream().map(Attendance::getEmployeeId).distinct().collect(Collectors.toList()))
+        List<Long> empIdList = records.stream().map(Attendance::getEmployeeId).distinct().collect(Collectors.toList());
+        Map<Long, Employee> employeeMap = employeeMapper.selectBatchIdsAll(empIdList)
                 .stream().collect(Collectors.toMap(Employee::getId, e -> e));
 
         Map<Long, Department> deptMap = departmentService.listByIds(

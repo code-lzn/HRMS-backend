@@ -1,6 +1,7 @@
 package com.limou.hrms.service.impl;
 
 import cn.hutool.core.date.DateUtil;
+import com.limou.hrms.mapper.EmployeeMapper;
 import com.limou.hrms.model.entity.*;
 import com.limou.hrms.model.enums.AttendanceStatusEnum;
 import com.limou.hrms.model.vo.*;
@@ -32,6 +33,9 @@ public class AttendanceStatsServiceImpl implements AttendanceStatsService {
 
     @Resource
     private EmployeeLeaveBalanceService employeeLeaveBalanceService;
+
+    @Resource
+    private EmployeeMapper employeeMapper;
 
     @Resource
     private HolidayConfigService holidayConfigService;
@@ -413,7 +417,7 @@ public class AttendanceStatsServiceImpl implements AttendanceStatsService {
         empIds.addAll(lateCountMap.keySet());
         empIds.addAll(earlyCountMap.keySet());
 
-        List<Employee> employees = employeeService.listByIds(new ArrayList<>(empIds));
+        List<Employee> employees = employeeMapper.selectBatchIdsAll(new ArrayList<>(empIds));
         Map<Long, Employee> empMap = employees.stream().collect(Collectors.toMap(Employee::getId, e -> e));
 
         List<AttendanceStatsVO> result = new ArrayList<>();
