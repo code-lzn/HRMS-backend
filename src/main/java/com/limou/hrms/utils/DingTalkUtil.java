@@ -1,4 +1,4 @@
-package com.limou.hrms.util;
+package com.limou.hrms.utils;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.OutputStream;

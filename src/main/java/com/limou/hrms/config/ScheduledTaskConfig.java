@@ -9,7 +9,7 @@ import com.limou.hrms.service.ApprovalDetailService;
 import com.limou.hrms.service.ApprovalService;
 import com.limou.hrms.service.RegularizationService;
 import com.limou.hrms.service.ResignationService;
-import com.limou.hrms.util.DingTalkUtil;
+import com.limou.hrms.utils.DingTalkUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;

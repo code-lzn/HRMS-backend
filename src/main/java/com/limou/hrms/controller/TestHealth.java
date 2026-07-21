@@ -2,7 +2,7 @@ package com.limou.hrms.controller;
 
 import com.limou.hrms.common.BaseResponse;
 import com.limou.hrms.common.ResultUtils;
-import com.limou.hrms.util.DingTalkUtil;
+import com.limou.hrms.utils.DingTalkUtil;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
