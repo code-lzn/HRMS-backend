@@ -185,6 +185,10 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
         detail.setEmployeeId(emp.getId());
         detail.setAccount(entity.getPhone());
         detail.setIdCard(entity.getIdCard());
+        detail.setBirthday(entity.getBirthday());
+        detail.setRegisteredAddress(entity.getRegisteredAddress());
+        detail.setCurrentAddress(entity.getCurrentAddress());
+        detail.setWorkLocation(entity.getWorkLocation());
         detail.setBaseSalary(entity.getBaseSalary());
         detail.setBankAccount(entity.getBankAccount());
         detail.setBankName(entity.getBankName());
@@ -445,9 +449,12 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
     @Transactional(rollbackFor = Exception.class)
     public void onApprovalPassed(Long businessId) {
         HrOnboarding entity = getById(businessId);
-        if (entity != null) {
-            log.info("入职审批通过: id={}, name={}", entity.getId(), entity.getCandidateName());
+        if (entity == null || entity.getEmployeeId() != null) {
+            return;
         }
+        internalConfirmOnboarding(entity, entity.getHireDate());
+        log.info("入职审批通过，员工已创建: id={}, name={}, employeeId={}",
+                entity.getId(), entity.getCandidateName(), entity.getEmployeeId());
     }
 
     @Override

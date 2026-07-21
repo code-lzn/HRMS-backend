@@ -51,7 +51,7 @@ public class PositionServiceImpl extends ServiceImpl<PositionMapper, Position> i
 
         LambdaQueryWrapper<Position> wrapper = new LambdaQueryWrapper<Position>()
                 .orderByAsc(Position::getSequence)
-                .orderByAsc(Position::getId);
+                .orderByDesc(Position::getId);
 
         if (request.getSequence() != null) {
             wrapper.eq(Position::getSequence, request.getSequence());
