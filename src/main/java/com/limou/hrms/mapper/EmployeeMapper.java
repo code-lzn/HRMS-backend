@@ -48,4 +48,13 @@ public interface EmployeeMapper extends BaseMapper<Employee> {
             + "AND u.roleId IN (1, 2, 3) "
             + "ORDER BY e.employeeName")
     List<Employee> selectManagerCandidates();
+
+    /**
+     * 批量查询员工（忽略逻辑删除，用于考勤等历史数据关联展示）
+     */
+    @Select("<script>"
+            + "SELECT * FROM employee WHERE id IN "
+            + "<foreach collection='ids' item='id' open='(' separator=',' close=')'>#{id}</foreach>"
+            + "</script>")
+    List<Employee> selectBatchIdsAll(@Param("ids") List<Long> ids);
 }
