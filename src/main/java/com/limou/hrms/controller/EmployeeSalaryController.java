@@ -38,7 +38,7 @@ public class EmployeeSalaryController {
     private UserService userService;
 
     @GetMapping("/{employeeId}")
-    @AuthCheck(mustRole = {UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE, UserConstant.DEFAULT_ROLE})
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE, UserConstant.DEFAULT_ROLE})
     public BaseResponse<EmployeeSalaryVO> getEmployeeSalary(
             @PathVariable Long employeeId) {
         if (employeeId == null || employeeId <= 0) {
@@ -49,7 +49,7 @@ public class EmployeeSalaryController {
     }
 
     @PutMapping("/{employeeId}")
-    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
     public BaseResponse<Boolean> updateEmployeeSalary(
             @PathVariable Long employeeId,
             @RequestBody EmployeeSalaryUpdateRequest request,
@@ -63,7 +63,7 @@ public class EmployeeSalaryController {
     }
 
     @GetMapping("/{employeeId}/history")
-    @AuthCheck(mustRole = {UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE, UserConstant.DEFAULT_ROLE})
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE, UserConstant.DEFAULT_ROLE})
     public BaseResponse<List<SalaryChangeHistoryVO>> getSalaryHistory(
             @PathVariable Long employeeId) {
         if (employeeId == null || employeeId <= 0) {

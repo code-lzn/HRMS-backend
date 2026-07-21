@@ -50,13 +50,14 @@ public class DataScopeContext {
     /** 薪资信息数据范围 */
     public DataScopeEnum getSalaryScope() {
         switch (currentRole) {
+            case "admin":
             case "hr":
             case "finance":
                 return DataScopeEnum.ALL;
             case "user":
                 return DataScopeEnum.SELF;
             default:
-                // admin, dept_head 无权查看薪资
+                // dept_head 无权查看薪资
                 return DataScopeEnum.NONE;
         }
     }
