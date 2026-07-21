@@ -132,16 +132,28 @@ public class AttendanceStatsServiceImpl implements AttendanceStatsService {
                 .eq(Employee::getIsDeleted, 0).list().stream()
                 .collect(Collectors.toMap(Employee::getId, e -> e));
 
-        Map<Long, List<Employee>> deptEmployeeMap = employeeMap.values().stream()
-                .filter(e -> e.getDepartmentId() != null)
-                .collect(Collectors.groupingBy(Employee::getDepartmentId));
+        // 按部门分组员工（含无部门员工归入 -1）
+        Map<Long, List<Employee>> deptEmployeeMap = new HashMap<>();
+        List<Employee> unassignedEmployees = new ArrayList<>();
+        for (Employee e : employeeMap.values()) {
+            if (e.getDepartmentId() != null) {
+                deptEmployeeMap.computeIfAbsent(e.getDepartmentId(), k -> new ArrayList<>()).add(e);
+            } else {
+                unassignedEmployees.add(e);
+            }
+        }
 
-        // 按部门分组考勤记录
+        // 按部门分组考勤记录（无部门员工记录归入 -1）
         Map<Long, List<Attendance>> deptRecordMap = new HashMap<>();
+        List<Attendance> unassignedRecords = new ArrayList<>();
         for (Attendance r : allRecords) {
             Employee emp = employeeMap.get(r.getEmployeeId());
-            if (emp != null && emp.getDepartmentId() != null) {
-                deptRecordMap.computeIfAbsent(emp.getDepartmentId(), k -> new ArrayList<>()).add(r);
+            if (emp != null) {
+                if (emp.getDepartmentId() != null) {
+                    deptRecordMap.computeIfAbsent(emp.getDepartmentId(), k -> new ArrayList<>()).add(r);
+                } else {
+                    unassignedRecords.add(r);
+                }
             }
         }
 
@@ -215,6 +227,50 @@ public class AttendanceStatsServiceImpl implements AttendanceStatsService {
             // 请假率 = 请假人数 / 部门总人数
             double leaveRate = empCount > 0
                     ? (leaveEmployeeSet.size() * 100.0 / empCount) : 0;
+            vo.setLeaveRate(BigDecimal.valueOf(leaveRate).setScale(2, RoundingMode.HALF_UP).doubleValue());
+
+            result.add(vo);
+        }
+
+        // 无部门员工统计：统一归入"未分配部门"
+        if (!unassignedEmployees.isEmpty() || !unassignedRecords.isEmpty()) {
+            DepartmentAttendanceStatsVO vo = new DepartmentAttendanceStatsVO();
+            vo.setDepartmentId(0L);
+            vo.setDepartmentName("未分配部门");
+            vo.setEmployeeCount(unassignedEmployees.size());
+            vo.setTotalWorkDays(totalWorkDays);
+
+            int attendanceDays = 0, lateTotalTimes = 0, earlyTotalTimes = 0, absentDays = 0, leaveDays = 0;
+            Set<Long> lateEmployeeSet = new HashSet<>();
+            Set<Long> earlyEmployeeSet = new HashSet<>();
+            Set<Long> leaveEmployeeSet = new HashSet<>();
+
+            for (Attendance r : unassignedRecords) {
+                int status = r.getStatus() != null ? r.getStatus() : 0;
+                if (status == AttendanceStatusEnum.NORMAL.getValue()
+                        || status == AttendanceStatusEnum.LATE.getValue()
+                        || status == AttendanceStatusEnum.LEAVE_EARLY.getValue()) {
+                    attendanceDays++;
+                }
+                if (status == AttendanceStatusEnum.LATE.getValue()) { lateTotalTimes++; lateEmployeeSet.add(r.getEmployeeId()); }
+                if (status == AttendanceStatusEnum.LEAVE_EARLY.getValue()) { earlyTotalTimes++; earlyEmployeeSet.add(r.getEmployeeId()); }
+                if (status == AttendanceStatusEnum.LEAVE.getValue()) { leaveDays++; leaveEmployeeSet.add(r.getEmployeeId()); }
+                if (status == AttendanceStatusEnum.ABSENT.getValue()) { absentDays++; }
+            }
+
+            vo.setActualAttendanceDays(attendanceDays);
+            vo.setLateCount(lateTotalTimes);
+            vo.setEarlyCount(earlyTotalTimes);
+            vo.setAbsentDays(absentDays);
+            vo.setLeaveDays(leaveDays);
+
+            int empCount = unassignedEmployees.size();
+            double totalShouldDays = totalWorkDays * empCount;
+            double attendanceRate = totalShouldDays > 0 ? (attendanceDays * 100.0 / totalShouldDays) : 0;
+            vo.setAttendanceRate(BigDecimal.valueOf(attendanceRate).setScale(2, RoundingMode.HALF_UP).doubleValue());
+            double lateRate = empCount > 0 ? (lateEmployeeSet.size() * 100.0 / empCount) : 0;
+            vo.setLateRate(BigDecimal.valueOf(lateRate).setScale(2, RoundingMode.HALF_UP).doubleValue());
+            double leaveRate = empCount > 0 ? (leaveEmployeeSet.size() * 100.0 / empCount) : 0;
             vo.setLeaveRate(BigDecimal.valueOf(leaveRate).setScale(2, RoundingMode.HALF_UP).doubleValue());
 
             result.add(vo);
