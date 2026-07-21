@@ -27,7 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 import java.time.LocalDate;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -286,21 +286,41 @@ public class ResignationServiceImpl
     }
 
     private Page<ResignationListVO> toListVOPage(Page<ResignationApplication> page) {
-        List<ResignationListVO> records = page.getRecords().stream().map(app -> {
+        List<ResignationApplication> apps = page.getRecords();
+        Set<Long> empIds = new HashSet<>();
+        for (ResignationApplication a : apps) {
+            if (a.getEmployeeId() != null) empIds.add(a.getEmployeeId());
+            if (a.getHandoverToId() != null) empIds.add(a.getHandoverToId());
+            if (a.getApplicantId() != null) empIds.add(a.getApplicantId());
+        }
+        Map<Long, EmployeeWorkInfo> wiMap = empIds.isEmpty() ? Collections.emptyMap() :
+                workInfoMapper.selectList(new QueryWrapper<EmployeeWorkInfo>().in("employee_id", empIds))
+                        .stream().collect(Collectors.toMap(EmployeeWorkInfo::getEmployeeId, w -> w, (a, b) -> a));
+        Set<Long> deptIds = wiMap.values().stream().map(EmployeeWorkInfo::getDepartmentId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Set<Long> posIds = wiMap.values().stream().map(EmployeeWorkInfo::getPositionId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, String> deptMap = deptIds.isEmpty() ? Collections.emptyMap() :
+                departmentMapper.selectBatchIds(deptIds).stream().collect(Collectors.toMap(Department::getId, Department::getName));
+        Map<Long, String> posMap = posIds.isEmpty() ? Collections.emptyMap() :
+                positionMapper.selectBatchIds(posIds).stream().collect(Collectors.toMap(Position::getId, Position::getName));
+        Map<Long, String> empNoMap = new HashMap<>(), empNameMap = new HashMap<>();
+        for (Long eid : empIds) { empNoMap.put(eid, getEmployeeNo(eid)); empNameMap.put(eid, approverResolver.getEmployeeName(eid)); }
+
+        List<ResignationListVO> records = apps.stream().map(app -> {
+            EmployeeWorkInfo wi = wiMap.get(app.getEmployeeId());
             ResignationListVO vo = new ResignationListVO();
             vo.setId(app.getId());
             vo.setEmployeeId(app.getEmployeeId());
-            vo.setEmployeeName(approverResolver.getEmployeeName(app.getEmployeeId()));
-            vo.setEmployeeNo(getEmployeeNo(app.getEmployeeId()));
-            vo.setDepartmentName(getDeptNameByEmployeeId(app.getEmployeeId()));
-            vo.setPositionName(getPositionNameByEmployeeId(app.getEmployeeId()));
-            vo.setHandoverToName(approverResolver.getEmployeeName(app.getHandoverToId()));
+            vo.setEmployeeName(empNameMap.getOrDefault(app.getEmployeeId(), ""));
+            vo.setEmployeeNo(empNoMap.getOrDefault(app.getEmployeeId(), ""));
+            vo.setDepartmentName(wi != null ? deptMap.getOrDefault(wi.getDepartmentId(), "") : "");
+            vo.setPositionName(wi != null ? posMap.getOrDefault(wi.getPositionId(), "") : "");
+            vo.setHandoverToName(empNameMap.getOrDefault(app.getHandoverToId(), ""));
             vo.setResignationDate(app.getResignationDate());
             vo.setResignationType(app.getResignationType());
             vo.setResignationTypeDesc(getResignationTypeDesc(app.getResignationType()));
             vo.setStatus(app.getStatus());
             vo.setStatusDesc(getStatusDesc(app.getStatus()));
-            vo.setApplicantName(approverResolver.getEmployeeName(app.getApplicantId()));
+            vo.setApplicantName(empNameMap.getOrDefault(app.getApplicantId(), ""));
             vo.setCreateTime(app.getCreateTime());
             return vo;
         }).collect(Collectors.toList());

@@ -485,18 +485,30 @@ public class OnboardingServiceImpl
     }
 
     private Page<OnboardingListVO> toListVOPage(Page<OnboardingApplication> page) {
+        // 批量加载部门、职位、人名
+        Set<Long> deptIds = page.getRecords().stream().map(OnboardingApplication::getDepartmentId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Set<Long> posIds = page.getRecords().stream().map(OnboardingApplication::getPositionId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Set<Long> applicantIds = page.getRecords().stream().map(OnboardingApplication::getApplicantId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, String> deptNameMap = deptIds.isEmpty() ? Collections.emptyMap() :
+                departmentMapper.selectBatchIds(deptIds).stream().collect(Collectors.toMap(Department::getId, Department::getName));
+        Map<Long, String> posNameMap = posIds.isEmpty() ? Collections.emptyMap() :
+                positionMapper.selectBatchIds(posIds).stream().collect(Collectors.toMap(Position::getId, Position::getName));
+        Map<Long, String> empNameMap = new HashMap<>();
+        for (Long eid : applicantIds) {
+            empNameMap.put(eid, approverResolver.getEmployeeName(eid));
+        }
         List<OnboardingListVO> records = page.getRecords().stream().map(app -> {
             OnboardingListVO vo = new OnboardingListVO();
             vo.setId(app.getId());
             vo.setName(app.getName());
             vo.setPhone(maskPhone(app.getPhone()));
-            vo.setDepartmentName(getDeptName(app.getDepartmentId()));
-            vo.setPositionName(getPositionName(app.getPositionId()));
+            vo.setDepartmentName(deptNameMap.getOrDefault(app.getDepartmentId(), ""));
+            vo.setPositionName(posNameMap.getOrDefault(app.getPositionId(), ""));
             vo.setExpectedHireDate(app.getExpectedHireDate());
             vo.setStatus(app.getStatus());
             OnboardingStatus statusEnum = OnboardingStatus.fromCode(app.getStatus());
             vo.setStatusDesc(statusEnum != null ? statusEnum.getDesc() : "");
-            vo.setApplicantName(approverResolver.getEmployeeName(app.getApplicantId()));
+            vo.setApplicantName(empNameMap.getOrDefault(app.getApplicantId(), ""));
             vo.setHireType(app.getHireType());
             String[] hireTypes = {"", "全职", "兼职", "实习"};
             vo.setHireTypeDesc(app.getHireType() != null && app.getHireType() > 0 && app.getHireType() < hireTypes.length ? hireTypes[app.getHireType()] : "");

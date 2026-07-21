@@ -25,7 +25,8 @@ import com.limou.hrms.model.enums.ResignationStatus;
 
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
+import java.util.*;
+
 import com.limou.hrms.service.ApprovalCallback;
 import com.limou.hrms.service.ApprovalFlowService;
 import com.limou.hrms.service.ProbationService;
@@ -35,7 +36,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
-import java.util.List;
 import java.util.stream.Collectors;
 
 /**
@@ -421,20 +421,44 @@ public class ProbationServiceImpl
     }
 
     private Page<ProbationListVO> toListVOPage(Page<ProbationApplication> page) {
-        List<ProbationListVO> records = page.getRecords().stream().map(app -> {
+        List<ProbationApplication> apps = page.getRecords();
+        // 批量收集
+        Set<Long> empIds = new HashSet<>(), applicantIds = new HashSet<>();
+        for (ProbationApplication a : apps) {
+            if (a.getEmployeeId() != null) empIds.add(a.getEmployeeId());
+            if (a.getApplicantId() != null) applicantIds.add(a.getApplicantId());
+        }
+        empIds.addAll(applicantIds);
+        // 批量查 work_info
+        Map<Long, EmployeeWorkInfo> wiMap = empIds.isEmpty() ? Collections.emptyMap() :
+                workInfoMapper.selectList(new QueryWrapper<EmployeeWorkInfo>().in("employee_id", empIds))
+                        .stream().collect(Collectors.toMap(EmployeeWorkInfo::getEmployeeId, w -> w, (a, b) -> a));
+        // 批量查部门、职位
+        Set<Long> deptIds = wiMap.values().stream().map(EmployeeWorkInfo::getDepartmentId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Set<Long> posIds = wiMap.values().stream().map(EmployeeWorkInfo::getPositionId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, String> deptMap = deptIds.isEmpty() ? Collections.emptyMap() :
+                departmentMapper.selectBatchIds(deptIds).stream().collect(Collectors.toMap(Department::getId, Department::getName));
+        Map<Long, String> posMap = posIds.isEmpty() ? Collections.emptyMap() :
+                positionMapper.selectBatchIds(posIds).stream().collect(Collectors.toMap(Position::getId, Position::getName));
+        // 批量查工号、人名
+        Map<Long, String> empNoMap = new HashMap<>(), empNameMap = new HashMap<>();
+        for (Long eid : empIds) { empNoMap.put(eid, getEmployeeNo(eid)); empNameMap.put(eid, approverResolver.getEmployeeName(eid)); }
+
+        List<ProbationListVO> records = apps.stream().map(app -> {
+            EmployeeWorkInfo wi = wiMap.get(app.getEmployeeId());
             ProbationListVO vo = new ProbationListVO();
             vo.setId(app.getId());
             vo.setEmployeeId(app.getEmployeeId());
-            vo.setEmployeeName(approverResolver.getEmployeeName(app.getEmployeeId()));
-            vo.setEmployeeNo(getEmployeeNo(app.getEmployeeId()));
-            vo.setDepartmentName(getDeptNameByEmployeeId(app.getEmployeeId()));
-            vo.setPositionName(getPositionNameByEmployeeId(app.getEmployeeId()));
+            vo.setEmployeeName(empNameMap.getOrDefault(app.getEmployeeId(), ""));
+            vo.setEmployeeNo(empNoMap.getOrDefault(app.getEmployeeId(), ""));
+            vo.setDepartmentName(wi != null ? deptMap.getOrDefault(wi.getDepartmentId(), "") : "");
+            vo.setPositionName(wi != null ? posMap.getOrDefault(wi.getPositionId(), "") : "");
             vo.setProbationStartDate(app.getProbationStartDate());
             vo.setProbationEndDate(app.getProbationEndDate());
             vo.setSalaryAdjustment(app.getSalaryAdjustment());
             vo.setStatus(app.getStatus());
             vo.setStatusDesc(getStatusDesc(app.getStatus()));
-            vo.setApplicantName(approverResolver.getEmployeeName(app.getApplicantId()));
+            vo.setApplicantName(empNameMap.getOrDefault(app.getApplicantId(), ""));
             vo.setCreateTime(app.getCreateTime());
             return vo;
         }).collect(Collectors.toList());
