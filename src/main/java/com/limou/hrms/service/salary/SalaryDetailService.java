@@ -19,7 +19,8 @@ public interface SalaryDetailService extends IService<SalaryDetail> {
     /**
      * 发送工资条二次验证码（短信 / 降级密码）
      */
-    void sendPayslipVerifyCode(Long employeeId, Long detailId);
+    /** @return 验证码 */
+    String sendPayslipVerifyCode(Long employeeId, Long detailId);
 
     /**
      * 校验工资条验证码（或密码）

@@ -82,14 +82,14 @@ public class SalaryDetailServiceImpl extends ServiceImpl<SalaryDetailMapper, Sal
     // ==================== 发送验证码 ====================
 
     @Override
-    public void sendPayslipVerifyCode(Long employeeId, Long detailId) {
+    public String sendPayslipVerifyCode(Long employeeId, Long detailId) {
         // ① 校验工资条存在且属于当前员工
         SalaryDetail detail = validatePayslipOwnership(employeeId, detailId);
 
         // ② 检查是否已通过验证（本次登录期间）
         if (isPayslipVerified(employeeId, detailId)) {
             log.info("工资条 {} 已通过验证，无需重复发送", detailId);
-            return;
+            return "";
         }
 
         // ③ 频率限制：1 分钟内不可重复发送
@@ -123,8 +123,9 @@ public class SalaryDetailServiceImpl extends ServiceImpl<SalaryDetailMapper, Sal
             maskedPhone = "尾号" + maskedPhone.substring(maskedPhone.length() - 4);
         }
 
-        log.info("【验证码】员工 {} 工资条 {} → {}，验证码: {}（5分钟有效，查看日志获取）",
+        log.info("【验证码】员工 {} 工资条 {} → {}，验证码: {}（5分钟有效）",
                 employeeId, detailId, maskedPhone, code);
+        return code;
     }
 
     // ==================== 验证码校验 ====================

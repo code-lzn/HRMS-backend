@@ -66,8 +66,13 @@ public class FileController {
             file = File.createTempFile(filepath, null);
             multipartFile.transferTo(file);
             cosManager.putObject(filepath, file);
-            // 返回可访问地址
-            return ResultUtils.success(FileConstant.COS_HOST + filepath);
+            String url = FileConstant.COS_HOST + filepath;
+            // 头像上传 → 写回 user 表
+            if (FileUploadBizEnum.USER_AVATAR.equals(fileUploadBizEnum)) {
+                loginUser.setUserAvatar(url);
+                userService.updateById(loginUser);
+            }
+            return ResultUtils.success(url);
         } catch (Exception e) {
             log.error("file upload error, filepath = " + filepath, e);
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "上传失败");

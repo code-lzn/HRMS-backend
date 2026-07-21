@@ -71,7 +71,8 @@ public interface ProfileService {
     /**
      * 发送工资条验证码
      */
-    void sendPayslipVerifyCode(User loginUser, Long salaryId);
+    /** @return 验证码 */
+    String sendPayslipVerifyCode(User loginUser, Long salaryId);
 
     /**
      * 工资条详情（验证码校验）
@@ -93,7 +94,8 @@ public interface ProfileService {
     /**
      * 发送手机验证码（修改手机号前调用）
      */
-    void sendPhoneVerifyCode(User loginUser, String phone);
+    /** @return 验证码 */
+    String sendPhoneVerifyCode(User loginUser, String phone);
 
     /**
      * 修改手机号（需先调用 sendPhoneVerifyCode 获取验证码）

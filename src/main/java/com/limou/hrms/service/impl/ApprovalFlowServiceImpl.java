@@ -65,6 +65,8 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
     @Resource
     private SupplementCardRequestMapper supplementCardRequestMapper;
     @Resource
+    private SalaryBatchMapper salaryBatchMapper;
+    @Resource
     private DepartmentMapper departmentMapper;
     @Resource
     private PositionMapper positionMapper;
@@ -692,6 +694,8 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
                     return enrichLeave(leaveRequestMapper.selectById(bizId));
                 case CARD_REPLENISH:
                     return enrichSupplementCard(supplementCardRequestMapper.selectById(bizId));
+                case SALARY_BATCH:
+                    return enrichSalaryBatch(salaryBatchMapper.selectById(bizId));
                 default:
                     return Collections.emptyMap();
             }
@@ -816,6 +820,13 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
             map.put("employeeName", approverResolver.getEmployeeName(app.getEmployeeId()));
         }
         map.put("cardTypeDesc", app.getCardType() == 1 ? "上班卡" : "下班卡");
+        return map;
+    }
+
+    /** 薪资批次：补批次号、月份、人数、金额 */
+    private Map<String, Object> enrichSalaryBatch(SalaryBatch batch) {
+        if (batch == null) return Collections.emptyMap();
+        Map<String, Object> map = beanToMap(batch);
         return map;
     }
 

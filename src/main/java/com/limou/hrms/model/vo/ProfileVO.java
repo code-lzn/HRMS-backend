@@ -15,6 +15,8 @@ public class ProfileVO implements Serializable {
 
     private String employeeNo;
 
+    private String userAvatar;
+
     private String name;
 
     private Integer gender;

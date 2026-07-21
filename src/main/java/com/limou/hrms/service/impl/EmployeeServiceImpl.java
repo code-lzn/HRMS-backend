@@ -438,7 +438,8 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
         List<Employee> emps = this.lambdaQuery()
                 .list()
                 .stream()
-                .filter(e -> e.getIsDeleted() == null || e.getIsDeleted() == 0)
+                .filter(e -> (e.getIsDeleted() == null || e.getIsDeleted() == 0)
+                        && !Integer.valueOf(4).equals(e.getStatus()))
                 .collect(Collectors.toList());
         List<Map<String, Object>> result = new ArrayList<>();
         for (Employee e : emps) {

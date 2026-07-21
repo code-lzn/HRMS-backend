@@ -136,10 +136,10 @@ public class ProfileController {
      */
     @PostMapping("/salaries/{id}/verify")
     @AuthCheck
-    public BaseResponse<Boolean> sendPayslipVerifyCode(@PathVariable Long id) {
+    public BaseResponse<String> sendPayslipVerifyCode(@PathVariable Long id) {
         User loginUser = UserContext.getCurrentUser();
-        profileService.sendPayslipVerifyCode(loginUser, id);
-        return ResultUtils.success(true);
+        String code = profileService.sendPayslipVerifyCode(loginUser, id);
+        return ResultUtils.success(code);
     }
 
     /**
@@ -185,10 +185,10 @@ public class ProfileController {
      */
     @PostMapping("/phone/send-code")
     @AuthCheck
-    public BaseResponse<Boolean> sendPhoneVerifyCode(@RequestParam String phone) {
+    public BaseResponse<String> sendPhoneVerifyCode(@RequestParam String phone) {
         User loginUser = UserContext.getCurrentUser();
-        profileService.sendPhoneVerifyCode(loginUser, phone);
-        return ResultUtils.success(true);
+        String code = profileService.sendPhoneVerifyCode(loginUser, phone);
+        return ResultUtils.success(code);
     }
 
     /**

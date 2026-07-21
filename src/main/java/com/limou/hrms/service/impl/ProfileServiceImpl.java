@@ -106,18 +106,21 @@ public class ProfileServiceImpl implements ProfileService {
         vo.setStatus(employee.getStatus());
         vo.setStatusDesc(getEmployeeStatusDesc(employee.getStatus()));
         vo.setHireDate(employee.getHireDate() != null ? employee.getHireDate().toString() : null);
+        // 头像
+        User user = userMapper.selectById(employee.getUserId());
+        if (user != null) vo.setUserAvatar(user.getUserAvatar());
 
         if (personalInfo != null) {
             vo.setName(personalInfo.getName());
             vo.setGender(personalInfo.getGender());
             vo.setGenderDesc(personalInfo.getGender() == 1 ? "男" : personalInfo.getGender() == 2 ? "女" : "");
-            vo.setPhone(SensitiveDataUtil.maskPhone(personalInfo.getPhone()));
+            vo.setPhone(personalInfo.getPhone());
             vo.setEmail(personalInfo.getEmail());
-            vo.setIdCard(SensitiveDataUtil.maskIdCard(personalInfo.getIdCard()));
+            vo.setIdCard(personalInfo.getIdCard());
             vo.setBirthday(personalInfo.getBirthday() != null ? personalInfo.getBirthday().toString() : null);
             vo.setAddress(personalInfo.getCurrentAddress());
             vo.setEmergencyContact(personalInfo.getEmergencyContactName());
-            vo.setEmergencyPhone(SensitiveDataUtil.maskPhone(personalInfo.getEmergencyContactPhone()));
+            vo.setEmergencyPhone(personalInfo.getEmergencyContactPhone());
         }
 
         if (workInfo != null) {
@@ -289,9 +292,9 @@ public class ProfileServiceImpl implements ProfileService {
     }
 
     @Override
-    public void sendPayslipVerifyCode(User loginUser, Long salaryId) {
+    public String sendPayslipVerifyCode(User loginUser, Long salaryId) {
         Long employeeId = dataScopeContext.getCurrentEmployeeId();
-        salaryDetailService.sendPayslipVerifyCode(employeeId, salaryId);
+        return salaryDetailService.sendPayslipVerifyCode(employeeId, salaryId);
     }
 
     @Override
@@ -367,7 +370,7 @@ public class ProfileServiceImpl implements ProfileService {
     /**
      * 发送手机验证码（用于修改手机号时验证新手机号）
      */
-    public void sendPhoneVerifyCode(User loginUser, String phone) {
+    public String sendPhoneVerifyCode(User loginUser, String phone) {
         if (!PHONE_PATTERN.matcher(phone).matches()) {
             log.error("手机号格式错误");
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "手机号格式不正确");
@@ -390,8 +393,9 @@ public class ProfileServiceImpl implements ProfileService {
         stringRedisTemplate.opsForValue().set(codeKey, code, Duration.ofMinutes(5));
         stringRedisTemplate.opsForValue().set(limitKey, "1", Duration.ofSeconds(60));
 
-        log.info("【验证码】用户 {} 手机号变更验证 → {}，验证码: {}（5分钟有效，查看日志获取）",
+        log.info("【验证码】用户 {} 手机号变更验证 → {}，验证码: {}（5分钟有效）",
                 userId, phone, code);
+        return code;
     }
 
     @Override

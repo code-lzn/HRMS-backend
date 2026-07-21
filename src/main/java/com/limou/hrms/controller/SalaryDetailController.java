@@ -66,7 +66,7 @@ public class SalaryDetailController {
 
     @PostMapping("/{id}/send-code")
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.FINANCE_ROLE, UserConstant.DEPT_HEAD_ROLE, UserConstant.DEFAULT_ROLE})
-    public BaseResponse<Boolean> sendVerifyCode(
+    public BaseResponse<String> sendVerifyCode(
             @PathVariable Long id,
             HttpServletRequest request) {
         if (id == null || id <= 0) {
@@ -74,8 +74,8 @@ public class SalaryDetailController {
         }
         User loginUser = userService.getLoginUser(request);
         Long employeeId = getEmployeeId(loginUser);
-        salaryDetailService.sendPayslipVerifyCode(employeeId, id);
-        return ResultUtils.success(true);
+        String code = salaryDetailService.sendPayslipVerifyCode(employeeId, id);
+        return ResultUtils.success(code);
     }
 
     @PostMapping("/{id}/verify")
