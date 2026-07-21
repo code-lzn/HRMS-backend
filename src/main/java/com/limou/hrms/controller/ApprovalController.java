@@ -8,6 +8,7 @@ import com.limou.hrms.model.dto.approval.ApprovalActionRequest;
 import com.limou.hrms.model.dto.approval.DelegationRequest;
 import com.limou.hrms.model.entity.Employee;
 import com.limou.hrms.model.entity.User;
+import com.limou.hrms.model.vo.ApprovalApprovedVO;
 import com.limou.hrms.model.vo.ApprovalDelegationVO;
 import com.limou.hrms.model.vo.ApprovalDetailVO;
 import com.limou.hrms.model.vo.ApprovalPendingVO;
@@ -52,6 +53,17 @@ public class ApprovalController {
         User loginUser = userService.getLoginUser(request);
         Employee emp = employeeService.getByUserId(loginUser.getId());
         List<ApprovalPendingVO> list = approvalService.getPendingList(emp.getId());
+        return ResultUtils.success(list);
+    }
+
+    /**
+     * 已审批列表
+     */
+    @GetMapping("/approved")
+    public BaseResponse<List<ApprovalApprovedVO>> getApprovedList(HttpServletRequest request) {
+        User loginUser = userService.getLoginUser(request);
+        Employee emp = employeeService.getByUserId(loginUser.getId());
+        List<ApprovalApprovedVO> list = approvalService.getApprovedList(emp.getId());
         return ResultUtils.success(list);
     }
 

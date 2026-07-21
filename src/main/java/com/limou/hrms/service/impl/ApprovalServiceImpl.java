@@ -14,6 +14,7 @@ import com.limou.hrms.model.enums.ApprovalStatusEnum;
 import com.limou.hrms.model.enums.ApproverTypeEnum;
 import com.limou.hrms.model.enums.DelegationStatusEnum;
 import com.limou.hrms.model.enums.BusinessTypeEnum;
+import com.limou.hrms.model.vo.ApprovalApprovedVO;
 import com.limou.hrms.model.vo.ApprovalDetailVO;
 import com.limou.hrms.model.vo.ApprovalPendingVO;
 import com.limou.hrms.service.*;
@@ -156,6 +157,42 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
             vo.setApplicantName(record.getApplicantName());
             vo.setApplyTime(record.getCreateTime());
             vo.setCurrentNodeName(detail.getNodeName());
+            result.add(vo);
+        }
+        return result;
+    }
+
+    @Override
+    public List<ApprovalApprovedVO> getApprovedList(Long employeeId) {
+        List<ApprovalDetail> details = approvalDetailService.lambdaQuery()
+                .eq(ApprovalDetail::getApproverId, employeeId)
+                .in(ApprovalDetail::getAction,
+                        ApprovalActionEnum.APPROVE.getValue(),
+                        ApprovalActionEnum.REJECT.getValue(),
+                        ApprovalActionEnum.TRANSFER.getValue())
+                .orderByDesc(ApprovalDetail::getOperateTime)
+                .list();
+
+        Set<Long> seenRecordIds = new HashSet<>();
+        List<ApprovalApprovedVO> result = new ArrayList<>();
+        for (ApprovalDetail detail : details) {
+            if (!seenRecordIds.add(detail.getRecordId())) continue;
+
+            ApprovalRecord record = this.getById(detail.getRecordId());
+            if (record == null) continue;
+
+            ApprovalApprovedVO vo = new ApprovalApprovedVO();
+            vo.setRecordId(record.getId());
+            vo.setDetailId(detail.getId());
+            vo.setBusinessType(record.getBusinessType());
+            vo.setBusinessTypeText(getBusinessTypeText(record.getBusinessType()));
+            vo.setBusinessId(record.getBusinessId());
+            vo.setApplicantName(record.getApplicantName());
+            vo.setApplyTime(record.getCreateTime());
+            vo.setNodeName(detail.getNodeName());
+            vo.setAction(detail.getAction());
+            vo.setActionText(getActionText(detail.getAction()));
+            vo.setOperateTime(detail.getOperateTime());
             result.add(vo);
         }
         return result;

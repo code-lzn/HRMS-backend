@@ -3,6 +3,7 @@ package com.limou.hrms.service;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.limou.hrms.model.entity.ApprovalDetail;
 import com.limou.hrms.model.entity.ApprovalRecord;
+import com.limou.hrms.model.vo.ApprovalApprovedVO;
 import com.limou.hrms.model.vo.ApprovalDetailVO;
 import com.limou.hrms.model.vo.ApprovalPendingVO;
 
@@ -11,6 +12,8 @@ import java.util.List;
 public interface ApprovalService extends IService<ApprovalRecord> {
 
     List<ApprovalPendingVO> getPendingList(Long employeeId);
+
+    List<ApprovalApprovedVO> getApprovedList(Long employeeId);
 
     ApprovalDetailVO getApprovalDetail(Long recordId);
 
