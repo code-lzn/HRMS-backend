@@ -17,8 +17,11 @@ import com.limou.hrms.model.vo.EmployeeChangeLogVO;
 import com.limou.hrms.model.vo.EmployeeDetailVO;
 import com.limou.hrms.model.entity.Employee;
 import com.limou.hrms.model.vo.EmployeeExcelVO;
+import com.limou.hrms.model.dto.onboarding.OnboardingAddRequest;
+import com.limou.hrms.model.entity.HrOnboarding;
 import com.limou.hrms.model.vo.EmployeeVO;
 import com.limou.hrms.service.EmployeeService;
+import com.limou.hrms.service.OnboardingService;
 import com.limou.hrms.service.UserService;
 import com.limou.hrms.utils.ExcelUtils;
 import javax.annotation.Resource;
@@ -47,6 +50,9 @@ public class EmployeeController {
 
     @Resource
     private UserService userService;
+
+    @Resource
+    private OnboardingService onboardingService;
 
     /**
      * 查看我的档案（含敏感字段脱敏、锁定字段标记）
@@ -114,14 +120,43 @@ public class EmployeeController {
         return ResultUtils.success(detail);
     }
     /**
-     * 新增员工
+     * 新增员工 → 提交入职申请，审批通过后自动创建员工
      */
     @PostMapping("/add")
-    public BaseResponse<Map<String, Object>> addEmployee(@RequestBody EmployeeAddRequest request) {
+    public BaseResponse<Map<String, Object>> addEmployee(@RequestBody EmployeeAddRequest request,
+                                                          HttpServletRequest httpRequest) {
         if (request == null) throw new BusinessException(ErrorCode.PARAMS_ERROR);
-        Long id = employeeService.addEmployee(request);
+        User loginUser = userService.getLoginUser(httpRequest);
+
+        OnboardingAddRequest onboardingReq = new OnboardingAddRequest();
+        onboardingReq.setCandidateName(request.getEmployeeName());
+        onboardingReq.setGender(request.getGender() != null && request.getGender() == 1 ? "MALE" : "FEMALE");
+        onboardingReq.setPhone(request.getPhone());
+        onboardingReq.setEmail(request.getEmail());
+        onboardingReq.setIdCard(request.getIdCard());
+        onboardingReq.setBirthday(request.getBirthday());
+        onboardingReq.setRegisteredAddress(request.getRegisteredAddress());
+        onboardingReq.setCurrentAddress(request.getCurrentAddress());
+        onboardingReq.setDeptId(request.getDepartmentId());
+        onboardingReq.setPositionId(request.getPositionId());
+        onboardingReq.setWorkLocation(request.getWorkLocation());
+        onboardingReq.setDirectReportId(request.getDirectReportId());
+        onboardingReq.setHireDate(request.getHireDate());
+        onboardingReq.setEmploymentType(request.getEmploymentType());
+        onboardingReq.setContractType(request.getContractType());
+        onboardingReq.setContractExpireDate(request.getContractExpireDate());
+        onboardingReq.setProbationMonth(3);
+        onboardingReq.setBaseSalary(request.getBaseSalary());
+        onboardingReq.setBankAccount(request.getBankAccount());
+        onboardingReq.setBankName(request.getBankName());
+        onboardingReq.setEmergencyContactName(request.getEmergencyContactName());
+        onboardingReq.setEmergencyContactPhone(request.getEmergencyContactPhone());
+
+        HrOnboarding entity = onboardingService.addOnboarding(onboardingReq, loginUser.getId(), true);
         Map<String, Object> data = new HashMap<>();
-        data.put("id", id);
+        data.put("id", entity.getId());
+        data.put("recordId", entity.getRecordId());
+        data.put("status", "APPROVING");
         return ResultUtils.success(data);
     }
     /**

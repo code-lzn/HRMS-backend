@@ -72,6 +72,22 @@ public class OnboardingAddRequest implements Serializable {
     /** 紧急联系电话 */
     private String emergencyContactPhone;
 
+    /** 候选人性别: MALE/FEMALE */
+    private String gender;
+
+    /** 生日 */
+    @JsonFormat(pattern = "yyyy-MM-dd", timezone = "GMT+8")
+    private Date birthday;
+
+    /** 户籍地址 */
+    private String registeredAddress;
+
+    /** 现居住地址 */
+    private String currentAddress;
+
+    /** 工作地点 */
+    private String workLocation;
+
     /** 单据备注 */
     private String remark;
 

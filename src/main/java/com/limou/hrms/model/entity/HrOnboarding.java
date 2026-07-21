@@ -83,6 +83,18 @@ public class HrOnboarding implements Serializable {
     /** 紧急联系电话 */
     private String emergencyContactPhone;
 
+    /** 生日 */
+    private Date birthday;
+
+    /** 户籍地址 */
+    private String registeredAddress;
+
+    /** 现居住地址 */
+    private String currentAddress;
+
+    /** 工作地点 */
+    private String workLocation;
+
     /** 审批通过后生成员工ID(employee.id) */
     private Long employeeId;
 
