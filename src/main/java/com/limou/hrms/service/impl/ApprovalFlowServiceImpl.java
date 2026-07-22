@@ -151,6 +151,14 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
     @Override
     public long getPendingCount() {
         Long employeeId = resolveCurrentEmployeeId();
+        // 先从缓存读取
+        org.springframework.cache.Cache cache = cacheManager.getCache("pendingCount");
+        if (cache != null) {
+            org.springframework.cache.Cache.ValueWrapper cached = cache.get(employeeId);
+            if (cached != null) {
+                return (long) cached.get();
+            }
+        }
         // 1. 自己的待办
         long myCount = approvalNodeMapper.selectCount(
                 new QueryWrapper<ApprovalNode>()
@@ -158,12 +166,6 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
                         .eq("status", NodeStatus.PENDING.getCode()));
 
         // 2. 委托给我的（别人委托给 currentUser，委托有效期内）
-        // SELECT COUNT(*) FROM approval_node n
-        // WHERE n.status = 1 AND n.approver_id IN (
-        //   SELECT d.delegator_id FROM approval_delegate d
-        //   WHERE d.delegate_id = ? AND d.enabled = 1
-        //   AND NOW() BETWEEN d.start_time AND d.end_time
-        // )
         Long delegatedCount = approvalNodeMapper.selectCount(
                 new QueryWrapper<ApprovalNode>()
                         .eq("status", NodeStatus.PENDING.getCode())
@@ -172,7 +174,12 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
                                 "WHERE d.delegate_id = " + employeeId + " " +
                                 "AND d.enabled = 1 AND NOW() BETWEEN d.start_time AND d.end_time"));
 
-        return myCount + delegatedCount;
+        long count = myCount + delegatedCount;
+        // 写入缓存
+        if (cache != null) {
+            cache.put(employeeId, count);
+        }
+        return count;
     }
 
     @Override
@@ -430,30 +437,36 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
     /** 全平台待办（admin/hr） */
     private Page<PendingItemVO> getAllPendingList(ApprovalQuery query) {
         Long employeeId = resolveCurrentEmployeeId();
-        Page<ApprovalNode> nodePage = approvalNodeMapper.selectPage(
-                new Page<>(query.getCurrent(), query.getPageSize()),
+        // 先取全部 PENDING 节点，整体去重后再分页，避免分页导致的去重不一致
+        List<ApprovalNode> allNodes = approvalNodeMapper.selectList(
                 new QueryWrapper<ApprovalNode>()
                         .eq("status", NodeStatus.PENDING.getCode())
                         .orderByDesc("create_time"));
 
         // admin/hr 可操作任意节点
-        Set<Long> actionableNodeIds = nodePage.getRecords().stream()
+        Set<Long> actionableNodeIds = allNodes.stream()
                 .map(ApprovalNode::getId)
                 .collect(Collectors.toSet());
 
-        List<PendingItemVO> records = buildPendingVOs(nodePage.getRecords(), new HashSet<>(), actionableNodeIds);
+        List<PendingItemVO> allRecords = buildPendingVOs(allNodes, new HashSet<>(), actionableNodeIds);
         // 按 instanceId 去重，确保同个审批只出现一次
         Set<Long> seen = new HashSet<>();
-        records = records.stream()
+        allRecords = allRecords.stream()
                 .filter(r -> seen.add(r.getInstanceId()))
                 .collect(Collectors.toList());
         if (StringUtils.isNotBlank(query.getBizType())) {
-            records = records.stream()
+            allRecords = allRecords.stream()
                     .filter(r -> query.getBizType().equals(r.getBizType()))
                     .collect(Collectors.toList());
         }
-        Page<PendingItemVO> result = new Page<>(nodePage.getCurrent(), nodePage.getSize(), records.size());
-        result.setRecords(records);
+        // 内存分页
+        int total = allRecords.size();
+        int from = Math.min((query.getCurrent() - 1) * query.getPageSize(), total);
+        int to = Math.min(from + query.getPageSize(), total);
+        List<PendingItemVO> pageRecords = allRecords.subList(from, to);
+
+        Page<PendingItemVO> result = new Page<>(query.getCurrent(), query.getPageSize(), total);
+        result.setRecords(pageRecords);
         return result;
     }
 
@@ -470,37 +483,32 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
 
     /** 部门待办 */
     private Page<PendingItemVO> queryDeptPendingList(Long departmentId, ApprovalQuery query) {
-        int pageSize = query.getPageSize();
-        int offset = Math.max(0, (query.getCurrent() - 1) * pageSize);
-
-        List<ApprovalNode> deptNodes = approvalNodeMapper.selectList(
+        // 全量取本部门审批人对应的待办节点，内存分页，避免 selectPage + inSql 不一致
+        List<ApprovalNode> allNodes = approvalNodeMapper.selectList(
                 new QueryWrapper<ApprovalNode>()
                         .eq("status", NodeStatus.PENDING.getCode())
                         .inSql("approver_id",
                                 "SELECT e.id FROM employee e " +
                                 "JOIN employee_work_info w ON w.employee_id = e.id " +
                                 "WHERE w.department_id = " + departmentId + " AND e.is_deleted = 0")
-                        .orderByDesc("create_time")
-                        .last("LIMIT " + pageSize + " OFFSET " + offset));
+                        .orderByDesc("create_time"));
 
-        long total = approvalNodeMapper.selectCount(
-                new QueryWrapper<ApprovalNode>()
-                        .eq("status", NodeStatus.PENDING.getCode())
-                        .inSql("approver_id",
-                                "SELECT e.id FROM employee e " +
-                                "JOIN employee_work_info w ON w.employee_id = e.id " +
-                                "WHERE w.department_id = " + departmentId + " AND e.is_deleted = 0"));
-
-        // 部门主管可操作其管辖范围内的所有节点
-        Set<Long> deptActionableIds = deptNodes.stream().map(ApprovalNode::getId).collect(Collectors.toSet());
-        List<PendingItemVO> records = buildPendingVOs(deptNodes, new HashSet<>(), deptActionableIds);
+        Set<Long> deptActionableIds = allNodes.stream()
+                .map(ApprovalNode::getId).collect(Collectors.toSet());
+        List<PendingItemVO> allRecords = buildPendingVOs(allNodes, new HashSet<>(), deptActionableIds);
         if (StringUtils.isNotBlank(query.getBizType())) {
-            records = records.stream()
+            allRecords = allRecords.stream()
                     .filter(r -> query.getBizType().equals(r.getBizType()))
                     .collect(Collectors.toList());
         }
+        // 内存分页
+        int total = allRecords.size();
+        int from = Math.min((query.getCurrent() - 1) * query.getPageSize(), total);
+        int to = Math.min(from + query.getPageSize(), total);
+        List<PendingItemVO> pageRecords = allRecords.subList(from, to);
+
         Page<PendingItemVO> result = new Page<>(query.getCurrent(), query.getPageSize(), total);
-        result.setRecords(records);
+        result.setRecords(pageRecords);
         return result;
     }
 
