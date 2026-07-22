@@ -7,6 +7,7 @@ import com.limou.hrms.model.entity.Employee;
 import com.limou.hrms.model.entity.HrRegularization;
 import com.limou.hrms.model.vo.RegularizationVO;
 
+import java.util.Date;
 import java.util.List;
 
 public interface RegularizationService extends IService<HrRegularization> {
@@ -31,4 +32,19 @@ public interface RegularizationService extends IService<HrRegularization> {
 
     /** 获取各状态统计数量 */
     java.util.Map<String, Long> getStats();
+
+    /** 撤回审批中的申请 */
+    void revokeRegularization(Long id, Long hrEmployeeId);
+
+    /** 放弃已批准的转正申请 */
+    void abandonRegularization(Long id, Long hrEmployeeId);
+
+    /** 修改转正日期（已批准待转正） */
+    void updateRegularizationDate(Long id, Date newDate, Long hrEmployeeId);
+
+    /** 确认转正（立即生效） */
+    void confirmRegularization(Long id, Long hrEmployeeId);
+
+    /** 重新发起已拒绝的申请 */
+    void resubmitRegularization(Long id, Long hrEmployeeId);
 }

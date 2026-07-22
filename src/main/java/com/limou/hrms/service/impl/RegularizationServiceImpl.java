@@ -1,6 +1,7 @@
 package com.limou.hrms.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -52,6 +53,12 @@ public class RegularizationServiceImpl extends ServiceImpl<HrRegularizationMappe
     private HrOnboardingMapper hrOnboardingMapper;
     @Resource
     private ApprovalFlowMapper approvalFlowMapper;
+    @Resource
+    private ApprovalDetailMapper approvalDetailMapper;
+    @Resource
+    private ApprovalRecordMapper approvalRecordMapper;
+    @Resource
+    private UserMapper userMapper;
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -174,6 +181,18 @@ public class RegularizationServiceImpl extends ServiceImpl<HrRegularizationMappe
         Page<HrRegularization> entityPage = page(new Page<>(page, size), wrapper);
         List<HrRegularization> records = entityPage.getRecords();
         Map<Long, Employee> empMap = batchLoadEmployees(records);
+
+        Set<Long> recordIds = records.stream().map(HrRegularization::getRecordId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, String> rejectionMap = new HashMap<>();
+        if (!recordIds.isEmpty()) {
+            List<ApprovalDetail> rejectedDetails = approvalDetailMapper.selectList(
+                    new LambdaQueryWrapper<ApprovalDetail>()
+                            .in(ApprovalDetail::getRecordId, recordIds)
+                            .eq(ApprovalDetail::getAction, "REJECT"));
+            for (ApprovalDetail d : rejectedDetails) {
+                if (d.getComment() != null) rejectionMap.put(d.getRecordId(), d.getComment());
+            }
+        }
         records = records.stream()
                 .filter(r -> {
                     Employee emp = empMap.get(r.getEmployeeId());
@@ -182,7 +201,7 @@ public class RegularizationServiceImpl extends ServiceImpl<HrRegularizationMappe
                 .collect(Collectors.toList());
         Page<RegularizationVO> voPage = new Page<>(entityPage.getCurrent(), entityPage.getSize(), entityPage.getTotal());
         voPage.setRecords(records.stream()
-                .map(e -> convertToVO(e, keyword, empMap))
+                .map(e -> convertToVO(e, keyword, empMap, rejectionMap))
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList()));
         return voPage;
@@ -193,7 +212,7 @@ public class RegularizationServiceImpl extends ServiceImpl<HrRegularizationMappe
         HrRegularization entity = getById(id);
         ThrowUtils.throwIf(entity == null, ErrorCode.NOT_FOUND_ERROR);
         Map<Long, Employee> empMap = batchLoadEmployees(Collections.singletonList(entity));
-        return convertToVO(entity, null, empMap);
+        return convertToVO(entity, null, empMap, Collections.emptyMap());
     }
 
     @Override
@@ -277,6 +296,121 @@ public class RegularizationServiceImpl extends ServiceImpl<HrRegularizationMappe
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void revokeRegularization(Long id, Long hrEmployeeId) {
+        HrRegularization entity = getById(id);
+        ThrowUtils.throwIf(entity == null, ErrorCode.NOT_FOUND_ERROR);
+        ThrowUtils.throwIf(entity.getRecordId() == null, ErrorCode.OPERATION_ERROR, "该申请未提交审批");
+
+        ApprovalRecord record = approvalService.getById(entity.getRecordId());
+        ThrowUtils.throwIf(record == null || !"APPROVING".equals(record.getStatus()),
+                ErrorCode.OPERATION_ERROR, "只有审批中的申请可撤回");
+        ThrowUtils.throwIf(record.getCurrentStep() == null || record.getCurrentStep() > 1,
+                ErrorCode.OPERATION_ERROR, "仅第一级审批前可撤回");
+
+        // 先清空实体的审批关联（flowId 保留，DB 列有 NOT NULL 约束）
+        update(new LambdaUpdateWrapper<HrRegularization>()
+                .set(HrRegularization::getRecordId, null)
+                .set(HrRegularization::getStatus, "DRAFT")
+                .eq(HrRegularization::getId, id));
+
+        approvalDetailMapper.delete(new LambdaQueryWrapper<ApprovalDetail>()
+                .eq(ApprovalDetail::getRecordId, record.getId()));
+        approvalRecordMapper.deleteById(record.getId());
+        log.info("转正申请已撤回: id={}, employeeId={}", entity.getId(), entity.getEmployeeId());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void abandonRegularization(Long id, Long hrEmployeeId) {
+        HrRegularization entity = getById(id);
+        ThrowUtils.throwIf(entity == null, ErrorCode.NOT_FOUND_ERROR);
+        ThrowUtils.throwIf(entity.getRecordId() == null, ErrorCode.OPERATION_ERROR, "该申请未提交审批");
+
+        ApprovalRecord record = approvalRecordMapper.selectById(entity.getRecordId());
+        ThrowUtils.throwIf(record == null || !"APPROVED".equals(record.getStatus()),
+                ErrorCode.OPERATION_ERROR, "只有审批通过的申请可放弃");
+
+        record.setStatus("CANCELLED");
+        record.setFinishedAt(new Date());
+        approvalRecordMapper.updateById(record);
+
+        entity.setStatus("CANCELLED");
+        updateById(entity);
+
+        Employee emp = employeeMapper.selectById(entity.getEmployeeId());
+        insertMutationLog(entity, emp, "CANCELLED");
+        log.info("转正申请已放弃: id={}, employeeId={}", entity.getId(), entity.getEmployeeId());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateRegularizationDate(Long id, Date newDate, Long hrEmployeeId) {
+        ThrowUtils.throwIf(newDate == null, ErrorCode.PARAMS_ERROR, "转正日期不能为空");
+        HrRegularization entity = getById(id);
+        ThrowUtils.throwIf(entity == null, ErrorCode.NOT_FOUND_ERROR);
+        ThrowUtils.throwIf(entity.getRecordId() == null, ErrorCode.OPERATION_ERROR, "该申请未提交审批");
+
+        ApprovalRecord record = approvalRecordMapper.selectById(entity.getRecordId());
+        ThrowUtils.throwIf(record == null || !"APPROVED".equals(record.getStatus()),
+                ErrorCode.OPERATION_ERROR, "只有审批通过的申请可修改转正日期");
+
+        entity.setConfirmDate(newDate);
+        updateById(entity);
+        log.info("转正日期已修改: id={}, employeeId={}, newDate={}", entity.getId(), entity.getEmployeeId(), newDate);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void confirmRegularization(Long id, Long hrEmployeeId) {
+        HrRegularization entity = getById(id);
+        ThrowUtils.throwIf(entity == null, ErrorCode.NOT_FOUND_ERROR);
+        ThrowUtils.throwIf(entity.getRecordId() == null, ErrorCode.OPERATION_ERROR, "该申请未提交审批");
+
+        ApprovalRecord record = approvalRecordMapper.selectById(entity.getRecordId());
+        ThrowUtils.throwIf(record == null || !"APPROVED".equals(record.getStatus()),
+                ErrorCode.OPERATION_ERROR, "只有审批通过的申请可确认转正");
+
+        Employee emp = employeeMapper.selectById(entity.getEmployeeId());
+        if (emp != null && Objects.equals(emp.getStatus(), EmployeeStatus.PROBATION.getCode())) {
+            emp.setStatus(EmployeeStatus.REGULAR.getCode());
+            employeeMapper.updateById(emp);
+            insertChangeLog(emp.getId(), "status",
+                    String.valueOf(EmployeeStatus.PROBATION.getCode()),
+                    String.valueOf(EmployeeStatus.REGULAR.getCode()),
+                    "FLOW_CHANGE", hrEmployeeId);
+        }
+
+        entity.setConfirmDate(new Date());
+        updateById(entity);
+        insertMutationLog(entity, emp, "REGULARIZED");
+        log.info("转正已确认: id={}, employeeId={}", entity.getId(), entity.getEmployeeId());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void resubmitRegularization(Long id, Long hrEmployeeId) {
+        HrRegularization entity = getById(id);
+        ThrowUtils.throwIf(entity == null, ErrorCode.NOT_FOUND_ERROR);
+        ThrowUtils.throwIf(entity.getRecordId() == null, ErrorCode.OPERATION_ERROR, "该申请未提交审批");
+
+        ApprovalRecord record = approvalRecordMapper.selectById(entity.getRecordId());
+        ThrowUtils.throwIf(record == null || !"REJECTED".equals(record.getStatus()),
+                ErrorCode.OPERATION_ERROR, "只有已拒绝的申请可重新发起");
+
+        approvalDetailMapper.delete(new LambdaQueryWrapper<ApprovalDetail>()
+                .eq(ApprovalDetail::getRecordId, record.getId()));
+        approvalRecordMapper.deleteById(record.getId());
+
+        update(new LambdaUpdateWrapper<HrRegularization>()
+                .set(HrRegularization::getRecordId, null)
+                .eq(HrRegularization::getId, id));
+
+        submitForApproval(entity.getId(), hrEmployeeId);
+        log.info("转正申请重新发起: id={}, employeeId={}", entity.getId(), entity.getEmployeeId());
+    }
+
+    @Override
     public List<Employee> getProbationEndingEmployees() {
         List<Employee> probEmployees = employeeMapper.selectList(
                 new LambdaQueryWrapper<Employee>()
@@ -304,7 +438,8 @@ public class RegularizationServiceImpl extends ServiceImpl<HrRegularizationMappe
 
     // ========== 私有方法 ==========
 
-    private RegularizationVO convertToVO(HrRegularization e, String keyword, Map<Long, Employee> empMap) {
+    private RegularizationVO convertToVO(HrRegularization e, String keyword, Map<Long, Employee> empMap,
+                                            Map<Long, String> rejectionMap) {
         RegularizationVO vo = new RegularizationVO();
         BeanUtils.copyProperties(e, vo);
         vo.setProbationStartDate(e.getOriginHireDate());
@@ -330,6 +465,9 @@ public class RegularizationServiceImpl extends ServiceImpl<HrRegularizationMappe
             if (record != null) {
                 vo.setApprovalStatus(record.getStatus());
                 vo.setApprovalProgress(record.getCurrentStep() + "/" + record.getTotalSteps());
+                if ("REJECTED".equals(record.getStatus()) && rejectionMap != null) {
+                    vo.setRejectionReason(rejectionMap.get(e.getRecordId()));
+                }
             }
         }
         if (StringUtils.hasText(keyword) && vo.getEmployeeName() != null
@@ -477,9 +615,9 @@ public class RegularizationServiceImpl extends ServiceImpl<HrRegularizationMappe
     public Map<String, Long> getStats() {
         Map<String, Long> stats = new LinkedHashMap<>();
         stats.put("draft", lambdaQuery().eq(HrRegularization::getStatus, "DRAFT").count());
-        stats.put("assessing", lambdaQuery().eq(HrRegularization::getStatus, "PENDING_ASSESSMENT").count());
         stats.put("approving", lambdaQuery().eq(HrRegularization::getStatus, "APPROVING").count());
-        stats.put("approved", lambdaQuery().eq(HrRegularization::getStatus, "APPROVED").count());
+        stats.put("pending", lambdaQuery().eq(HrRegularization::getStatus, "APPROVED").count());
+        stats.put("regularized", lambdaQuery().eq(HrRegularization::getStatus, "REGULARIZED").count());
         return stats;
     }
 }

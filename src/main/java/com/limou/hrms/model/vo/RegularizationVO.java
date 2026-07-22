@@ -37,6 +37,7 @@ public class RegularizationVO implements Serializable {
 
     private String approvalStatus;
     private String approvalProgress;
+    private String rejectionReason;
 
     private static final long serialVersionUID = 1L;
 }

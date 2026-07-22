@@ -17,6 +17,8 @@ import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 
@@ -86,6 +88,46 @@ public class RegularizationController {
     public BaseResponse<Void> delete(@PathVariable Long id, HttpServletRequest httpReq) {
         Long hrEmployeeId = getLoginEmployeeId(httpReq);
         regularizationService.deleteRegularization(id, hrEmployeeId);
+        return ResultUtils.success(null);
+    }
+
+    @PostMapping("/{id}/revoke")
+    public BaseResponse<Void> revoke(@PathVariable Long id, HttpServletRequest httpReq) {
+        Long hrEmployeeId = getLoginEmployeeId(httpReq);
+        regularizationService.revokeRegularization(id, hrEmployeeId);
+        return ResultUtils.success(null);
+    }
+
+    @PostMapping("/{id}/abandon")
+    public BaseResponse<Void> abandon(@PathVariable Long id, HttpServletRequest httpReq) {
+        Long hrEmployeeId = getLoginEmployeeId(httpReq);
+        regularizationService.abandonRegularization(id, hrEmployeeId);
+        return ResultUtils.success(null);
+    }
+
+    @PostMapping("/{id}/confirm")
+    public BaseResponse<Void> confirm(@PathVariable Long id, HttpServletRequest httpReq) {
+        Long hrEmployeeId = getLoginEmployeeId(httpReq);
+        regularizationService.confirmRegularization(id, hrEmployeeId);
+        return ResultUtils.success(null);
+    }
+
+    @PutMapping("/{id}/regularization-date")
+    public BaseResponse<Void> updateRegularizationDate(@PathVariable Long id,
+                                                         @RequestParam String regularizationDate,
+                                                         HttpServletRequest httpReq) {
+        Long hrEmployeeId = getLoginEmployeeId(httpReq);
+        Date date;
+        try { date = new SimpleDateFormat("yyyy-MM-dd").parse(regularizationDate); }
+        catch (Exception e) { throw new BusinessException(ErrorCode.PARAMS_ERROR, "日期格式错误，应为 yyyy-MM-dd"); }
+        regularizationService.updateRegularizationDate(id, date, hrEmployeeId);
+        return ResultUtils.success(null);
+    }
+
+    @PostMapping("/{id}/resubmit")
+    public BaseResponse<Void> resubmit(@PathVariable Long id, HttpServletRequest httpReq) {
+        Long hrEmployeeId = getLoginEmployeeId(httpReq);
+        regularizationService.resubmitRegularization(id, hrEmployeeId);
         return ResultUtils.success(null);
     }
 
