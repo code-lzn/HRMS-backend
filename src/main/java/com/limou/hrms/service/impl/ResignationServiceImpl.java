@@ -243,10 +243,9 @@ public class ResignationServiceImpl extends ServiceImpl<HrResignationMapper, HrR
         ThrowUtils.throwIf(record.getCurrentStep() == null || record.getCurrentStep() > 1,
                 ErrorCode.OPERATION_ERROR, "仅第一级审批前可撤回");
 
-        // 先清空实体的审批关联，避免 FK 约束冲突
+        // 先清空实体的审批关联（flowId 保留，DB 列有 NOT NULL 约束）
         update(new LambdaUpdateWrapper<HrResignation>()
                 .set(HrResignation::getRecordId, null)
-                .set(HrResignation::getFlowId, null)
                 .set(HrResignation::getStatus, "DRAFT")
                 .eq(HrResignation::getId, id));
 
@@ -359,7 +358,6 @@ public class ResignationServiceImpl extends ServiceImpl<HrResignationMapper, HrR
 
         update(new LambdaUpdateWrapper<HrResignation>()
                 .set(HrResignation::getRecordId, null)
-                .set(HrResignation::getFlowId, null)
                 .eq(HrResignation::getId, id));
 
         submitForApproval(entity.getId(), hrEmployeeId);
