@@ -449,12 +449,10 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
     @Transactional(rollbackFor = Exception.class)
     public void onApprovalPassed(Long businessId) {
         HrOnboarding entity = getById(businessId);
-        if (entity == null || entity.getEmployeeId() != null) {
+        if (entity == null) {
             return;
         }
-        internalConfirmOnboarding(entity, entity.getHireDate());
-        log.info("入职审批通过，员工已创建: id={}, name={}, employeeId={}",
-                entity.getId(), entity.getCandidateName(), entity.getEmployeeId());
+        log.info("入职审批通过，等待HR确认入职: id={}, name={}", entity.getId(), entity.getCandidateName());
     }
 
     @Override

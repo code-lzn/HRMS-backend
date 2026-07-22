@@ -164,10 +164,17 @@ public class TransferServiceImpl extends ServiceImpl<HrTransferMapper, HrTransfe
             wrapper.in(HrTransfer::getStatus, statuses);
         }
         Page<HrTransfer> entityPage = page(new Page<>(page, size), wrapper);
-
+        List<HrTransfer> records = entityPage.getRecords();
+        Map<Long, Employee> empMap = batchLoadEmployees(records);
+        records = records.stream()
+                .filter(r -> {
+                    Employee emp = empMap.get(r.getEmployeeId());
+                    return emp == null || emp.getIsDeleted() == null || emp.getIsDeleted() == 0;
+                })
+                .collect(Collectors.toList());
         Page<TransferVO> voPage = new Page<>(entityPage.getCurrent(), entityPage.getSize(), entityPage.getTotal());
-        voPage.setRecords(entityPage.getRecords().stream()
-                .map(e -> convertToVO(e, keyword))
+        voPage.setRecords(records.stream()
+                .map(e -> convertToVO(e, keyword, empMap))
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList()));
         return voPage;
@@ -177,7 +184,8 @@ public class TransferServiceImpl extends ServiceImpl<HrTransferMapper, HrTransfe
     public TransferVO getTransferDetail(Long id) {
         HrTransfer entity = getById(id);
         ThrowUtils.throwIf(entity == null, ErrorCode.NOT_FOUND_ERROR);
-        return convertToVO(entity, null);
+        Map<Long, Employee> empMap = batchLoadEmployees(Collections.singletonList(entity));
+        return convertToVO(entity, null, empMap);
     }
 
     @Override
@@ -279,7 +287,7 @@ public class TransferServiceImpl extends ServiceImpl<HrTransferMapper, HrTransfe
 
     // ========== 私有方法 ==========
 
-    private TransferVO convertToVO(HrTransfer e, String keyword) {
+    private TransferVO convertToVO(HrTransfer e, String keyword, Map<Long, Employee> empMap) {
         TransferVO vo = new TransferVO();
         BeanUtils.copyProperties(e, vo);
         vo.setFromDeptId(e.getSourceDeptId());
@@ -289,7 +297,7 @@ public class TransferServiceImpl extends ServiceImpl<HrTransferMapper, HrTransfe
         vo.setReason(e.getTransferReason());
         vo.setSalaryAdjustment(e.getNewBaseSalary());
 
-        Employee emp = employeeMapper.selectById(e.getEmployeeId());
+        Employee emp = empMap.get(e.getEmployeeId());
         if (emp != null) {
             vo.setEmployeeName(emp.getEmployeeName());
             vo.setEmployeeNo(emp.getEmployeeNo());
@@ -297,14 +305,15 @@ public class TransferServiceImpl extends ServiceImpl<HrTransferMapper, HrTransfe
         vo.setFromDeptName(getDeptName(e.getSourceDeptId()));
         vo.setToDeptName(getDeptName(e.getTargetDeptId()));
         vo.setToPositionName(getPosName(e.getTargetPositionId()));
-        vo.setToReporterName(getEmployeeName(e.getToReporterId()));
+        Employee toReporter = empMap.get(e.getToReporterId());
+        vo.setToReporterName(toReporter != null ? toReporter.getEmployeeName() : null);
 
         if (e.getApproverId() != null) {
-            Employee approver = employeeMapper.selectById(e.getApproverId());
+            Employee approver = empMap.get(e.getApproverId());
             vo.setApproverName(approver != null ? approver.getEmployeeName() : null);
         }
         if (e.getOperatorId() != null) {
-            Employee operator = employeeMapper.selectById(e.getOperatorId());
+            Employee operator = empMap.get(e.getOperatorId());
             vo.setOperatorName(operator != null ? operator.getEmployeeName() : null);
         }
         if (e.getRecordId() != null) {
@@ -319,6 +328,20 @@ public class TransferServiceImpl extends ServiceImpl<HrTransferMapper, HrTransfe
             return null;
         }
         return vo;
+    }
+
+    private Map<Long, Employee> batchLoadEmployees(List<HrTransfer> records) {
+        List<Long> ids = records.stream().map(r -> {
+            List<Long> list = new ArrayList<>();
+            if (r.getEmployeeId() != null) list.add(r.getEmployeeId());
+            if (r.getApproverId() != null) list.add(r.getApproverId());
+            if (r.getToReporterId() != null) list.add(r.getToReporterId());
+            if (r.getOperatorId() != null) list.add(r.getOperatorId());
+            return list;
+        }).flatMap(List::stream).distinct().collect(Collectors.toList());
+        if (ids.isEmpty()) return Collections.emptyMap();
+        List<Employee> emps = employeeMapper.selectBatchIdsAll(ids);
+        return emps.stream().collect(Collectors.toMap(Employee::getId, e -> e, (a, b) -> a));
     }
 
     private void validateRequest(TransferAddRequest req) {

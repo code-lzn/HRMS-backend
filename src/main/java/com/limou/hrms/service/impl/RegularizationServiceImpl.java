@@ -172,9 +172,17 @@ public class RegularizationServiceImpl extends ServiceImpl<HrRegularizationMappe
             wrapper.in(HrRegularization::getStatus, statuses);
         }
         Page<HrRegularization> entityPage = page(new Page<>(page, size), wrapper);
+        List<HrRegularization> records = entityPage.getRecords();
+        Map<Long, Employee> empMap = batchLoadEmployees(records);
+        records = records.stream()
+                .filter(r -> {
+                    Employee emp = empMap.get(r.getEmployeeId());
+                    return emp == null || emp.getIsDeleted() == null || emp.getIsDeleted() == 0;
+                })
+                .collect(Collectors.toList());
         Page<RegularizationVO> voPage = new Page<>(entityPage.getCurrent(), entityPage.getSize(), entityPage.getTotal());
-        voPage.setRecords(entityPage.getRecords().stream()
-                .map(e -> convertToVO(e, keyword))
+        voPage.setRecords(records.stream()
+                .map(e -> convertToVO(e, keyword, empMap))
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList()));
         return voPage;
@@ -184,7 +192,8 @@ public class RegularizationServiceImpl extends ServiceImpl<HrRegularizationMappe
     public RegularizationVO getRegularizationDetail(Long id) {
         HrRegularization entity = getById(id);
         ThrowUtils.throwIf(entity == null, ErrorCode.NOT_FOUND_ERROR);
-        return convertToVO(entity, null);
+        Map<Long, Employee> empMap = batchLoadEmployees(Collections.singletonList(entity));
+        return convertToVO(entity, null, empMap);
     }
 
     @Override
@@ -294,13 +303,13 @@ public class RegularizationServiceImpl extends ServiceImpl<HrRegularizationMappe
 
     // ========== 私有方法 ==========
 
-    private RegularizationVO convertToVO(HrRegularization e, String keyword) {
+    private RegularizationVO convertToVO(HrRegularization e, String keyword, Map<Long, Employee> empMap) {
         RegularizationVO vo = new RegularizationVO();
         BeanUtils.copyProperties(e, vo);
         vo.setProbationStartDate(e.getOriginHireDate());
         vo.setEvaluation(e.getProbationComment());
 
-        Employee emp = employeeMapper.selectById(e.getEmployeeId());
+        Employee emp = empMap.get(e.getEmployeeId());
         if (emp != null) {
             vo.setEmployeeName(emp.getEmployeeName());
             vo.setEmployeeNo(emp.getEmployeeNo());
@@ -308,11 +317,11 @@ public class RegularizationServiceImpl extends ServiceImpl<HrRegularizationMappe
             vo.setPositionName(getPosName(emp.getPositionId()));
         }
         if (e.getApproverId() != null) {
-            Employee approver = employeeMapper.selectById(e.getApproverId());
+            Employee approver = empMap.get(e.getApproverId());
             vo.setApproverName(approver != null ? approver.getEmployeeName() : null);
         }
         if (e.getOperatorId() != null) {
-            Employee operator = employeeMapper.selectById(e.getOperatorId());
+            Employee operator = empMap.get(e.getOperatorId());
             vo.setOperatorName(operator != null ? operator.getEmployeeName() : null);
         }
         if (e.getRecordId() != null) {
@@ -327,6 +336,19 @@ public class RegularizationServiceImpl extends ServiceImpl<HrRegularizationMappe
             return null;
         }
         return vo;
+    }
+
+    private Map<Long, Employee> batchLoadEmployees(List<HrRegularization> records) {
+        List<Long> ids = records.stream().map(r -> {
+            List<Long> list = new ArrayList<>();
+            if (r.getEmployeeId() != null) list.add(r.getEmployeeId());
+            if (r.getApproverId() != null) list.add(r.getApproverId());
+            if (r.getOperatorId() != null) list.add(r.getOperatorId());
+            return list;
+        }).flatMap(List::stream).distinct().collect(Collectors.toList());
+        if (ids.isEmpty()) return Collections.emptyMap();
+        List<Employee> emps = employeeMapper.selectBatchIdsAll(ids);
+        return emps.stream().collect(Collectors.toMap(Employee::getId, e -> e, (a, b) -> a));
     }
 
     private void validateRequest(RegularizationAddRequest req) {
