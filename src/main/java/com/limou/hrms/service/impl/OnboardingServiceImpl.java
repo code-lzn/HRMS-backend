@@ -381,40 +381,62 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
 
                 if (!recordIds.isEmpty()) {
                     wrapper.in(HrOnboarding::getId, recordIds);
+                } else {
+                    // 没有匹配的审批记录，直接返回空页
+                    Page<OnboardingVO> empty = new Page<>(page, size, 0);
+                    empty.setRecords(Collections.emptyList());
+                    return empty;
                 }
             }
         }
 
         Page<HrOnboarding> entityPage = page(new Page<>(page, size), wrapper);
+        List<HrOnboarding> entities = entityPage.getRecords();
+        if (entities.isEmpty()) {
+            Page<OnboardingVO> empty = new Page<>(entityPage.getCurrent(), entityPage.getSize(), entityPage.getTotal());
+            empty.setRecords(Collections.emptyList());
+            return empty;
+        }
 
-        // 批量获取拒绝原因（收集所有 recordId）
-        List<Long> allRecordIds = entityPage.getRecords().stream()
-                .map(HrOnboarding::getRecordId).filter(Objects::nonNull).distinct().collect(Collectors.toList());
+        // 批量加载所有关联数据
+        Set<Long> deptIds = entities.stream().map(HrOnboarding::getDeptId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Set<Long> posIds = entities.stream().map(HrOnboarding::getPositionId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Set<Long> empIds = new HashSet<>();
+        entities.forEach(e -> {
+            if (e.getApproverId() != null) empIds.add(e.getApproverId());
+            if (e.getDirectReportId() != null) empIds.add(e.getDirectReportId());
+        });
+        Set<Long> recordIds = entities.stream().map(HrOnboarding::getRecordId).filter(Objects::nonNull).collect(Collectors.toSet());
+
+        Map<Long, String> deptNameMap = batchLoadDeptNames(deptIds);
+        Map<Long, String> posNameMap = batchLoadPosNames(posIds);
+        Map<Long, String> empNameMap = batchLoadEmpNames(empIds);
+        Map<Long, ApprovalRecord> recordMap = batchLoadApprovalRecords(recordIds);
+
+        // 批量获取拒绝原因
         Map<Long, String> rejectionMap = new HashMap<>();
-        if (!allRecordIds.isEmpty()) {
-            List<ApprovalDetail> rejectedDetails = approvalDetailMapper.selectList(
-                    new LambdaQueryWrapper<ApprovalDetail>()
-                            .in(ApprovalDetail::getRecordId, allRecordIds)
-                            .eq(ApprovalDetail::getAction, "REJECT")
-            );
-            for (ApprovalDetail d : rejectedDetails) {
-                if (d.getComment() != null) {
-                    rejectionMap.put(d.getRecordId(), d.getComment());
-                }
+        List<ApprovalDetail> rejectedDetails = approvalDetailMapper.selectList(
+                new LambdaQueryWrapper<ApprovalDetail>()
+                        .in(ApprovalDetail::getRecordId, recordIds)
+                        .eq(ApprovalDetail::getAction, "REJECT")
+        );
+        for (ApprovalDetail d : rejectedDetails) {
+            if (d.getComment() != null) {
+                rejectionMap.put(d.getRecordId(), d.getComment());
             }
         }
 
         Page<OnboardingVO> voPage = new Page<>(entityPage.getCurrent(), entityPage.getSize(), entityPage.getTotal());
-        voPage.setRecords(entityPage.getRecords().stream().map(e -> {
+        voPage.setRecords(entities.stream().map(e -> {
             OnboardingVO vo = new OnboardingVO();
             BeanUtils.copyProperties(e, vo);
-            vo.setDeptName(getDeptName(e.getDeptId()));
-            vo.setPositionName(getPosName(e.getPositionId()));
-            vo.setApproverName(getEmployeeName(e.getApproverId()));
+            vo.setDeptName(deptNameMap.get(e.getDeptId()));
+            vo.setPositionName(posNameMap.get(e.getPositionId()));
+            vo.setApproverName(empNameMap.get(e.getApproverId()));
             vo.setDirectReportId(e.getDirectReportId());
-            vo.setDirectReportName(getEmployeeName(e.getDirectReportId()));
+            vo.setDirectReportName(empNameMap.get(e.getDirectReportId()));
             if (e.getRecordId() != null) {
-                ApprovalRecord record = approvalService.getById(e.getRecordId());
+                ApprovalRecord record = recordMap.get(e.getRecordId());
                 if (record != null) {
                     vo.setApprovalStatus(record.getStatus());
                     vo.setApprovalProgress(record.getCurrentStep() + "/" + record.getTotalSteps());
@@ -432,13 +454,24 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
     public OnboardingVO getOnboardingDetail(Long id) {
         HrOnboarding e = getById(id);
         ThrowUtils.throwIf(e == null, ErrorCode.NOT_FOUND_ERROR);
+
+        Set<Long> deptIds = e.getDeptId() != null ? Collections.singleton(e.getDeptId()) : Collections.emptySet();
+        Set<Long> posIds = e.getPositionId() != null ? Collections.singleton(e.getPositionId()) : Collections.emptySet();
+        Set<Long> empIds = new HashSet<>();
+        if (e.getApproverId() != null) empIds.add(e.getApproverId());
+        if (e.getDirectReportId() != null) empIds.add(e.getDirectReportId());
+
+        Map<Long, String> deptNameMap = batchLoadDeptNames(deptIds);
+        Map<Long, String> posNameMap = batchLoadPosNames(posIds);
+        Map<Long, String> empNameMap = batchLoadEmpNames(empIds);
+
         OnboardingVO vo = new OnboardingVO();
         BeanUtils.copyProperties(e, vo);
-        vo.setDeptName(getDeptName(e.getDeptId()));
-        vo.setPositionName(getPosName(e.getPositionId()));
-        vo.setApproverName(getEmployeeName(e.getApproverId()));
+        vo.setDeptName(deptNameMap.get(e.getDeptId()));
+        vo.setPositionName(posNameMap.get(e.getPositionId()));
+        vo.setApproverName(empNameMap.get(e.getApproverId()));
         vo.setDirectReportId(e.getDirectReportId());
-        vo.setDirectReportName(getEmployeeName(e.getDirectReportId()));
+        vo.setDirectReportName(empNameMap.get(e.getDirectReportId()));
         if (e.getRecordId() != null) {
             ApprovalRecord record = approvalService.getById(e.getRecordId());
             if (record != null) {
@@ -459,6 +492,32 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
             }
         }
         return vo;
+    }
+
+    // ===== 批量加载辅助方法 =====
+
+    private Map<Long, String> batchLoadDeptNames(Set<Long> deptIds) {
+        if (deptIds.isEmpty()) return Collections.emptyMap();
+        return departmentMapper.selectBatchIds(deptIds).stream()
+                .collect(Collectors.toMap(Department::getId, d -> d.getDeptName() != null ? d.getDeptName() : ""));
+    }
+
+    private Map<Long, String> batchLoadPosNames(Set<Long> posIds) {
+        if (posIds.isEmpty()) return Collections.emptyMap();
+        return positionMapper.selectBatchIds(posIds).stream()
+                .collect(Collectors.toMap(Position::getId, p -> p.getName() != null ? p.getName() : ""));
+    }
+
+    private Map<Long, String> batchLoadEmpNames(Set<Long> empIds) {
+        if (empIds.isEmpty()) return Collections.emptyMap();
+        return employeeMapper.selectBatchIds(empIds).stream()
+                .collect(Collectors.toMap(Employee::getId, emp -> emp.getEmployeeName() != null ? emp.getEmployeeName() : ""));
+    }
+
+    private Map<Long, ApprovalRecord> batchLoadApprovalRecords(Set<Long> recordIds) {
+        if (recordIds.isEmpty()) return Collections.emptyMap();
+        return approvalService.listByIds(recordIds).stream()
+                .collect(Collectors.toMap(ApprovalRecord::getId, r -> r));
     }
 
     @Override
@@ -584,30 +643,11 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
         return sb.toString();
     }
 
-    private String getDeptName(Long deptId) {
-        if (deptId == null) return null;
-        Department d = departmentMapper.selectById(deptId);
-        return d != null ? d.getDeptName() : null;
-    }
-
-    private String getPosName(Long posId) {
-        if (posId == null) return null;
-        Position p = positionMapper.selectById(posId);
-        return p != null ? p.getName() : null;
-    }
-
     /** 根据部门ID解析部门负责人ID */
     private Long resolveApproverId(Long deptId) {
         if (deptId == null) return null;
         Department dept = departmentMapper.selectById(deptId);
         return dept != null ? dept.getManagerId() : null;
-    }
-
-    /** 根据员工ID获取员工姓名 */
-    private String getEmployeeName(Long employeeId) {
-        if (employeeId == null) return null;
-        Employee emp = employeeMapper.selectById(employeeId);
-        return emp != null ? emp.getEmployeeName() : null;
     }
 
     @Override
