@@ -15,6 +15,7 @@ import com.limou.hrms.model.vo.MutationLogVO;
 import com.limou.hrms.model.vo.OnboardingVO;
 import com.limou.hrms.model.vo.UserVO;
 import com.limou.hrms.service.ApprovalService;
+import com.limou.hrms.service.EmpSalaryProfileService;
 import com.limou.hrms.service.EmployeeService;
 import com.limou.hrms.service.OnboardingService;
 import lombok.extern.slf4j.Slf4j;
@@ -50,6 +51,8 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
     private EmpMutationLogMapper empMutationLogMapper;
     @Resource
     private EmployeeService employeeService;
+    @Resource
+    private EmpSalaryProfileService salaryProfileService;
     @Resource
     private ApprovalDetailMapper approvalDetailMapper;
     @Resource
@@ -222,6 +225,19 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
         }
 
         insertMutationLog(entity, emp.getId(), "APPROVED", hireDate);
+
+        // 创建薪资档案
+        EmpSalaryProfile salaryProfile = new EmpSalaryProfile();
+        salaryProfile.setEmployeeId(emp.getId());
+        salaryProfile.setBaseSalary(entity.getBaseSalary());
+        salaryProfile.setSocialInsuranceBase(entity.getSocialInsuranceBase());
+        salaryProfile.setHousingFundBase(entity.getHousingFundBase());
+        salaryProfile.setBankAccount(entity.getBankAccount());
+        salaryProfile.setBankName(entity.getBankName());
+        salaryProfile.setEffectiveDate(hireDate);
+        salaryProfile.setAllowanceBase(java.math.BigDecimal.ZERO);
+        salaryProfile.setPerformanceBase(java.math.BigDecimal.ZERO);
+        salaryProfileService.save(salaryProfile);
 
         log.info("入职确认完成: name={}, employeeNo={}, roleId={}", entity.getCandidateName(), employeeNo, roleId);
     }
