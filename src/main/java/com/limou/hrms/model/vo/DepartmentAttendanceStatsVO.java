@@ -30,6 +30,8 @@ public class DepartmentAttendanceStatsVO implements Serializable {
 
     private Double lateRate;
 
+    private Double absentRate;
+
     private Double leaveRate;
 
     private static final long serialVersionUID = 1L;

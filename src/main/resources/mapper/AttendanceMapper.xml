@@ -38,7 +38,8 @@
             SUM(CASE WHEN a.status = 4 THEN 1 ELSE 0 END) AS leaveDays,
             SUM(CASE WHEN a.status = 5 THEN 1 ELSE 0 END) AS absentDays,
             COUNT(DISTINCT CASE WHEN a.status IN (1, 9) THEN a.employeeId END) AS lateEmployeeCount,
-            COUNT(DISTINCT CASE WHEN a.status = 4 THEN a.employeeId END) AS leaveEmployeeCount
+            COUNT(DISTINCT CASE WHEN a.status = 4 THEN a.employeeId END) AS leaveEmployeeCount,
+            COUNT(DISTINCT CASE WHEN a.status = 5 THEN a.employeeId END) AS absentEmployeeCount
         FROM employee e
         LEFT JOIN attendance a ON a.employeeId = e.id
             AND a.attendanceDate >= #{startDate}
