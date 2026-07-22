@@ -183,8 +183,8 @@ public class AttendanceStatsServiceImpl implements AttendanceStatsService {
                         ? (((Number) stats.getOrDefault("lateEmployeeCount", 0)).intValue() * 100.0 / empCount) : 0;
                 vo.setLateRate(BigDecimal.valueOf(lateRate).setScale(2, RoundingMode.HALF_UP).doubleValue());
 
-                double absentRate = empCount > 0
-                        ? (((Number) stats.getOrDefault("absentEmployeeCount", 0)).intValue() * 100.0 / empCount) : 0;
+                double absentRate = totalShouldDays > 0
+                        ? (((Number) stats.getOrDefault("absentDays", 0)).intValue() * 100.0 / totalShouldDays) : 0;
                 vo.setAbsentRate(BigDecimal.valueOf(absentRate).setScale(2, RoundingMode.HALF_UP).doubleValue());
 
                 double leaveRate = empCount > 0
