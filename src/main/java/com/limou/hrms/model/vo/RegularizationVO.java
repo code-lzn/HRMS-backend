@@ -23,6 +23,7 @@ public class RegularizationVO implements Serializable {
     private Date probationStartDate;
     private Date probationEndDate;
     private String evaluation;
+    private BigDecimal probationScore;
     private BigDecimal salaryAdjustment;
     private String adjustRemark;
     private String result;
