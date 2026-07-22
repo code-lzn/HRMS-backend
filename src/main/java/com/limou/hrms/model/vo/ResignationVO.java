@@ -34,6 +34,7 @@ public class ResignationVO implements Serializable {
 
     private String approvalStatus;
     private String approvalProgress;
+    private String rejectionReason;
 
     private static final long serialVersionUID = 1L;
 }

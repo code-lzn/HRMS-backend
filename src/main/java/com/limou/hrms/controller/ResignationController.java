@@ -16,6 +16,8 @@ import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 
@@ -82,6 +84,46 @@ public class ResignationController {
     public BaseResponse<Void> delete(@PathVariable Long id, HttpServletRequest httpReq) {
         Long hrEmployeeId = getLoginEmployeeId(httpReq);
         resignationService.deleteResignation(id, hrEmployeeId);
+        return ResultUtils.success(null);
+    }
+
+    @PostMapping("/{id}/revoke")
+    public BaseResponse<Void> revoke(@PathVariable Long id, HttpServletRequest httpReq) {
+        Long hrEmployeeId = getLoginEmployeeId(httpReq);
+        resignationService.revokeResignation(id, hrEmployeeId);
+        return ResultUtils.success(null);
+    }
+
+    @PostMapping("/{id}/abandon")
+    public BaseResponse<Void> abandon(@PathVariable Long id, HttpServletRequest httpReq) {
+        Long hrEmployeeId = getLoginEmployeeId(httpReq);
+        resignationService.abandonResignation(id, hrEmployeeId);
+        return ResultUtils.success(null);
+    }
+
+    @PostMapping("/{id}/confirm")
+    public BaseResponse<Void> confirm(@PathVariable Long id, HttpServletRequest httpReq) {
+        Long hrEmployeeId = getLoginEmployeeId(httpReq);
+        resignationService.confirmResignation(id, hrEmployeeId);
+        return ResultUtils.success(null);
+    }
+
+    @PutMapping("/{id}/resign-date")
+    public BaseResponse<Void> updateResignDate(@PathVariable Long id,
+                                                @RequestParam String resignDate,
+                                                HttpServletRequest httpReq) {
+        Long hrEmployeeId = getLoginEmployeeId(httpReq);
+        Date date;
+        try { date = new SimpleDateFormat("yyyy-MM-dd").parse(resignDate); }
+        catch (Exception e) { throw new BusinessException(ErrorCode.PARAMS_ERROR, "日期格式错误，应为 yyyy-MM-dd"); }
+        resignationService.updateResignDate(id, date, hrEmployeeId);
+        return ResultUtils.success(null);
+    }
+
+    @PostMapping("/{id}/resubmit")
+    public BaseResponse<Void> resubmit(@PathVariable Long id, HttpServletRequest httpReq) {
+        Long hrEmployeeId = getLoginEmployeeId(httpReq);
+        resignationService.resubmitResignation(id, hrEmployeeId);
         return ResultUtils.success(null);
     }
 

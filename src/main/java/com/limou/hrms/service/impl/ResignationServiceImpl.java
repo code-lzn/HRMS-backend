@@ -1,6 +1,7 @@
 package com.limou.hrms.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.limou.hrms.common.ErrorCode;
@@ -44,6 +45,10 @@ public class ResignationServiceImpl extends ServiceImpl<HrResignationMapper, HrR
     private UserMapper userMapper;
     @Resource
     private ApprovalFlowMapper approvalFlowMapper;
+    @Resource
+    private ApprovalDetailMapper approvalDetailMapper;
+    @Resource
+    private ApprovalRecordMapper approvalRecordMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -147,6 +152,19 @@ public class ResignationServiceImpl extends ServiceImpl<HrResignationMapper, HrR
         Page<HrResignation> entityPage = page(new Page<>(page, size), wrapper);
         List<HrResignation> records = entityPage.getRecords();
         Map<Long, Employee> empMap = batchLoadEmployees(records);
+
+        Set<Long> recordIds = records.stream().map(HrResignation::getRecordId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, String> rejectionMap = new HashMap<>();
+        if (!recordIds.isEmpty()) {
+            List<ApprovalDetail> rejectedDetails = approvalDetailMapper.selectList(
+                    new LambdaQueryWrapper<ApprovalDetail>()
+                            .in(ApprovalDetail::getRecordId, recordIds)
+                            .eq(ApprovalDetail::getAction, "REJECT"));
+            for (ApprovalDetail d : rejectedDetails) {
+                if (d.getComment() != null) rejectionMap.put(d.getRecordId(), d.getComment());
+            }
+        }
+
         records = records.stream()
                 .filter(r -> {
                     Employee emp = empMap.get(r.getEmployeeId());
@@ -155,7 +173,7 @@ public class ResignationServiceImpl extends ServiceImpl<HrResignationMapper, HrR
                 .collect(Collectors.toList());
         Page<ResignationVO> voPage = new Page<>(entityPage.getCurrent(), entityPage.getSize(), entityPage.getTotal());
         voPage.setRecords(records.stream()
-                .map(e -> convertToVO(e, keyword, empMap))
+                .map(e -> convertToVO(e, keyword, empMap, rejectionMap))
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList()));
         return voPage;
@@ -166,7 +184,7 @@ public class ResignationServiceImpl extends ServiceImpl<HrResignationMapper, HrR
         HrResignation entity = getById(id);
         ThrowUtils.throwIf(entity == null, ErrorCode.NOT_FOUND_ERROR);
         Map<Long, Employee> empMap = batchLoadEmployees(Collections.singletonList(entity));
-        return convertToVO(entity, null, empMap);
+        return convertToVO(entity, null, empMap, Collections.emptyMap());
     }
 
     @Override
@@ -214,6 +232,142 @@ public class ResignationServiceImpl extends ServiceImpl<HrResignationMapper, HrR
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public void revokeResignation(Long id, Long hrEmployeeId) {
+        HrResignation entity = getById(id);
+        ThrowUtils.throwIf(entity == null, ErrorCode.NOT_FOUND_ERROR);
+        ThrowUtils.throwIf(entity.getRecordId() == null, ErrorCode.OPERATION_ERROR, "该申请未提交审批");
+
+        ApprovalRecord record = approvalService.getById(entity.getRecordId());
+        ThrowUtils.throwIf(record == null || !"APPROVING".equals(record.getStatus()),
+                ErrorCode.OPERATION_ERROR, "只有审批中的申请可撤回");
+        ThrowUtils.throwIf(record.getCurrentStep() == null || record.getCurrentStep() > 1,
+                ErrorCode.OPERATION_ERROR, "仅第一级审批前可撤回");
+
+        // 先清空实体的审批关联，避免 FK 约束冲突
+        update(new LambdaUpdateWrapper<HrResignation>()
+                .set(HrResignation::getRecordId, null)
+                .set(HrResignation::getFlowId, null)
+                .set(HrResignation::getStatus, "DRAFT")
+                .eq(HrResignation::getId, id));
+
+        // 再删除审批明细和记录
+        approvalDetailMapper.delete(new LambdaQueryWrapper<ApprovalDetail>()
+                .eq(ApprovalDetail::getRecordId, record.getId()));
+        approvalRecordMapper.deleteById(record.getId());
+        log.info("离职申请已撤回: id={}, employeeId={}", entity.getId(), entity.getEmployeeId());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void abandonResignation(Long id, Long hrEmployeeId) {
+        HrResignation entity = getById(id);
+        ThrowUtils.throwIf(entity == null, ErrorCode.NOT_FOUND_ERROR);
+        ThrowUtils.throwIf(entity.getRecordId() == null, ErrorCode.OPERATION_ERROR, "请先提交审批");
+
+        ApprovalRecord record = approvalRecordMapper.selectById(entity.getRecordId());
+        ThrowUtils.throwIf(record == null || !"APPROVED".equals(record.getStatus()),
+                ErrorCode.OPERATION_ERROR, "只有审批通过的申请可放弃");
+
+        record.setStatus("CANCELLED");
+        record.setFinishedAt(new Date());
+        approvalRecordMapper.updateById(record);
+
+        entity.setStatus("CANCELLED");
+        updateById(entity);
+
+        Employee emp = employeeMapper.selectById(entity.getEmployeeId());
+        if (emp != null && Objects.equals(emp.getStatus(), EmployeeStatus.PENDING_LEAVE.getCode())) {
+            emp.setStatus(EmployeeStatus.REGULAR.getCode());
+            employeeMapper.updateById(emp);
+        }
+        log.info("离职申请已放弃: id={}, employeeId={}", entity.getId(), entity.getEmployeeId());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateResignDate(Long id, Date newDate, Long hrEmployeeId) {
+        ThrowUtils.throwIf(newDate == null, ErrorCode.PARAMS_ERROR, "离职日期不能为空");
+        HrResignation entity = getById(id);
+        ThrowUtils.throwIf(entity == null, ErrorCode.NOT_FOUND_ERROR);
+        ThrowUtils.throwIf(entity.getRecordId() == null, ErrorCode.OPERATION_ERROR, "该申请未提交审批");
+
+        ApprovalRecord record = approvalRecordMapper.selectById(entity.getRecordId());
+        ThrowUtils.throwIf(record == null || !"APPROVED".equals(record.getStatus()),
+                ErrorCode.OPERATION_ERROR, "只有审批通过的申请可修改离职日期");
+
+        entity.setLastWorkDate(newDate);
+        updateById(entity);
+        log.info("离职日期已修改: id={}, employeeId={}, newDate={}", entity.getId(), entity.getEmployeeId(), newDate);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void confirmResignation(Long id, Long hrEmployeeId) {
+        HrResignation entity = getById(id);
+        ThrowUtils.throwIf(entity == null, ErrorCode.NOT_FOUND_ERROR);
+        ThrowUtils.throwIf(entity.getRecordId() == null, ErrorCode.OPERATION_ERROR, "请先提交审批");
+
+        ApprovalRecord record = approvalRecordMapper.selectById(entity.getRecordId());
+        ThrowUtils.throwIf(record == null || !"APPROVED".equals(record.getStatus()),
+                ErrorCode.OPERATION_ERROR, "只有审批通过的申请可确认离职");
+
+        entity.setStatus("RESIGNED");
+        updateById(entity);
+
+        Employee emp = employeeMapper.selectById(entity.getEmployeeId());
+        if (emp != null) {
+            emp.setStatus(EmployeeStatus.RESIGNED.getCode());
+            employeeMapper.updateById(emp);
+
+            if (emp.getUserId() != null) {
+                User user = userMapper.selectById(emp.getUserId());
+                if (user != null) {
+                    user.setIsDelete(1);
+                    userMapper.updateById(user);
+                }
+            }
+
+            EmployeeChangeLog clog = new EmployeeChangeLog();
+            clog.setEmployeeId(emp.getId());
+            clog.setFieldName("status");
+            clog.setOldValue(String.valueOf(EmployeeStatus.PENDING_LEAVE.getCode()));
+            clog.setNewValue(String.valueOf(EmployeeStatus.RESIGNED.getCode()));
+            clog.setChangeType("FLOW_CHANGE");
+            clog.setOperatorId(hrEmployeeId);
+            clog.setCreateTime(new Date());
+            employeeChangeLogMapper.insert(clog);
+        }
+
+        insertMutationLog(entity, emp, "RESIGNED");
+        log.info("离职已确认: id={}, employeeId={}", entity.getId(), entity.getEmployeeId());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void resubmitResignation(Long id, Long hrEmployeeId) {
+        HrResignation entity = getById(id);
+        ThrowUtils.throwIf(entity == null, ErrorCode.NOT_FOUND_ERROR);
+        ThrowUtils.throwIf(entity.getRecordId() == null, ErrorCode.OPERATION_ERROR, "该申请未提交审批");
+
+        ApprovalRecord record = approvalRecordMapper.selectById(entity.getRecordId());
+        ThrowUtils.throwIf(record == null || !"REJECTED".equals(record.getStatus()),
+                ErrorCode.OPERATION_ERROR, "只有已拒绝的申请可重新发起");
+
+        approvalDetailMapper.delete(new LambdaQueryWrapper<ApprovalDetail>()
+                .eq(ApprovalDetail::getRecordId, record.getId()));
+        approvalRecordMapper.deleteById(record.getId());
+
+        update(new LambdaUpdateWrapper<HrResignation>()
+                .set(HrResignation::getRecordId, null)
+                .set(HrResignation::getFlowId, null)
+                .eq(HrResignation::getId, id));
+
+        submitForApproval(entity.getId(), hrEmployeeId);
+        log.info("离职申请重新发起: id={}, employeeId={}", entity.getId(), entity.getEmployeeId());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void processDailyResignations() {
         Date today = new Date();
         List<HrResignation> pendingList = lambdaQuery()
@@ -255,7 +409,8 @@ public class ResignationServiceImpl extends ServiceImpl<HrResignationMapper, HrR
 
     // ========== 私有方法 ==========
 
-    private ResignationVO convertToVO(HrResignation e, String keyword, Map<Long, Employee> empMap) {
+    private ResignationVO convertToVO(HrResignation e, String keyword, Map<Long, Employee> empMap,
+                                        Map<Long, String> rejectionMap) {
         ResignationVO vo = new ResignationVO();
         vo.setId(e.getId());
         vo.setBusinessNo(e.getBusinessNo());
@@ -298,6 +453,9 @@ public class ResignationServiceImpl extends ServiceImpl<HrResignationMapper, HrR
             if (record != null) {
                 vo.setApprovalStatus(record.getStatus());
                 vo.setApprovalProgress(record.getCurrentStep() + "/" + record.getTotalSteps());
+                if ("REJECTED".equals(record.getStatus()) && rejectionMap != null) {
+                    vo.setRejectionReason(rejectionMap.get(e.getRecordId()));
+                }
             }
         }
         if (StringUtils.hasText(keyword) && vo.getEmployeeName() != null
