@@ -27,4 +27,26 @@
         status,punchInType,punchOutType,punchInLocation,punchOutLocation,
         remark,createTime,updateTime,isDeleted
     </sql>
+
+    <select id="getDepartmentAttendanceStats" resultType="map">
+        <![CDATA[
+        SELECT
+            e.department_id AS departmentId,
+            COUNT(DISTINCT e.id) AS employeeCount,
+            SUM(CASE WHEN a.status IN (0, 1, 2) THEN 1 ELSE 0 END) AS attendanceDays,
+            SUM(CASE WHEN a.status = 1 THEN 1 ELSE 0 END) AS lateCount,
+            SUM(CASE WHEN a.status = 2 THEN 1 ELSE 0 END) AS earlyCount,
+            SUM(CASE WHEN a.status = 4 THEN 1 ELSE 0 END) AS leaveDays,
+            SUM(CASE WHEN a.status = 5 THEN 1 ELSE 0 END) AS absentDays,
+            COUNT(DISTINCT CASE WHEN a.status = 1 THEN a.employee_id END) AS lateEmployeeCount,
+            COUNT(DISTINCT CASE WHEN a.status = 4 THEN a.employee_id END) AS leaveEmployeeCount
+        FROM attendance a
+        INNER JOIN employee e ON a.employee_id = e.id
+        WHERE a.attendance_date >= #{startDate}
+          AND a.attendance_date <= #{endDate}
+          AND e.is_deleted = 0
+          AND e.department_id IS NOT NULL
+        GROUP BY e.department_id
+        ]]>
+    </select>
 </mapper>

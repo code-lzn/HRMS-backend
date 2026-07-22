@@ -177,7 +177,7 @@ public class RegularizationServiceImpl extends ServiceImpl<HrRegularizationMappe
         records = records.stream()
                 .filter(r -> {
                     Employee emp = empMap.get(r.getEmployeeId());
-                    return emp == null || emp.getIsDeleted() == null || emp.getIsDeleted() == 0;
+                    return emp != null && (emp.getIsDeleted() == null || emp.getIsDeleted() == 0);
                 })
                 .collect(Collectors.toList());
         Page<RegularizationVO> voPage = new Page<>(entityPage.getCurrent(), entityPage.getSize(), entityPage.getTotal());
@@ -280,7 +280,8 @@ public class RegularizationServiceImpl extends ServiceImpl<HrRegularizationMappe
     public List<Employee> getProbationEndingEmployees() {
         List<Employee> probEmployees = employeeMapper.selectList(
                 new LambdaQueryWrapper<Employee>()
-                        .eq(Employee::getStatus, EmployeeStatus.PROBATION.getCode()));
+                        .eq(Employee::getStatus, EmployeeStatus.PROBATION.getCode())
+                        .eq(Employee::getIsDeleted, 0));
         List<Employee> result = new ArrayList<>();
         Calendar cal = Calendar.getInstance();
         cal.add(Calendar.DAY_OF_MONTH, 7);

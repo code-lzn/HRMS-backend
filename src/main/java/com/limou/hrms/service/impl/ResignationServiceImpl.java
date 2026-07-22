@@ -150,7 +150,7 @@ public class ResignationServiceImpl extends ServiceImpl<HrResignationMapper, HrR
         records = records.stream()
                 .filter(r -> {
                     Employee emp = empMap.get(r.getEmployeeId());
-                    return emp == null || emp.getIsDeleted() == null || emp.getIsDeleted() == 0;
+                    return emp != null && (emp.getIsDeleted() == null || emp.getIsDeleted() == 0);
                 })
                 .collect(Collectors.toList());
         Page<ResignationVO> voPage = new Page<>(entityPage.getCurrent(), entityPage.getSize(), entityPage.getTotal());

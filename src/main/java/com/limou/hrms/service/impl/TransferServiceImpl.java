@@ -169,7 +169,7 @@ public class TransferServiceImpl extends ServiceImpl<HrTransferMapper, HrTransfe
         records = records.stream()
                 .filter(r -> {
                     Employee emp = empMap.get(r.getEmployeeId());
-                    return emp == null || emp.getIsDeleted() == null || emp.getIsDeleted() == 0;
+                    return emp != null && (emp.getIsDeleted() == null || emp.getIsDeleted() == 0);
                 })
                 .collect(Collectors.toList());
         Page<TransferVO> voPage = new Page<>(entityPage.getCurrent(), entityPage.getSize(), entityPage.getTotal());
