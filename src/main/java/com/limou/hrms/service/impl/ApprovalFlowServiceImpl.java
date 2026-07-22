@@ -45,6 +45,8 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
     @Resource
     private EmployeeMapper employeeMapper;
     @Resource
+    private UserMapper userMapper;
+    @Resource
     private ApprovalDelegateService approvalDelegateService;
     @Resource
     private ApproverResolver approverResolver;
@@ -947,16 +949,25 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
      * 将审批节点列表组装为待办 VO
      */
     private List<PendingItemVO> buildPendingVOs(List<ApprovalNode> nodes, Set<Long> delegateNodeIds, Set<Long> actionableNodeIds) {
+        // 批量加载审批实例，避免 N+1
+        Set<Long> instanceIds = nodes.stream().map(ApprovalNode::getInstanceId).collect(Collectors.toSet());
+        Map<Long, ApprovalInstance> instanceMap = instanceIds.isEmpty() ? Collections.emptyMap() :
+                approvalInstanceMapper.selectBatchIds(instanceIds).stream()
+                        .collect(Collectors.toMap(ApprovalInstance::getId, i -> i));
+        // 批量加载人名
+        Set<Long> empIds = new HashSet<>();
+        instanceMap.values().forEach(i -> { if (i.getApplicantId() != null) empIds.add(i.getApplicantId()); });
+        nodes.stream().filter(n -> delegateNodeIds.contains(n.getId())).forEach(n -> empIds.add(n.getApproverId()));
+        Map<Long, String> nameMap = loadEmployeeNames(empIds);
         return nodes.stream()
-                // 只展示当前活跃节点（node_order = instance.current_node_order），排除已撤回
                 .filter(node -> {
-                    ApprovalInstance instance = approvalInstanceMapper.selectById(node.getInstanceId());
+                    ApprovalInstance instance = instanceMap.get(node.getInstanceId());
                     return instance != null
                         && node.getNodeOrder().equals(instance.getCurrentNodeOrder())
                         && (instance.getStatus() == null || !instance.getStatus().equals(ApprovalStatus.CANCELLED.getCode()));
                 })
                 .map(node -> {
-            ApprovalInstance instance = approvalInstanceMapper.selectById(node.getInstanceId());
+            ApprovalInstance instance = instanceMap.get(node.getInstanceId());
             PendingItemVO vo = new PendingItemVO();
             vo.setInstanceId(node.getInstanceId());
             vo.setNodeId(node.getId());
@@ -966,17 +977,16 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
                 vo.setBizTypeDesc(bizType != null ? bizType.getDesc() : instance.getBizType());
                 vo.setTitle(instance.getTitle());
                 vo.setApplicantId(instance.getApplicantId());
-                vo.setApplicantName(approverResolver.getEmployeeName(instance.getApplicantId()));
+                vo.setApplicantName(nameMap.getOrDefault(instance.getApplicantId(), ""));
                 vo.setCreateTime(instance.getCreateTime());
             }
             vo.setNodeName(node.getNodeName());
             vo.setNodeOrder(node.getNodeOrder());
-            // 截止时间基于审批实例创建时间 + 48 小时
             if (instance.getCreateTime() != null) {
                 vo.setDeadLine(instance.getCreateTime().plusHours(48));
             }
             if (delegateNodeIds.contains(node.getId())) {
-                vo.setDelegatorName(approverResolver.getEmployeeName(node.getApproverId()));
+                vo.setDelegatorName(nameMap.getOrDefault(node.getApproverId(), ""));
             }
             vo.setCanAct(actionableNodeIds != null && actionableNodeIds.contains(node.getId()));
             return vo;
@@ -987,8 +997,15 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
      * 将审批节点列表组装为已办 VO
      */
     private List<ProcessedItemVO> buildProcessedVOs(List<ApprovalNode> nodes) {
+        Set<Long> instanceIds = nodes.stream().map(ApprovalNode::getInstanceId).collect(Collectors.toSet());
+        Map<Long, ApprovalInstance> instanceMap = instanceIds.isEmpty() ? Collections.emptyMap() :
+                approvalInstanceMapper.selectBatchIds(instanceIds).stream()
+                        .collect(Collectors.toMap(ApprovalInstance::getId, i -> i));
+        Set<Long> empIds = new HashSet<>();
+        instanceMap.values().forEach(i -> { if (i.getApplicantId() != null) empIds.add(i.getApplicantId()); });
+        Map<Long, String> nameMap = loadEmployeeNames(empIds);
         return nodes.stream().map(node -> {
-            ApprovalInstance instance = approvalInstanceMapper.selectById(node.getInstanceId());
+            ApprovalInstance instance = instanceMap.get(node.getInstanceId());
             ProcessedItemVO vo = new ProcessedItemVO();
             vo.setInstanceId(node.getInstanceId());
             vo.setNodeId(node.getId());
@@ -997,7 +1014,7 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
                 ApprovalBizType bizType = ApprovalBizType.fromCode(instance.getBizType());
                 vo.setBizTypeDesc(bizType != null ? bizType.getDesc() : instance.getBizType());
                 vo.setTitle(instance.getTitle());
-                vo.setApplicantName(approverResolver.getEmployeeName(instance.getApplicantId()));
+                vo.setApplicantName(nameMap.getOrDefault(instance.getApplicantId(), ""));
             }
             vo.setNodeName(node.getNodeName());
             vo.setNodeStatus(node.getStatus());
@@ -1007,6 +1024,23 @@ public class ApprovalFlowServiceImpl extends ServiceImpl<ApprovalInstanceMapper,
             vo.setOperateTime(node.getOperateTime());
             return vo;
         }).collect(Collectors.toList());
+    }
+
+    private Map<Long, String> loadEmployeeNames(Set<Long> empIds) {
+        if (empIds.isEmpty()) return Collections.emptyMap();
+        Set<Long> validIds = new HashSet<>(empIds);
+        validIds.remove(null);
+        if (validIds.isEmpty()) return Collections.emptyMap();
+        List<Employee> emps = employeeMapper.selectBatchIds(validIds);
+        Set<Long> userIds = emps.stream().map(Employee::getUserId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, String> userNameMap = userIds.isEmpty() ? Collections.emptyMap() :
+                userMapper.selectBatchIds(userIds).stream()
+                        .collect(Collectors.toMap(User::getId, User::getUserName, (a, b) -> a));
+        return emps.stream()
+                .collect(Collectors.toMap(
+                    Employee::getId,
+                    e -> e.getUserId() != null ? userNameMap.getOrDefault(e.getUserId(), e.getEmployeeNo()) : e.getEmployeeNo(),
+                    (a, b) -> a));
     }
 
     /**

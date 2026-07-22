@@ -59,7 +59,7 @@ public class SalaryBatchController {
 
     @ApiOperation("创建核算批次")
     @PostMapping
-    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
     public BaseResponse<Long> createBatch(@RequestBody SalaryBatchCreateRequest request,
                                           HttpServletRequest httpRequest) {
         if (request == null) {
@@ -72,7 +72,7 @@ public class SalaryBatchController {
 
     @ApiOperation("执行异步计算")
     @PostMapping("/{id}/execute")
-    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
     public BaseResponse<Boolean> executeCalculate(@PathVariable Long id) {
         if (id == null || id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -110,7 +110,7 @@ public class SalaryBatchController {
 
     @ApiOperation("手动调整员工工资条")
     @PutMapping("/details/{detailId}/adjust")
-    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
     public BaseResponse<Boolean> adjustDetail(
             @PathVariable Long detailId,
             @RequestBody SalaryDetailAdjustRequest request) {
@@ -123,7 +123,7 @@ public class SalaryBatchController {
 
     @ApiOperation("提交审批（创建审批实例）")
     @PutMapping("/{id}/submit")
-    @AuthCheck(mustRole = {UserConstant.HR_ROLE})
+    @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
     public BaseResponse<Boolean> submitForApproval(@PathVariable Long id) {
         if (id == null || id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);

@@ -28,7 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 import java.time.LocalDate;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -361,19 +361,40 @@ public class TransferServiceImpl
     }
 
     private Page<TransferListVO> toListVOPage(Page<TransferApplication> page) {
-        List<TransferListVO> records = page.getRecords().stream().map(app -> {
+        List<TransferApplication> apps = page.getRecords();
+        // 批量收集 ID
+        Set<Long> empIds = new HashSet<>(), deptIds = new HashSet<>(), posIds = new HashSet<>();
+        for (TransferApplication a : apps) {
+            if (a.getEmployeeId() != null) empIds.add(a.getEmployeeId());
+            if (a.getApplicantId() != null) empIds.add(a.getApplicantId());
+            if (a.getFromDepartmentId() != null) deptIds.add(a.getFromDepartmentId());
+            if (a.getToDepartmentId() != null) deptIds.add(a.getToDepartmentId());
+            if (a.getFromPositionId() != null) posIds.add(a.getFromPositionId());
+            if (a.getToPositionId() != null) posIds.add(a.getToPositionId());
+        }
+        // 批量加载
+        Map<Long, String> deptMap = deptIds.isEmpty() ? Map.of() :
+                departmentMapper.selectBatchIds(deptIds).stream().collect(Collectors.toMap(Department::getId, Department::getName));
+        Map<Long, String> posMap = posIds.isEmpty() ? Map.of() :
+                positionMapper.selectBatchIds(posIds).stream().collect(Collectors.toMap(Position::getId, Position::getName));
+        Map<Long, String> empNoMap = new HashMap<>();
+        for (Long eid : empIds) empNoMap.put(eid, getEmployeeNo(eid));
+        Map<Long, String> empNameMap = new HashMap<>();
+        for (Long eid : empIds) empNameMap.put(eid, approverResolver.getEmployeeName(eid));
+
+        List<TransferListVO> records = apps.stream().map(app -> {
             TransferListVO vo = new TransferListVO();
             vo.setId(app.getId());
             vo.setEmployeeId(app.getEmployeeId());
-            vo.setEmployeeName(approverResolver.getEmployeeName(app.getEmployeeId()));
-            vo.setEmployeeNo(getEmployeeNo(app.getEmployeeId()));
-            vo.setFromDepartmentName(getDeptName(app.getFromDepartmentId()));
-            vo.setToDepartmentName(getDeptName(app.getToDepartmentId()));
-            vo.setFromPositionName(getPositionName(app.getFromPositionId()));
-            vo.setToPositionName(getPositionName(app.getToPositionId()));
+            vo.setEmployeeName(empNameMap.getOrDefault(app.getEmployeeId(), ""));
+            vo.setEmployeeNo(empNoMap.getOrDefault(app.getEmployeeId(), ""));
+            vo.setFromDepartmentName(deptMap.getOrDefault(app.getFromDepartmentId(), ""));
+            vo.setToDepartmentName(deptMap.getOrDefault(app.getToDepartmentId(), ""));
+            vo.setFromPositionName(posMap.getOrDefault(app.getFromPositionId(), ""));
+            vo.setToPositionName(posMap.getOrDefault(app.getToPositionId(), ""));
             vo.setStatus(app.getStatus());
             vo.setStatusDesc(getStatusDesc(app.getStatus()));
-            vo.setApplicantName(approverResolver.getEmployeeName(app.getApplicantId()));
+            vo.setApplicantName(empNameMap.getOrDefault(app.getApplicantId(), ""));
             vo.setCreateTime(app.getCreateTime());
             return vo;
         }).collect(Collectors.toList());
