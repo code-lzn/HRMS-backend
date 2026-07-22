@@ -57,4 +57,10 @@ public interface EmployeeMapper extends BaseMapper<Employee> {
             + "<foreach collection='ids' item='id' open='(' separator=',' close=')'>#{id}</foreach>"
             + "</script>")
     List<Employee> selectBatchIdsAll(@Param("ids") List<Long> ids);
+
+    /**
+     * 获取指定前缀的最大工号（用于工号自增）
+     */
+    @Select("SELECT employeeNo FROM employee WHERE employeeNo LIKE CONCAT(#{prefix}, '%') ORDER BY employeeNo DESC LIMIT 1")
+    String selectMaxEmployeeNoByPrefix(@Param("prefix") String prefix);
 }
