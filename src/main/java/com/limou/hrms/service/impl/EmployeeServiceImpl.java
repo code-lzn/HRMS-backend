@@ -348,7 +348,10 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
         // 记录变更历史（先于唯一性校验定义，供校验使用）
         Employee oldEmp = new Employee();
         BeanUtils.copyProperties(emp, oldEmp);
-        EmployeeDetail oldDetail = getDetailByEmployeeId(emp.getId());
+        EmployeeDetail oldDetailTmp = getDetailByEmployeeId(emp.getId());
+        // 深拷贝，避免 MyBatis 一级缓存导致后续 detail 修改影响 oldDetail 的比较
+        EmployeeDetail oldDetail = new EmployeeDetail();
+        if (oldDetailTmp != null) BeanUtils.copyProperties(oldDetailTmp, oldDetail);
 
         // 唯一性校验
         if (request.getPhone() != null && !request.getPhone().equals(emp.getPhone())) {
@@ -432,17 +435,15 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
         String deptCode = "00";
         if (departmentId != null) {
             Department dept = departmentMapper.selectById(departmentId);
-            if (dept != null) deptCode = dept.getDeptCode();
+            if (dept != null) deptCode = dept.getDeptCode().trim();
         }
         String prefix = year + deptCode;
         long maxSeq = 0;
         try {
-            QueryWrapper<Employee> wrapper = new QueryWrapper<>();
-            wrapper.likeRight("employeeNo", prefix).orderByDesc("employeeNo").last("LIMIT 1");
-            Employee last = this.getOne(wrapper);
-            if (last != null && last.getEmployeeNo().length() == 9)
-                maxSeq = Long.parseLong(last.getEmployeeNo().substring(6));
-        } catch (Exception e) { maxSeq = 0; }
+            String maxNo = employeeMapper.selectMaxEmployeeNoByPrefix(prefix);
+            if (maxNo != null && maxNo.length() == 9)
+                maxSeq = Long.parseLong(maxNo.substring(6));
+        } catch (Exception e) { maxSeq = 1; }
         return prefix + String.format("%03d", maxSeq + 1);
     }
 
@@ -463,14 +464,11 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee>
         voPage.setRecords(logPage.getRecords().stream().map(log -> {
             EmployeeChangeLogVO vo = new EmployeeChangeLogVO();
             BeanUtils.copyProperties(log, vo);
-            // 补充操作人姓名
             if (log.getOperatorId() != null) {
                 Employee operator = employeeMapper.selectById(log.getOperatorId());
                 vo.setOperatorName(operator != null ? operator.getEmployeeName() : null);
             }
-            // 补充字段中文描述
             vo.setFieldDesc(getFieldDesc(log.getFieldName()));
-            // 补充变更类型中文描述
             vo.setChangeTypeDesc(getChangeTypeDesc(log.getChangeType()));
             return vo;
         }).collect(Collectors.toList()));

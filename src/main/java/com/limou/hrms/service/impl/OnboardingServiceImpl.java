@@ -562,17 +562,15 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
         String deptCode = "00";
         if (departmentId != null) {
             Department dept = departmentMapper.selectById(departmentId);
-            if (dept != null && StringUtils.hasText(dept.getDeptCode())) deptCode = dept.getDeptCode();
+            if (dept != null && dept.getDeptCode() != null) deptCode = dept.getDeptCode().trim();
         }
         String prefix = year + deptCode;
         long maxSeq = 0;
         try {
-            var wrapper = new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<Employee>()
-                    .likeRight("employeeNo", prefix).orderByDesc("employeeNo").last("LIMIT 1");
-            Employee last = employeeMapper.selectOne(wrapper);
-            if (last != null && last.getEmployeeNo() != null && last.getEmployeeNo().length() == 9)
-                maxSeq = Long.parseLong(last.getEmployeeNo().substring(6));
-        } catch (Exception e) { maxSeq = 0; }
+            String maxNo = employeeMapper.selectMaxEmployeeNoByPrefix(prefix);
+            if (maxNo != null && maxNo.length() == 9)
+                maxSeq = Long.parseLong(maxNo.substring(6));
+        } catch (Exception e) { maxSeq = 1; }
         return prefix + String.format("%03d", maxSeq + 1);
     }
 
