@@ -26,7 +26,7 @@ public class PositionQueryRequest extends PageRequest implements Serializable {
     /**
      * 所属部门筛选
      */
-    private Long departmentId;
+    private Long departmentId;//不需要
 
     private static final long serialVersionUID = 1L;
 }

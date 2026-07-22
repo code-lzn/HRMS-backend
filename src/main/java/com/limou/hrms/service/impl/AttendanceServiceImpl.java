@@ -277,8 +277,8 @@ public class AttendanceServiceImpl implements AttendanceService, ApprovalCallbac
             employeeId = dataScopeContext.getCurrentEmployeeId();
         }
 
-        LocalDate firstDay = LocalDate.of(year, month, 1);
-        LocalDate lastDay = firstDay.plusMonths(1).minusDays(1);
+        LocalDate firstDay = LocalDate.of(year, month, 1);//计算第一天
+        LocalDate lastDay = firstDay.plusMonths(1).minusDays(1);//计算最后一天
 
         // 查工作日历
         List<WorkCalendar> calendars = workCalendarMapper.selectList(
@@ -607,7 +607,7 @@ public class AttendanceServiceImpl implements AttendanceService, ApprovalCallbac
      * 检查当天是否有已通过的请假记录，冲突则拒绝
      */
     private void checkLeaveConflict(Long employeeId, LocalDate today, LocalDateTime now, int clockType) {
-        LocalDateTime todayStart = today.atStartOfDay();
+        LocalDateTime todayStart = today.atStartOfDay();//精确时间
         LocalDateTime todayEnd = todayStart.plusDays(1);
 
         List<LeaveRequest> leaves = leaveRequestMapper.selectList(

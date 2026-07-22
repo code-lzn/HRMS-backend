@@ -60,7 +60,7 @@ public class PositionServiceImpl extends ServiceImpl<PositionMapper, Position> i
         }
         sequence.validateLevelRange(dto.getLevelMin(), dto.getLevelMax());
         validateDepartment(dto.getDepartmentId());
-        checkPositionNameUnique(dto.getName(), dto.getDepartmentId(), null);
+        checkPositionNameUnique(dto.getName(), dto.getDepartmentId(), null);//新增是不需要排除自己查询全库
 
         Position position = new Position();
         BeanUtils.copyProperties(dto, position);
@@ -100,7 +100,7 @@ public class PositionServiceImpl extends ServiceImpl<PositionMapper, Position> i
 
         if (StringUtils.hasText(dto.getName())) {
             Long effectiveDeptId = dto.getDepartmentId() != null ? dto.getDepartmentId() : existPos.getDepartmentId();
-            checkPositionNameUnique(dto.getName(), effectiveDeptId, id);
+            checkPositionNameUnique(dto.getName(), effectiveDeptId, id);//更新是需要排除自己查询全库
         }
 
         BeanUtils.copyProperties(dto, existPos, "id", "createTime", "updateTime", "isDeleted");
@@ -132,10 +132,10 @@ public class PositionServiceImpl extends ServiceImpl<PositionMapper, Position> i
                             .in(Employee::getId, employeeIds)
                             .in(Employee::getStatus, EmployeeStatus.getActiveValues()));
             if (activeCount > 0) {
-                Map<String, Object> data = new HashMap<>();
-                data.put("employeeCount", activeCount);
+//                Map<String, Object> data = new HashMap<>();
+//                data.put("employeeCount", activeCount);
                 throw new BusinessException(ErrorCode.POSITION_HAS_EMPLOYEES.getCode(),
-                        ErrorCode.POSITION_HAS_EMPLOYEES.getMessage());
+                        ErrorCode.POSITION_HAS_EMPLOYEES.getMessage());//如果改职位下有正常的在职员工则不能够成功删除
             }
         }
 
@@ -156,7 +156,7 @@ public class PositionServiceImpl extends ServiceImpl<PositionMapper, Position> i
         if (queryReq.getSequence() != null) {
             query.eq(Position::getSequence, queryReq.getSequence());
         }
-        if (queryReq.getDepartmentId() != null) {
+        if (queryReq.getDepartmentId() != null) {//不需要
             query.eq(Position::getDepartmentId, queryReq.getDepartmentId());
         }
 
@@ -196,7 +196,7 @@ public class PositionServiceImpl extends ServiceImpl<PositionMapper, Position> i
 
         // 批量查询各职位在职员工数
         List<Long> positionIds = page.getRecords().stream()
-                .map(Position::getId).collect(Collectors.toList());
+                .map(Position::getId).collect(Collectors.toList());// 职位ID
         Map<Long, Integer> positionCountMap = loadPositionActiveCountMap(positionIds);
 
         List<PositionVO> voList = page.getRecords().stream().map(pos -> {
@@ -279,7 +279,8 @@ public class PositionServiceImpl extends ServiceImpl<PositionMapper, Position> i
             return Collections.emptyMap();
         }
         return workInfos.stream()
-                .collect(Collectors.groupingBy(EmployeeWorkInfo::getPositionId, Collectors.summingInt(e -> 1)));
+                .collect(Collectors.groupingBy(EmployeeWorkInfo::getPositionId,
+                        Collectors.summingInt(e -> 1)));
     }
 
     private Position getUndeletedPositionOrThrow(Long id) {

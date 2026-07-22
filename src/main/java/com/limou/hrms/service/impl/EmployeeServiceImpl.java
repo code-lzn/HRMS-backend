@@ -253,7 +253,7 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
                 .statusDesc(resolveStatusDesc(employee.getStatus()))
                 .hireDate(employee.getHireDate() != null ? employee.getHireDate().toString() : null)
                 .hireType(employee.getHireType())
-                .hireTypeDesc(resolveHireTypeDesc(employee.getHireType()))
+                .hireTypeDesc(resolveHireTypeDesc(employee.getHireType()))// 入职类型
                 .createTime(employee.getCreateTime());
 
         // 5. 构建个人信息（脱敏）
@@ -775,7 +775,7 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
     private List<Long> resolveManagedDeptIds(User loginUser) {
         List<Employee> emps = this.lambdaQuery()
                 .eq(Employee::getUserId, loginUser.getId())
-                .list();
+                .list();// 按当前登录用户查询
         if (emps.isEmpty()) return Collections.emptyList();
         List<Long> empIds = emps.stream().map(Employee::getId).collect(Collectors.toList());
 

@@ -1,5 +1,6 @@
 package com.limou.hrms.controller;
 
+import com.alibaba.excel.EasyExcel;
 import com.limou.hrms.annotation.AuthCheck;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.common.BaseResponse;
@@ -89,9 +90,6 @@ public class EmployeeController {
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
     public BaseResponse<EmployeeUpdateVO> updateEmployee(@PathVariable Long id,
                                                           @RequestBody EmployeeUpdateRequest dto) {
-        if (id <= 0) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR);
-        }
         log.info("{} 更新员工档案, id={}", UserContext.getCurrentUser(), id);
         EmployeeUpdateVO vo = employeeService.updateEmployee(id, dto, UserContext.getCurrentUser());
         return ResultUtils.success(vo);
@@ -126,9 +124,6 @@ public class EmployeeController {
     @GetMapping("/{id}")
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE, UserConstant.DEPT_HEAD_ROLE})
     public BaseResponse<EmployeeDetailVO> getEmployeeDetail(@PathVariable Long id) {
-        if (id <= 0) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR);
-        }
         log.info("{} 查询员工详情, id={}", UserContext.getCurrentUser(), id);
         EmployeeDetailVO vo = employeeService.getEmployeeDetail(id, UserContext.getCurrentUser());
         return ResultUtils.success(vo);
@@ -152,7 +147,7 @@ public class EmployeeController {
         response.setHeader("Content-Disposition",
                 "attachment; filename=" + URLEncoder.encode(fileName, StandardCharsets.UTF_8.name()) + ".xlsx");
 
-        com.alibaba.excel.EasyExcel.write(response.getOutputStream(), EmployeeListVO.class)
+        EasyExcel.write(response.getOutputStream(), EmployeeListVO.class)
                 .sheet("员工档案")
                 .doWrite(list);
     }

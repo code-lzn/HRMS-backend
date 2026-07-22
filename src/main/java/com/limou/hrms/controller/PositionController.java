@@ -61,9 +61,6 @@ public class PositionController {
     @GetMapping("/{id}")
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE,UserConstant.DEPT_HEAD_ROLE})
     public BaseResponse<PositionVO> getPositionDetail(@PathVariable Long id) {
-        if (id <= 0) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR);
-        }
         log.info("{} 查询职位详情, id={}", UserContext.getCurrentUser(), id);
         PositionVO vo = positionService.getPositionDetail(id);
         return ResultUtils.success(vo);
@@ -87,9 +84,6 @@ public class PositionController {
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
     public BaseResponse<Position> updatePosition(@PathVariable Long id,
                                                   @RequestBody PositionUpdateRequest dto) {
-        if (id <= 0) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR);
-        }
         log.info("{} 更新职位, id={}", UserContext.getCurrentUser(), id);
         Position position = positionService.updatePosition(id, dto);
         return ResultUtils.success(position);
@@ -101,9 +95,6 @@ public class PositionController {
     @DeleteMapping("/{id}")
     @AuthCheck(mustRole = {UserConstant.ADMIN_ROLE, UserConstant.HR_ROLE})
     public BaseResponse<Void> deletePosition(@PathVariable Long id) {
-        if (id <= 0) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR);
-        }
         log.info("{} 删除职位, id={}", UserContext.getCurrentUser(), id);
         positionService.deletePosition(id);
         return ResultUtils.success(null);

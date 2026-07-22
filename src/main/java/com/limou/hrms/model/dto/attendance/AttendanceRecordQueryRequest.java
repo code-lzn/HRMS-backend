@@ -3,6 +3,7 @@ package com.limou.hrms.model.dto.attendance;
 import com.limou.hrms.common.PageRequest;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import org.springframework.format.annotation.DateTimeFormat;
 
 import java.io.Serializable;
 import java.time.LocalDate;
@@ -27,11 +28,13 @@ public class AttendanceRecordQueryRequest extends PageRequest implements Seriali
     /**
      * 考勤日期起始
      */
+    @DateTimeFormat(pattern = "yyyy-MM-dd")
     private LocalDate startDate;
 
     /**
      * 考勤日期截止
      */
+    @DateTimeFormat(pattern = "yyyy-MM-dd")
     private LocalDate endDate;
 
     /**
