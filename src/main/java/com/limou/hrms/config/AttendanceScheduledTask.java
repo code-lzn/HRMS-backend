@@ -26,7 +26,7 @@ public class AttendanceScheduledTask {
     /**
      * 每天 19:00 日终评估：先生成所有员工当天记录，再评估打卡状态
      */
-    @Scheduled(cron = "0 0 19 * * *")
+    @Scheduled(cron = "0 57 16 * * *")
     public void evaluateEndOfDayAttendance() {
         Date now = new Date();
         if (!holidayConfigService.isWorkDay(now)) {
