@@ -701,14 +701,56 @@ public class SalaryBizServiceImpl implements SalaryBizService {
         List<SalaryBatch> batches = salaryBatchMapper.selectList(
                 new LambdaQueryWrapper<SalaryBatch>().orderByDesc(SalaryBatch::getCreatedAt)
         );
-        return batches.stream().map(this::toBatchVO).collect(Collectors.toList());
+        return batches.stream()
+                .map(this::syncStatusFromApprovalIfNeeded)
+                .map(this::toBatchVO)
+                .collect(Collectors.toList());
     }
 
     @Override
     public SalaryBatchVO getBatchDetail(Long batchId) {
         SalaryBatch batch = salaryBatchMapper.selectById(batchId);
         ThrowUtils.throwIf(batch == null, ErrorCode.NOT_FOUND_ERROR, "批次不存在");
+        // 自动从审批中心同步状态（解决审批中心审批后批次状态未回调的问题）
+        batch = syncStatusFromApprovalIfNeeded(batch);
         return toBatchVO(batch);
+    }
+
+    /**
+     * 从审批中心同步批次状态。
+     * 问题：审批如果走审批中心（/approval/approve），审批中心不会回调薪资模块，
+     * 导致 sal_batch.status 一直卡在 APPROVING。
+     * 解决：查询批次时自动检查 approval_record 的状态，如果审批已完成则同步回来。
+     */
+    private SalaryBatch syncStatusFromApprovalIfNeeded(SalaryBatch batch) {
+        // 只有 APPROVING 状态才需要检查审批中心
+        if (!"APPROVING".equals(batch.getStatus())) {
+            return batch;
+        }
+        // 查对应的审批记录
+        ApprovalRecord record = approvalRecordMapper.selectOne(
+                new LambdaQueryWrapper<ApprovalRecord>()
+                        .eq(ApprovalRecord::getBusinessType, BusinessTypeEnum.SALARY_BATCH.getValue())
+                        .eq(ApprovalRecord::getBusinessId, batch.getId())
+        );
+        if (record == null) {
+            return batch;
+        }
+        // 审批中心已通过 → 同步到批次
+        if ("APPROVED".equals(record.getStatus())) {
+            batch.setStatus("APPROVED");
+            batch.setUpdatedAt(new Date());
+            salaryBatchMapper.updateById(batch);
+            log.info("从审批中心同步: batchId={}, 审批已通过 → 批次状态同步为 APPROVED", batch.getId());
+        }
+        // 审批中心已驳回 → 同步到批次
+        if ("REJECTED".equals(record.getStatus())) {
+            batch.setStatus("REJECTED");
+            batch.setUpdatedAt(new Date());
+            salaryBatchMapper.updateById(batch);
+            log.info("从审批中心同步: batchId={}, 审批已驳回 → 批次状态同步为 REJECTED", batch.getId());
+        }
+        return batch;
     }
 
     // ==================== 内部辅助方法 ====================
