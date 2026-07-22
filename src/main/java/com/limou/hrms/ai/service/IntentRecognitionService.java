@@ -243,6 +243,13 @@ public class IntentRecognitionService {
     }
 
     /**
+     * 获取所有启用的路由规则（供外部查询）
+     */
+    public List<AiIntentRoute> getAllRoutes() {
+        return getCachedRoutes();
+    }
+
+    /**
      * 清除路由缓存（管理员修改意图路由后调用）
      */
     public void clearRouteCache() {

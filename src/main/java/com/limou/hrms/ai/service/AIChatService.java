@@ -4,6 +4,7 @@ import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.limou.hrms.ai.mapper.AiChatHistoryMapper;
 import com.limou.hrms.ai.model.entity.AiChatHistory;
+import com.limou.hrms.ai.model.entity.AiIntentRoute;
 import com.limou.hrms.ai.model.entity.AiKnowledgeDoc;
 import com.limou.hrms.ai.model.vo.ChatMessageVO;
 import com.limou.hrms.ai.model.vo.ChatSessionVO;
@@ -310,11 +311,30 @@ public class AIChatService {
      * 构建 System Prompt
      */
     private String buildSystemPrompt(String knowledgeContext, Long userId, String userName, String userRole) {
+        String routeList = buildRouteList();
         return AIConstant.SYSTEM_PROMPT_TEMPLATE
+                .replace("{ROUTE_LIST}", routeList)
                 .replace("{KNOWLEDGE_BASE}", knowledgeContext)
                 .replace("{USER_ID}", String.valueOf(userId))
                 .replace("{USER_NAME}", userName)
                 .replace("{USER_ROLE}", userRole);
+    }
+
+    /**
+     * 构建路由列表文本（注入到 System Prompt 中）
+     */
+    private String buildRouteList() {
+        List<AiIntentRoute> routes = intentRecognitionService.getAllRoutes();
+        if (routes.isEmpty()) {
+            return "暂无可用路由";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (AiIntentRoute route : routes) {
+            sb.append("- ").append(route.getRouteLabel())
+              .append(" → [ROUTE:").append(route.getRoutePath())
+              .append("|").append(route.getRouteLabel()).append("]\n");
+        }
+        return sb.toString();
     }
 
     /**

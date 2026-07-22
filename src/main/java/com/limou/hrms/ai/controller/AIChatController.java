@@ -3,9 +3,11 @@ package com.limou.hrms.ai.controller;
 import cn.hutool.core.util.StrUtil;
 import com.limou.hrms.ai.model.dto.ChatFeedbackDTO;
 import com.limou.hrms.ai.model.dto.ChatRequestDTO;
+import com.limou.hrms.ai.model.entity.AiIntentRoute;
 import com.limou.hrms.ai.model.vo.ChatMessageVO;
 import com.limou.hrms.ai.model.vo.ChatSessionVO;
 import com.limou.hrms.ai.service.AIChatService;
+import com.limou.hrms.ai.service.IntentRecognitionService;
 import com.limou.hrms.common.BaseResponse;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.common.ResultUtils;
@@ -35,6 +37,9 @@ public class AIChatController {
 
     @Resource
     private AIChatService aiChatService;
+
+    @Resource
+    private IntentRecognitionService intentRecognitionService;
 
     @Resource
     private UserService userService;
@@ -162,5 +167,14 @@ public class AIChatController {
         }
         String sessionId = UUID.randomUUID().toString().replace("-", "");
         return ResultUtils.success(sessionId);
+    }
+
+    /**
+     * 获取系统所有可用路由映射（供前端 AI 组件查询可跳转页面）
+     */
+    @GetMapping("/routes")
+    public BaseResponse<List<AiIntentRoute>> getRoutes() {
+        List<AiIntentRoute> routes = intentRecognitionService.getAllRoutes();
+        return ResultUtils.success(routes);
     }
 }
