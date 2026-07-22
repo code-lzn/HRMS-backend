@@ -73,13 +73,18 @@ public class AttendanceStatsServiceImpl implements AttendanceStatsService {
         int normalDays = 0, lateDays = 0, earlyDays = 0, missingDays = 0, leaveDays = 0, absentDays = 0;
 
         for (Attendance r : records) {
-            switch (r.getStatus()) {
+            Integer st = r.getStatus();
+            if (st == null) continue;
+            switch (st) {
                 case 0: normalDays++; break;
                 case 1: lateDays++; break;
                 case 2: earlyDays++; break;
                 case 3: missingDays++; break;
                 case 4: leaveDays++; break;
                 case 5: absentDays++; break;
+                case 6: case 7: missingDays++; break;   // 上班缺卡/下班缺卡 → 缺卡
+                case 9: lateDays++; earlyDays++; break; // 迟到&早退 → 各算一次
+                default: break;
             }
         }
 
@@ -90,7 +95,11 @@ public class AttendanceStatsServiceImpl implements AttendanceStatsService {
         vo.setLeaveDays(leaveDays);
         vo.setAbsentDays(absentDays);
 
-        int actualDays = normalDays + lateDays + earlyDays;
+        int actualDays = (int) records.stream()
+                .filter(r -> r.getStatus() != null && r.getStatus() != 8
+                        && r.getStatus() != 3 && r.getStatus() != 6 && r.getStatus() != 7
+                        && r.getStatus() != 4 && r.getStatus() != 5)
+                .count();
         double rate = totalDays > 0 ? (actualDays * 100.0 / totalDays) : 0;
         vo.setAttendanceRate(BigDecimal.valueOf(rate).setScale(2, RoundingMode.HALF_UP).doubleValue());
 
@@ -269,7 +278,7 @@ public class AttendanceStatsServiceImpl implements AttendanceStatsService {
                     int attendanceDays = 0;
                     for (Attendance r : records) {
                         int status = r.getStatus() != null ? r.getStatus() : 0;
-                        if (status == 0 || status == 1 || status == 2) {
+                        if (status == 0 || status == 1 || status == 2 || status == 9) {
                             attendanceDays++;
                         }
                     }
@@ -284,7 +293,7 @@ public class AttendanceStatsServiceImpl implements AttendanceStatsService {
                 int attendanceDays = 0;
                 for (Attendance r : records) {
                     int status = r.getStatus() != null ? r.getStatus() : 0;
-                    if (status == 0 || status == 1 || status == 2) {
+                    if (status == 0 || status == 1 || status == 2 || status == 9) {
                         attendanceDays++;
                     }
                 }
@@ -462,11 +471,12 @@ public class AttendanceStatsServiceImpl implements AttendanceStatsService {
                 int status = r.getStatus() != null ? r.getStatus() : 0;
                 switch (status) {
                     case 0: stats[0]++; break;
-                    case 1: stats[1]++; break;
+                    case 1: case 9: stats[1]++; break;
                     case 2: stats[2]++; break;
-                    case 3: stats[3]++; break;
+                    case 3: case 6: case 7: stats[3]++; break;
                     case 4: stats[4]++; break;
                     case 5: stats[5]++; break;
+                    default: break;
                 }
             }
         }

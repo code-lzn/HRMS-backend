@@ -32,19 +32,18 @@
         <![CDATA[
         SELECT
             e.departmentId AS departmentId,
-            COUNT(DISTINCT e.id) AS employeeCount,
-            SUM(CASE WHEN a.status IN (0, 1, 2) THEN 1 ELSE 0 END) AS attendanceDays,
-            SUM(CASE WHEN a.status = 1 THEN 1 ELSE 0 END) AS lateCount,
-            SUM(CASE WHEN a.status = 2 THEN 1 ELSE 0 END) AS earlyCount,
+            SUM(CASE WHEN a.status IN (0, 1, 2, 9) THEN 1 ELSE 0 END) AS attendanceDays,
+            SUM(CASE WHEN a.status IN (1, 9) THEN 1 ELSE 0 END) AS lateCount,
+            SUM(CASE WHEN a.status IN (2, 9) THEN 1 ELSE 0 END) AS earlyCount,
             SUM(CASE WHEN a.status = 4 THEN 1 ELSE 0 END) AS leaveDays,
             SUM(CASE WHEN a.status = 5 THEN 1 ELSE 0 END) AS absentDays,
-            COUNT(DISTINCT CASE WHEN a.status = 1 THEN a.employeeId END) AS lateEmployeeCount,
+            COUNT(DISTINCT CASE WHEN a.status IN (1, 9) THEN a.employeeId END) AS lateEmployeeCount,
             COUNT(DISTINCT CASE WHEN a.status = 4 THEN a.employeeId END) AS leaveEmployeeCount
-        FROM attendance a
-        INNER JOIN employee e ON a.employeeId = e.id
-        WHERE a.attendanceDate >= #{startDate}
-          AND a.attendanceDate <= #{endDate}
-          AND e.isDeleted = 0
+        FROM employee e
+        LEFT JOIN attendance a ON a.employeeId = e.id
+            AND a.attendanceDate >= #{startDate}
+            AND a.attendanceDate <= #{endDate}
+        WHERE e.isDeleted = 0
           AND e.departmentId IS NOT NULL
         GROUP BY e.departmentId
         ]]>
