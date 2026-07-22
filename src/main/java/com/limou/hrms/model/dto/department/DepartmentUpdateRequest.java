@@ -1,5 +1,7 @@
 package com.limou.hrms.model.dto.department;
 
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
+import com.baomidou.mybatisplus.annotation.TableField;
 import lombok.Data;
 
 import javax.validation.constraints.Min;
@@ -31,6 +33,7 @@ public class DepartmentUpdateRequest implements Serializable {
     /**
      * 部门负责人ID，传null表示清空
      */
+    @TableField(updateStrategy = FieldStrategy.IGNORED)
     private Long managerId;
 
     /**

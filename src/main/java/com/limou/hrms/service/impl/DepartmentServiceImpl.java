@@ -126,6 +126,14 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
         existDept.setDescription(dto.getDescription());
 
         boolean updated = this.updateById(existDept);
+        // MyBatis-Plus updateById 默认 NOT_NULL 策略会跳过 null 字段，因此 managerId / description 传 null 时需补写
+        if (dto.getManagerId() == null || dto.getDescription() == null) {
+            com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<Department> nw
+                    = Wrappers.<Department>lambdaUpdate().eq(Department::getId, id);
+            if (dto.getManagerId() == null) nw.set(Department::getManagerId, null);
+            if (dto.getDescription() == null) nw.set(Department::getDescription, null);
+            this.update(nw);
+        }
         if (!updated) {
             throw new BusinessException(ErrorCode.OPERATION_ERROR, "更新部门失败");
         }
