@@ -136,7 +136,7 @@ public class SalaryDetailServiceImpl extends ServiceImpl<SalaryDetailMapper, Sal
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
 
-        // 降级方案：密码验证
+        // 降级方案：密码验证++++++++++++++++++
         if (request.getVerifyType() == 2) {
             if (StringUtils.isBlank(request.getVerifyCode())) {
                 throw new BusinessException(ErrorCode.PARAMS_ERROR, "请输入登录密码");
@@ -213,7 +213,7 @@ public class SalaryDetailServiceImpl extends ServiceImpl<SalaryDetailMapper, Sal
         // ③ 构建 VO
         PayslipVO vo = toPayslipVO(detail, batch);
 
-        // ④ 二次验证状态：Redis 过期则强制重新验证 + 脱敏
+        // ④ 二次验证状态：Redis 过期则强制重新验证 + 脱敏+++++++++++++++++++
         boolean currentlyVerified = isPayslipVerified(employeeId, detailId);
         if (!currentlyVerified) {
             // 重置为未查看，前端据此弹出验证弹窗
@@ -278,7 +278,7 @@ public class SalaryDetailServiceImpl extends ServiceImpl<SalaryDetailMapper, Sal
 
     /**
      * 验证通过后清除验证码和限制，标记已查看
-     */
+     *///////////////////////
     private void markAsVerified(Long employeeId, Long detailId) {
         stringRedisTemplate.delete(String.format(VERIFY_CODE_KEY, employeeId, detailId));
         stringRedisTemplate.delete(String.format(VERIFY_LIMIT_KEY, employeeId, detailId));

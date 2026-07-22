@@ -115,9 +115,18 @@ public class SalaryBatchServiceImpl extends ServiceImpl<SalaryBatchMapper, Salar
             log.error("批次状态非草稿，无法计算，ID：{}，状态：{}", batchId, batch.getStatus());
             return;
         }
-        // 更新状态为计算中
-        batch.setStatus(BatchStatusEnum.CALCULATING.getValue());
-        this.updateById(batch);
+        // 使用条件更新（乐观锁）将状态从草稿改为计算中，防止并发重复执行
+        com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<SalaryBatch> updateWrapper =
+                new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<>();
+        updateWrapper.eq("id", batchId).eq("status", BatchStatusEnum.DRAFT.getValue())
+                .set("status", BatchStatusEnum.CALCULATING.getValue());
+        int updated = baseMapper.update(null, updateWrapper);
+        if (updated == 0) {
+            log.warn("批次状态已被其他请求变更，跳过重复计算，批次ID：{}", batchId);
+            return;
+        }
+        // 重新加载最新状态
+        batch = this.getById(batchId);
 
         try {
             // 清除该批次旧的核算明细，防止重复
