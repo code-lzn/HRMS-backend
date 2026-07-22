@@ -277,8 +277,8 @@ public class AttendanceServiceImpl implements AttendanceService, ApprovalCallbac
             employeeId = dataScopeContext.getCurrentEmployeeId();
         }
 
-        LocalDate firstDay = LocalDate.of(year, month, 1);
-        LocalDate lastDay = firstDay.plusMonths(1).minusDays(1);
+        LocalDate firstDay = LocalDate.of(year, month, 1);//计算第一天
+        LocalDate lastDay = firstDay.plusMonths(1).minusDays(1);//计算最后一天
 
         // 查工作日历
         List<WorkCalendar> calendars = workCalendarMapper.selectList(
