@@ -1,6 +1,7 @@
 package com.limou.hrms.service.impl;
 
 import cn.hutool.core.date.DateUtil;
+import com.limou.hrms.mapper.AttendanceMapper;
 import com.limou.hrms.mapper.EmployeeMapper;
 import com.limou.hrms.model.entity.*;
 import com.limou.hrms.model.enums.AttendanceStatusEnum;
@@ -39,6 +40,9 @@ public class AttendanceStatsServiceImpl implements AttendanceStatsService {
 
     @Resource
     private HolidayConfigService holidayConfigService;
+
+    @Resource
+    private AttendanceMapper attendanceMapper;
 
     @Override
     public AttendanceStatsVO getPersonalStats(Long userId, String month) {
@@ -122,46 +126,26 @@ public class AttendanceStatsServiceImpl implements AttendanceStatsService {
     public List<DepartmentAttendanceStatsVO> getDepartmentStats(String month) {
         Date monthStart = DateUtil.parseDate(month + "-01");
         Date monthEnd = DateUtil.endOfMonth(monthStart);
+        int totalWorkDays = countWorkDays(monthStart, monthEnd);
 
         List<Department> departments = departmentService.lambdaQuery()
                 .eq(Department::getIsDeleted, 0)
                 .list();
 
-        List<Attendance> allRecords = attendanceService.lambdaQuery()
-                .ge(Attendance::getAttendanceDate, DateUtil.formatDate(monthStart))
-                .le(Attendance::getAttendanceDate, DateUtil.formatDate(monthEnd))
-                .list();
+        Map<Long, String> deptNameMap = departments.stream()
+                .collect(Collectors.toMap(Department::getId, Department::getDeptName));
 
-        Map<Long, Employee> employeeMap = employeeService.lambdaQuery()
-                .eq(Employee::getIsDeleted, 0).list().stream()
-                .collect(Collectors.toMap(Employee::getId, e -> e));
+        Map<Long, Integer> deptEmployeeCountMap = employeeService.lambdaQuery()
+                .eq(Employee::getIsDeleted, 0)
+                .list().stream()
+                .filter(e -> e.getDepartmentId() != null)
+                .collect(Collectors.groupingBy(Employee::getDepartmentId, Collectors.collectingAndThen(Collectors.counting(), Long::intValue)));
 
-        // 按部门分组员工（含无部门员工归入 -1）
-        Map<Long, List<Employee>> deptEmployeeMap = new HashMap<>();
-        List<Employee> unassignedEmployees = new ArrayList<>();
-        for (Employee e : employeeMap.values()) {
-            if (e.getDepartmentId() != null) {
-                deptEmployeeMap.computeIfAbsent(e.getDepartmentId(), k -> new ArrayList<>()).add(e);
-            } else {
-                unassignedEmployees.add(e);
-            }
-        }
+        List<Map<String, Object>> statsList = attendanceMapper.getDepartmentAttendanceStats(
+                DateUtil.formatDate(monthStart), DateUtil.formatDate(monthEnd));
 
-        // 按部门分组考勤记录（无部门员工记录归入 -1）
-        Map<Long, List<Attendance>> deptRecordMap = new HashMap<>();
-        List<Attendance> unassignedRecords = new ArrayList<>();
-        for (Attendance r : allRecords) {
-            Employee emp = employeeMap.get(r.getEmployeeId());
-            if (emp != null) {
-                if (emp.getDepartmentId() != null) {
-                    deptRecordMap.computeIfAbsent(emp.getDepartmentId(), k -> new ArrayList<>()).add(r);
-                } else {
-                    unassignedRecords.add(r);
-                }
-            }
-        }
-
-        int totalWorkDays = countWorkDays(monthStart, monthEnd);
+        Map<Long, Map<String, Object>> deptStatsMap = statsList.stream()
+                .collect(Collectors.toMap(m -> ((Number) m.get("departmentId")).longValue(), m -> m));
 
         List<DepartmentAttendanceStatsVO> result = new ArrayList<>();
         for (Department dept : departments) {
@@ -169,113 +153,40 @@ public class AttendanceStatsServiceImpl implements AttendanceStatsService {
             vo.setDepartmentId(dept.getId());
             vo.setDepartmentName(dept.getDeptName());
 
-            List<Employee> deptEmployees = deptEmployeeMap.getOrDefault(dept.getId(), Collections.emptyList());
-            int empCount = deptEmployees.size();
+            int empCount = deptEmployeeCountMap.getOrDefault(dept.getId(), 0);
             vo.setEmployeeCount(empCount);
             vo.setTotalWorkDays(totalWorkDays);
 
-            List<Attendance> deptRecords = deptRecordMap.getOrDefault(dept.getId(), Collections.emptyList());
+            Map<String, Object> stats = deptStatsMap.get(dept.getId());
+            if (stats != null) {
+                vo.setActualAttendanceDays(((Number) stats.getOrDefault("attendanceDays", 0)).intValue());
+                vo.setLateCount(((Number) stats.getOrDefault("lateCount", 0)).intValue());
+                vo.setEarlyCount(((Number) stats.getOrDefault("earlyCount", 0)).intValue());
+                vo.setLeaveDays(((Number) stats.getOrDefault("leaveDays", 0)).intValue());
+                vo.setAbsentDays(((Number) stats.getOrDefault("absentDays", 0)).intValue());
 
-            // 统计出勤天数：正常+迟到+早退（都属于出勤）
-            int attendanceDays = 0;
-            int lateTotalTimes = 0;
-            int earlyTotalTimes = 0;
-            int absentDays = 0;
-            int leaveDays = 0;
-            // 用 Set 统计去重后的迟到/早退/请假人数
-            Set<Long> lateEmployeeSet = new HashSet<>();
-            Set<Long> earlyEmployeeSet = new HashSet<>();
-            Set<Long> leaveEmployeeSet = new HashSet<>();
+                double totalShouldDays = totalWorkDays * empCount;
+                double attendanceRate = totalShouldDays > 0
+                        ? (((Number) stats.getOrDefault("attendanceDays", 0)).intValue() * 100.0 / totalShouldDays) : 0;
+                vo.setAttendanceRate(BigDecimal.valueOf(attendanceRate).setScale(2, RoundingMode.HALF_UP).doubleValue());
 
-            for (Attendance r : deptRecords) {
-                int status = r.getStatus() != null ? r.getStatus() : 0;
-                if (status == AttendanceStatusEnum.NORMAL.getValue()
-                        || status == AttendanceStatusEnum.LATE.getValue()
-                        || status == AttendanceStatusEnum.LEAVE_EARLY.getValue()) {
-                    attendanceDays++;
-                }
-                if (status == AttendanceStatusEnum.LATE.getValue()) {
-                    lateTotalTimes++;
-                    lateEmployeeSet.add(r.getEmployeeId());
-                }
-                if (status == AttendanceStatusEnum.LEAVE_EARLY.getValue()) {
-                    earlyTotalTimes++;
-                    earlyEmployeeSet.add(r.getEmployeeId());
-                }
-                if (status == AttendanceStatusEnum.LEAVE.getValue()) {
-                    leaveDays++;
-                    leaveEmployeeSet.add(r.getEmployeeId());
-                }
-                if (status == AttendanceStatusEnum.ABSENT.getValue()) {
-                    absentDays++;
-                }
+                double lateRate = empCount > 0
+                        ? (((Number) stats.getOrDefault("lateEmployeeCount", 0)).intValue() * 100.0 / empCount) : 0;
+                vo.setLateRate(BigDecimal.valueOf(lateRate).setScale(2, RoundingMode.HALF_UP).doubleValue());
+
+                double leaveRate = empCount > 0
+                        ? (((Number) stats.getOrDefault("leaveEmployeeCount", 0)).intValue() * 100.0 / empCount) : 0;
+                vo.setLeaveRate(BigDecimal.valueOf(leaveRate).setScale(2, RoundingMode.HALF_UP).doubleValue());
+            } else {
+                vo.setActualAttendanceDays(0);
+                vo.setLateCount(0);
+                vo.setEarlyCount(0);
+                vo.setLeaveDays(0);
+                vo.setAbsentDays(0);
+                vo.setAttendanceRate(0.0);
+                vo.setLateRate(0.0);
+                vo.setLeaveRate(0.0);
             }
-
-            vo.setActualAttendanceDays(attendanceDays);
-            vo.setLateCount(lateTotalTimes);
-            vo.setEarlyCount(earlyTotalTimes);
-            vo.setAbsentDays(absentDays);
-            vo.setLeaveDays(leaveDays);
-
-            // 出勤率 = 实际出勤天数 / 应出勤总天数
-            double totalShouldDays = totalWorkDays * empCount;
-            double attendanceRate = totalShouldDays > 0
-                    ? (attendanceDays * 100.0 / totalShouldDays) : 0;
-            vo.setAttendanceRate(BigDecimal.valueOf(attendanceRate).setScale(2, RoundingMode.HALF_UP).doubleValue());
-
-            // 迟到率 = 迟到人数 / 部门总人数
-            double lateRate = empCount > 0
-                    ? (lateEmployeeSet.size() * 100.0 / empCount) : 0;
-            vo.setLateRate(BigDecimal.valueOf(lateRate).setScale(2, RoundingMode.HALF_UP).doubleValue());
-
-            // 请假率 = 请假人数 / 部门总人数
-            double leaveRate = empCount > 0
-                    ? (leaveEmployeeSet.size() * 100.0 / empCount) : 0;
-            vo.setLeaveRate(BigDecimal.valueOf(leaveRate).setScale(2, RoundingMode.HALF_UP).doubleValue());
-
-            result.add(vo);
-        }
-
-        // 无部门员工统计：统一归入"未分配部门"
-        if (!unassignedEmployees.isEmpty() || !unassignedRecords.isEmpty()) {
-            DepartmentAttendanceStatsVO vo = new DepartmentAttendanceStatsVO();
-            vo.setDepartmentId(0L);
-            vo.setDepartmentName("未分配部门");
-            vo.setEmployeeCount(unassignedEmployees.size());
-            vo.setTotalWorkDays(totalWorkDays);
-
-            int attendanceDays = 0, lateTotalTimes = 0, earlyTotalTimes = 0, absentDays = 0, leaveDays = 0;
-            Set<Long> lateEmployeeSet = new HashSet<>();
-            Set<Long> earlyEmployeeSet = new HashSet<>();
-            Set<Long> leaveEmployeeSet = new HashSet<>();
-
-            for (Attendance r : unassignedRecords) {
-                int status = r.getStatus() != null ? r.getStatus() : 0;
-                if (status == AttendanceStatusEnum.NORMAL.getValue()
-                        || status == AttendanceStatusEnum.LATE.getValue()
-                        || status == AttendanceStatusEnum.LEAVE_EARLY.getValue()) {
-                    attendanceDays++;
-                }
-                if (status == AttendanceStatusEnum.LATE.getValue()) { lateTotalTimes++; lateEmployeeSet.add(r.getEmployeeId()); }
-                if (status == AttendanceStatusEnum.LEAVE_EARLY.getValue()) { earlyTotalTimes++; earlyEmployeeSet.add(r.getEmployeeId()); }
-                if (status == AttendanceStatusEnum.LEAVE.getValue()) { leaveDays++; leaveEmployeeSet.add(r.getEmployeeId()); }
-                if (status == AttendanceStatusEnum.ABSENT.getValue()) { absentDays++; }
-            }
-
-            vo.setActualAttendanceDays(attendanceDays);
-            vo.setLateCount(lateTotalTimes);
-            vo.setEarlyCount(earlyTotalTimes);
-            vo.setAbsentDays(absentDays);
-            vo.setLeaveDays(leaveDays);
-
-            int empCount = unassignedEmployees.size();
-            double totalShouldDays = totalWorkDays * empCount;
-            double attendanceRate = totalShouldDays > 0 ? (attendanceDays * 100.0 / totalShouldDays) : 0;
-            vo.setAttendanceRate(BigDecimal.valueOf(attendanceRate).setScale(2, RoundingMode.HALF_UP).doubleValue());
-            double lateRate = empCount > 0 ? (lateEmployeeSet.size() * 100.0 / empCount) : 0;
-            vo.setLateRate(BigDecimal.valueOf(lateRate).setScale(2, RoundingMode.HALF_UP).doubleValue());
-            double leaveRate = empCount > 0 ? (leaveEmployeeSet.size() * 100.0 / empCount) : 0;
-            vo.setLeaveRate(BigDecimal.valueOf(leaveRate).setScale(2, RoundingMode.HALF_UP).doubleValue());
 
             result.add(vo);
         }
@@ -291,7 +202,6 @@ public class AttendanceStatsServiceImpl implements AttendanceStatsService {
 
         boolean allDepts = (departmentId == null || departmentId <= 0);
 
-        // 以 endMonth 为基准向前推 months 个月，未传则用当前月
         Calendar cal;
         if (endMonth != null && !endMonth.isEmpty()) {
             cal = Calendar.getInstance();
@@ -299,29 +209,89 @@ public class AttendanceStatsServiceImpl implements AttendanceStatsService {
         } else {
             cal = Calendar.getInstance();
         }
+
+        String startMonth = DateUtil.format(DateUtil.offsetMonth(cal.getTime(), -(months - 1)), "yyyy-MM");
+        String endMonthStr = DateUtil.format(cal.getTime(), "yyyy-MM");
+
         for (int i = months - 1; i >= 0; i--) {
             Calendar temp = (Calendar) cal.clone();
             temp.add(Calendar.MONTH, -i);
-            String month = DateUtil.format(temp.getTime(), "yyyy-MM");
-            monthList.add(month);
+            monthList.add(DateUtil.format(temp.getTime(), "yyyy-MM"));
+        }
 
-            List<DepartmentAttendanceStatsVO> statsList = getDepartmentStats(month);
+        Date startDate = DateUtil.parseDate(startMonth + "-01");
+        Date endDate = DateUtil.endOfMonth(DateUtil.parseDate(endMonthStr + "-01"));
 
-            double rate;
-            if (allDepts) {
-                // 全部部门：计算总体出勤率
-                int totalAttendance = statsList.stream()
-                        .mapToInt(DepartmentAttendanceStatsVO::getActualAttendanceDays).sum();
-                int totalShould = statsList.stream()
-                        .mapToInt(s -> s.getTotalWorkDays() * s.getEmployeeCount()).sum();
-                rate = totalShould > 0 ? (totalAttendance * 100.0 / totalShould) : 0;
-            } else {
-                DepartmentAttendanceStatsVO stats = statsList.stream()
-                        .filter(s -> s.getDepartmentId().equals(departmentId))
-                        .findFirst().orElse(null);
-                rate = stats != null ? stats.getAttendanceRate() : 0.0;
+        List<Attendance> allRecords = attendanceService.lambdaQuery()
+                .ge(Attendance::getAttendanceDate, DateUtil.formatDate(startDate))
+                .le(Attendance::getAttendanceDate, DateUtil.formatDate(endDate))
+                .list();
+
+        Map<Long, Employee> employeeMap = employeeService.lambdaQuery()
+                .eq(Employee::getIsDeleted, 0).list().stream()
+                .collect(Collectors.toMap(Employee::getId, e -> e));
+
+        Map<Long, List<Employee>> deptEmployeeMap = new HashMap<>();
+        for (Employee e : employeeMap.values()) {
+            if (e.getDepartmentId() != null) {
+                deptEmployeeMap.computeIfAbsent(e.getDepartmentId(), k -> new ArrayList<>()).add(e);
             }
-            rateList.add(BigDecimal.valueOf(rate).setScale(2, RoundingMode.HALF_UP).doubleValue());
+        }
+
+        Map<String, Map<Long, List<Attendance>>> monthDeptRecordMap = new HashMap<>();
+        for (Attendance r : allRecords) {
+            Employee emp = employeeMap.get(r.getEmployeeId());
+            if (emp != null && emp.getDepartmentId() != null) {
+                String month = DateUtil.formatDate(r.getAttendanceDate()).substring(0, 7);
+                monthDeptRecordMap.computeIfAbsent(month, k -> new HashMap<>())
+                        .computeIfAbsent(emp.getDepartmentId(), k -> new ArrayList<>()).add(r);
+            }
+        }
+
+        Map<String, Integer> monthWorkDaysMap = new HashMap<>();
+        for (String month : monthList) {
+            Date mStart = DateUtil.parseDate(month + "-01");
+            Date mEnd = DateUtil.endOfMonth(mStart);
+            monthWorkDaysMap.put(month, countWorkDays(mStart, mEnd));
+        }
+
+        for (String month : monthList) {
+            Map<Long, List<Attendance>> deptRecordsMap = monthDeptRecordMap.getOrDefault(month, Collections.emptyMap());
+            int workDays = monthWorkDaysMap.get(month);
+
+            if (allDepts) {
+                int totalAttendance = 0;
+                int totalShould = 0;
+                for (Map.Entry<Long, List<Attendance>> entry : deptRecordsMap.entrySet()) {
+                    Long deptId = entry.getKey();
+                    List<Attendance> records = entry.getValue();
+                    int empCount = deptEmployeeMap.getOrDefault(deptId, Collections.emptyList()).size();
+                    int attendanceDays = 0;
+                    for (Attendance r : records) {
+                        int status = r.getStatus() != null ? r.getStatus() : 0;
+                        if (status == 0 || status == 1 || status == 2) {
+                            attendanceDays++;
+                        }
+                    }
+                    totalAttendance += attendanceDays;
+                    totalShould += workDays * empCount;
+                }
+                double rate = totalShould > 0 ? (totalAttendance * 100.0 / totalShould) : 0;
+                rateList.add(BigDecimal.valueOf(rate).setScale(2, RoundingMode.HALF_UP).doubleValue());
+            } else {
+                List<Attendance> records = deptRecordsMap.getOrDefault(departmentId, Collections.emptyList());
+                int empCount = deptEmployeeMap.getOrDefault(departmentId, Collections.emptyList()).size();
+                int attendanceDays = 0;
+                for (Attendance r : records) {
+                    int status = r.getStatus() != null ? r.getStatus() : 0;
+                    if (status == 0 || status == 1 || status == 2) {
+                        attendanceDays++;
+                    }
+                }
+                double totalShould = workDays * empCount;
+                double rate = totalShould > 0 ? (attendanceDays * 100.0 / totalShould) : 0;
+                rateList.add(BigDecimal.valueOf(rate).setScale(2, RoundingMode.HALF_UP).doubleValue());
+            }
         }
 
         vo.setMonths(monthList);
@@ -458,10 +428,58 @@ public class AttendanceStatsServiceImpl implements AttendanceStatsService {
         for (int i = months - 1; i >= 0; i--) {
             Calendar temp = (Calendar) cal.clone();
             temp.add(Calendar.MONTH, -i);
-            String month = DateUtil.format(temp.getTime(), "yyyy-MM");
-            monthList.add(month);
-            AttendanceStatsVO stats = getPersonalStats(userId, month);
-            rateList.add(stats != null ? stats.getAttendanceRate() : 0.0);
+            monthList.add(DateUtil.format(temp.getTime(), "yyyy-MM"));
+        }
+
+        String startMonth = monthList.get(0);
+        String endMonthStr = monthList.get(monthList.size() - 1);
+
+        Date startDate = DateUtil.parseDate(startMonth + "-01");
+        Date endDate = DateUtil.endOfMonth(DateUtil.parseDate(endMonthStr + "-01"));
+
+        Employee emp = employeeService.getByUserId(userId);
+        if (emp == null) {
+            vo.setMonths(monthList);
+            vo.setRates(Collections.nCopies(months, 0.0));
+            return vo;
+        }
+
+        List<Attendance> allRecords = attendanceService.lambdaQuery()
+                .eq(Attendance::getEmployeeId, emp.getId())
+                .ge(Attendance::getAttendanceDate, DateUtil.formatDate(startDate))
+                .le(Attendance::getAttendanceDate, DateUtil.formatDate(endDate))
+                .list();
+
+        Map<String, int[]> monthStatsMap = new HashMap<>();
+        for (String month : monthList) {
+            monthStatsMap.put(month, new int[]{0, 0, 0, 0, 0, 0});
+        }
+
+        for (Attendance r : allRecords) {
+            String month = DateUtil.formatDate(r.getAttendanceDate()).substring(0, 7);
+            int[] stats = monthStatsMap.get(month);
+            if (stats != null) {
+                int status = r.getStatus() != null ? r.getStatus() : 0;
+                switch (status) {
+                    case 0: stats[0]++; break;
+                    case 1: stats[1]++; break;
+                    case 2: stats[2]++; break;
+                    case 3: stats[3]++; break;
+                    case 4: stats[4]++; break;
+                    case 5: stats[5]++; break;
+                }
+            }
+        }
+
+        for (String month : monthList) {
+            Date mStart = DateUtil.parseDate(month + "-01");
+            Date mEnd = DateUtil.endOfMonth(mStart);
+            int totalDays = countWorkDays(mStart, mEnd);
+
+            int[] stats = monthStatsMap.get(month);
+            int actualDays = stats[0] + stats[1] + stats[2];
+            double rate = totalDays > 0 ? (actualDays * 100.0 / totalDays) : 0;
+            rateList.add(BigDecimal.valueOf(rate).setScale(2, RoundingMode.HALF_UP).doubleValue());
         }
 
         vo.setMonths(monthList);
@@ -510,11 +528,28 @@ public class AttendanceStatsServiceImpl implements AttendanceStatsService {
     }
 
     private int countWorkDays(Date start, Date end) {
+        List<HolidayConfig> configs = holidayConfigService.lambdaQuery()
+                .ge(HolidayConfig::getHolidayDate, DateUtil.formatDate(start))
+                .le(HolidayConfig::getHolidayDate, DateUtil.formatDate(end))
+                .list();
+        Set<String> holidaySet = new HashSet<>();
+        Set<String> specialWorkSet = new HashSet<>();
+        for (HolidayConfig c : configs) {
+            String d = DateUtil.formatDate(c.getHolidayDate());
+            if (c.getHolidayType() != null && c.getHolidayType() == 1) {
+                specialWorkSet.add(d);
+            } else {
+                holidaySet.add(d);
+            }
+        }
         int count = 0;
         Calendar cursor = Calendar.getInstance();
         cursor.setTime(start);
         while (!cursor.getTime().after(end)) {
-            if (holidayConfigService.isWorkDay(cursor.getTime())) {
+            String dateStr = DateUtil.formatDate(cursor.getTime());
+            int dayOfWeek = cursor.get(Calendar.DAY_OF_WEEK);
+            boolean isWeekend = (dayOfWeek == Calendar.SATURDAY || dayOfWeek == Calendar.SUNDAY);
+            if (specialWorkSet.contains(dateStr) || (!isWeekend && !holidaySet.contains(dateStr))) {
                 count++;
             }
             cursor.add(Calendar.DAY_OF_MONTH, 1);
