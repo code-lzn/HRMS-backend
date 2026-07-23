@@ -67,6 +67,8 @@ public class ProbationServiceImpl
     private OnboardingApplicationMapper onboardingMapper;
     @Resource
     private ResignationApplicationMapper resignationMapper;
+    @Resource
+    private EmployeeSalaryMapper employeeSalaryMapper;
 
     // ==================== 转正 CRUD ====================
 
@@ -212,12 +214,13 @@ public class ProbationServiceImpl
 
         switch (result) {
             case PASS:
-                // 审批已通过时调用onApproved，此处不适用。但如果HR在已拒绝后决定改为通过，也可以
                 Employee emp = employeeMapper.selectById(app.getEmployeeId());
                 if (emp != null) {
                     emp.setStatus(EmployeeStatus.REGULAR.getValue());
                     employeeMapper.updateById(emp);
                 }
+                // 薪资调整
+                applySalaryAdjustment(app);
                 app.setResult(ProbationResult.PASS.getCode());
                 app.setStatus(ProbationStatus.COMPLETED.getCode()); // 已完成
                 break;
@@ -341,6 +344,9 @@ public class ProbationServiceImpl
             employeeMapper.updateById(employee);
         }
 
+        // 薪资调整（有填则生效）
+        applySalaryAdjustment(app);
+
         app.setResult(ProbationResult.PASS.getCode());
         app.setStatus(ProbationStatus.COMPLETED.getCode()); // 已完成
         probationMapper.updateById(app);
@@ -358,6 +364,29 @@ public class ProbationServiceImpl
     }
 
     // ==================== 私有方法 ====================
+
+    /**
+     * 转正薪资调整：从 probation_application.salary_adjustment 加到 employee_salary.base_salary
+     */
+    private void applySalaryAdjustment(ProbationApplication app) {
+        if (app.getSalaryAdjustment() == null
+                || app.getSalaryAdjustment().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            return;
+        }
+        EmployeeSalary salary = employeeSalaryMapper.selectOne(
+                new QueryWrapper<EmployeeSalary>().eq("employee_id", app.getEmployeeId())
+                        .orderByDesc("id").last("LIMIT 1"));
+        if (salary == null) {
+            log.warn("转正薪资调整失败：员工 {} 无薪资档案", app.getEmployeeId());
+            return;
+        }
+        java.math.BigDecimal oldBase = salary.getBaseSalary() != null
+                ? salary.getBaseSalary() : java.math.BigDecimal.ZERO;
+        salary.setBaseSalary(oldBase.add(app.getSalaryAdjustment()));
+        employeeSalaryMapper.updateById(salary);
+        log.info("转正薪资调整：employeeId={}, baseSalary {} → {}",
+                app.getEmployeeId(), oldBase, salary.getBaseSalary());
+    }
 
     private ProbationApplication getAppOrThrow(Long id) {
         ProbationApplication app = probationMapper.selectById(id);

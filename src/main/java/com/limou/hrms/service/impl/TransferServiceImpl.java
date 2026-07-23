@@ -58,6 +58,8 @@ public class TransferServiceImpl
     private DataScopeContext dataScopeContext;
     @Resource
     private ApproverResolver approverResolver;
+    @Resource
+    private EmployeeSalaryMapper employeeSalaryMapper;
 
     // ==================== 调岗 CRUD ====================
 
@@ -282,7 +284,25 @@ public class TransferServiceImpl
         history.setReason(app.getReason());
         transferHistoryMapper.insert(history);
 
-        // 3. 更新申请状态
+        // 3. 薪资调整（有填则生效）
+        if (app.getSalaryAdjustment() != null
+                && app.getSalaryAdjustment().compareTo(java.math.BigDecimal.ZERO) > 0) {
+            EmployeeSalary salary = employeeSalaryMapper.selectOne(
+                    new QueryWrapper<EmployeeSalary>().eq("employee_id", app.getEmployeeId())
+                            .orderByDesc("id").last("LIMIT 1"));
+            if (salary != null) {
+                java.math.BigDecimal oldBase = salary.getBaseSalary() != null
+                        ? salary.getBaseSalary() : java.math.BigDecimal.ZERO;
+                salary.setBaseSalary(oldBase.add(app.getSalaryAdjustment()));
+                employeeSalaryMapper.updateById(salary);
+                log.info("调岗薪资调整：employeeId={}, baseSalary {} → {}",
+                        app.getEmployeeId(), oldBase, salary.getBaseSalary());
+            } else {
+                log.warn("调岗薪资调整失败：员工 {} 无薪资档案", app.getEmployeeId());
+            }
+        }
+
+        // 4. 更新申请状态
         app.setStatus(TransferStatus.EFFECTIVE.getCode());
         transferMapper.updateById(app);
 
