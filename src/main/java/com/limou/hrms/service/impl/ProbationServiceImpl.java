@@ -374,7 +374,8 @@ public class ProbationServiceImpl
             return;
         }
         EmployeeSalary salary = employeeSalaryMapper.selectOne(
-                new QueryWrapper<EmployeeSalary>().eq("employee_id", app.getEmployeeId()));
+                new QueryWrapper<EmployeeSalary>().eq("employee_id", app.getEmployeeId())
+                        .orderByDesc("id").last("LIMIT 1"));
         if (salary == null) {
             log.warn("转正薪资调整失败：员工 {} 无薪资档案", app.getEmployeeId());
             return;

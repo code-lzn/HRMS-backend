@@ -288,7 +288,8 @@ public class TransferServiceImpl
         if (app.getSalaryAdjustment() != null
                 && app.getSalaryAdjustment().compareTo(java.math.BigDecimal.ZERO) > 0) {
             EmployeeSalary salary = employeeSalaryMapper.selectOne(
-                    new QueryWrapper<EmployeeSalary>().eq("employee_id", app.getEmployeeId()));
+                    new QueryWrapper<EmployeeSalary>().eq("employee_id", app.getEmployeeId())
+                            .orderByDesc("id").last("LIMIT 1"));
             if (salary != null) {
                 java.math.BigDecimal oldBase = salary.getBaseSalary() != null
                         ? salary.getBaseSalary() : java.math.BigDecimal.ZERO;
