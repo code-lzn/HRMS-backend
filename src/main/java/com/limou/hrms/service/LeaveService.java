@@ -38,4 +38,13 @@ public interface LeaveService extends IService<Leave> {
      * 获取审批进度
      */
     LeaveProgressVO getApprovalProgress(Long requestId, Long userId);
+    /**
+     * 删除请假申请（仅已撤回/已拒绝）
+     */
+    void delete(Long requestId, Long userId);
+
+    /**
+     * 重新提交请假申请
+     */
+    void resubmit(Long requestId, Long userId);
 }

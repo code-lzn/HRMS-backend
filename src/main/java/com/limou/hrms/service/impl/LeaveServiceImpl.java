@@ -114,6 +114,16 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
         EmployeeDetail employeeDetail = employeeDetailMapper.selectById(emp.getId());
         Long approverId = employeeDetail != null ? employeeDetail.getDirectReportId() : null;
 
+        // limou的请假审批人固定为赵六
+        if ("limou".equals(emp.getEmployeeName())) {
+            Employee zhaoliu = employeeService.lambdaQuery()
+                    .eq(Employee::getEmployeeName, "赵六")
+                    .one();
+            if (zhaoliu != null) {
+                approverId = zhaoliu.getId();
+            }
+        }
+
         Leave request = new Leave();
         request.setEmployeeId(emp.getId());
         request.setUserId(userId);
@@ -179,7 +189,6 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
         Employee emp = getEmployee(userId);
         List<Leave> list = this.lambdaQuery()
                 .eq(Leave::getEmployeeId, emp.getId())
-                .ne(Leave::getStatus, ApprovalStatusEnum.CANCELLED.getValue())
                 .orderByDesc(Leave::getCreateTime)
                 .list();
 
@@ -316,6 +325,95 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
 
         // 还原考勤状态
         revertAttendanceForLeave(request.getEmployeeId(), request.getStartDate(), request.getEndDate());
+    }
+
+    @Override
+    public void delete(Long requestId, Long userId) {
+        Leave request = this.getById(requestId);
+        ThrowUtils.throwIf(request == null, ErrorCode.NOT_FOUND_ERROR, "请假申请不存在");
+        ThrowUtils.throwIf(!Objects.equals(request.getUserId(), userId), ErrorCode.NO_AUTH_ERROR);
+        ThrowUtils.throwIf(!Objects.equals(request.getStatus(), ApprovalStatusEnum.CANCELLED.getValue())
+                && !Objects.equals(request.getStatus(), ApprovalStatusEnum.REJECTED.getValue()),
+                ErrorCode.OPERATION_ERROR, "只能删除已撤回或已拒绝的申请");
+
+        this.removeById(requestId);
+
+        ApprovalRecord approvalRecord = approvalService.lambdaQuery()
+                .eq(ApprovalRecord::getBusinessType, BusinessTypeEnum.LEAVE.getValue())
+                .eq(ApprovalRecord::getBusinessId, requestId)
+                .one();
+        if (approvalRecord != null) {
+            approvalDetailService.lambdaUpdate()
+                    .eq(ApprovalDetail::getRecordId, approvalRecord.getId())
+                    .remove();
+            approvalService.removeById(approvalRecord.getId());
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void resubmit(Long requestId, Long userId) {
+        Leave request = this.getById(requestId);
+        ThrowUtils.throwIf(request == null, ErrorCode.NOT_FOUND_ERROR, "请假申请不存在");
+        ThrowUtils.throwIf(!Objects.equals(request.getUserId(), userId), ErrorCode.NO_AUTH_ERROR);
+        ThrowUtils.throwIf(!Objects.equals(request.getStatus(), ApprovalStatusEnum.CANCELLED.getValue())
+                && !Objects.equals(request.getStatus(), ApprovalStatusEnum.REJECTED.getValue()),
+                ErrorCode.OPERATION_ERROR, "只能重新提交已撤回或已拒绝的申请");
+
+        Employee emp = employeeService.getById(request.getEmployeeId());
+
+        // 检查是否有重叠的请假记录
+        long overlapCount = this.lambdaQuery()
+                .eq(Leave::getEmployeeId, request.getEmployeeId())
+                .ne(Leave::getStatus, ApprovalStatusEnum.REJECTED.getValue())
+                .ne(Leave::getStatus, ApprovalStatusEnum.CANCELLED.getValue())
+                .ne(Leave::getId, requestId)
+                .le(Leave::getStartDate, request.getEndDate())
+                .ge(Leave::getEndDate, request.getStartDate())
+                .count();
+        ThrowUtils.throwIf(overlapCount > 0, ErrorCode.LEAVE_OVERLAP_ERROR);
+
+        // 检查假期余额
+        checkLeaveBalance(request.getEmployeeId(), request.getLeaveType(), request.getTotalDays());
+
+        // 扣减假期余额（因为撤销时已经还原了，重新提交需要再次扣减）
+        employeeLeaveBalanceService.deduct(request.getEmployeeId(), request.getLeaveType(), request.getTotalDays());
+
+        // 更新状态为待审批
+        request.setStatus(ApprovalStatusEnum.PENDING.getValue());
+        request.setCreateTime(new Date());
+        boolean updated = this.updateById(request);
+        ThrowUtils.throwIf(!updated, ErrorCode.OPERATION_ERROR, "重新提交失败");
+
+        // 删除旧的审批记录
+        ApprovalRecord oldRecord = approvalService.lambdaQuery()
+                .eq(ApprovalRecord::getBusinessType, BusinessTypeEnum.LEAVE.getValue())
+                .eq(ApprovalRecord::getBusinessId, requestId)
+                .one();
+        if (oldRecord != null) {
+            approvalDetailService.lambdaUpdate()
+                    .eq(ApprovalDetail::getRecordId, oldRecord.getId())
+                    .remove();
+            approvalService.removeById(oldRecord.getId());
+        }
+
+        // 重新创建审批流程
+        double days = request.getTotalDays() != null ? request.getTotalDays().doubleValue() : 0;
+        LeaveFlowEnum flowEnum = selectLeaveFlow(LeaveTypeEnum.getEnumByValue(request.getLeaveType()), days);
+        ApprovalFlow flow = approvalFlowService.lambdaQuery()
+                .eq(ApprovalFlow::getBusinessType, BusinessTypeEnum.LEAVE.getValue())
+                .eq(ApprovalFlow::getFlowName, flowEnum.getFlowName())
+                .eq(ApprovalFlow::getStatus, 1)
+                .one();
+        if (flow == null) {
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "审批流未配置: " + flowEnum.getFlowName());
+        }
+        approvalService.startApprovalByFlowId(flow.getId(), BusinessTypeEnum.LEAVE.getValue(),
+                request.getId(), emp.getId(), emp.getEmployeeName());
+
+        // 更新考勤记录状态
+        updateAttendanceForLeave(request.getEmployeeId(), request.getStartDate(), request.getEndDate(),
+                request.getTimeSlot() != null ? request.getTimeSlot() : 0);
     }
 
     // ========== 私有方法 ==========

@@ -239,13 +239,19 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
             if (statusEnum != null) {
                 switch (statusEnum) {
                     case NORMAL: vo.setNormalDays(vo.getNormalDays() + 1); break;
-                    case LATE: vo.setLateDays(vo.getLateDays() + 1); break;
+                    case LATE:
+                    case LEAVE_EARLY:
+                    case LATE_AND_EARLY:
+                    case SEVERE_LATE:
+                        vo.setLateDays(vo.getLateDays() + 1); break;
                     case LEAVE: vo.setLeaveDays(vo.getLeaveDays() + 1); break;
                     case ABSENT: vo.setAbsentDays(vo.getAbsentDays() + 1); break;
                     case MISSING:
+                        vo.setMissingDays(vo.getMissingDays() + 1);
+                        makeupDates.add(dateStr);
+                        break;
                     case MISS_IN:
                     case MISS_OUT:
-                        vo.setMissingDays(vo.getMissingDays() + 1);
                         makeupDates.add(dateStr);
                         break;
                     default: break;

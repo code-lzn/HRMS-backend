@@ -67,6 +67,16 @@ public class OvertimeController {
     }
 
     /**
+     * 删除加班申请（仅已撤回/已拒绝）
+     */
+    @DeleteMapping("/{id}")
+    public BaseResponse<Boolean> delete(@PathVariable Long id, HttpServletRequest request) {
+        User loginUser = userService.getLoginUser(request);
+        overtimeService.delete(id, loginUser.getId());
+        return ResultUtils.success(true);
+    }
+
+    /**
      * 撤回加班申请
      */
     @PostMapping("/cancel/{id}")

@@ -17,4 +17,8 @@ public interface OvertimeService extends IService<OvertimeRecord> {
     void cancel(Long requestId, Long userId);
 
     OvertimeProgressVO getApprovalProgress(Long requestId, Long userId);
+    /**
+     * 删除加班申请（仅已撤回/已拒绝）
+     */
+    void delete(Long requestId, Long userId);
 }

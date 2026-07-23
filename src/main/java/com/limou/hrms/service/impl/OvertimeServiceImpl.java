@@ -102,7 +102,6 @@ public class OvertimeServiceImpl extends ServiceImpl<OvertimeRecordMapper, Overt
         Employee emp = getEmployee(userId);
         List<OvertimeRecord> list = this.lambdaQuery()
                 .eq(OvertimeRecord::getEmployeeId, emp.getId())
-                .ne(OvertimeRecord::getStatus, ApprovalStatusEnum.CANCELLED.getValue())
                 .orderByDesc(OvertimeRecord::getCreateTime)
                 .list();
         return list.stream().map(r -> convertToVO(r, emp)).collect(Collectors.toList());
@@ -228,6 +227,29 @@ public class OvertimeServiceImpl extends ServiceImpl<OvertimeRecordMapper, Overt
         vo.setOvertime(overtimeVO);
         vo.setProgressNodes(nodes);
         return vo;
+    }
+
+    @Override
+    public void delete(Long requestId, Long userId) {
+        OvertimeRecord record = this.getById(requestId);
+        ThrowUtils.throwIf(record == null, ErrorCode.NOT_FOUND_ERROR, "加班申请不存在");
+        ThrowUtils.throwIf(!Objects.equals(record.getUserId(), userId), ErrorCode.NO_AUTH_ERROR);
+        ThrowUtils.throwIf(!Objects.equals(record.getStatus(), ApprovalStatusEnum.CANCELLED.getValue())
+                && !Objects.equals(record.getStatus(), ApprovalStatusEnum.REJECTED.getValue()),
+                ErrorCode.OPERATION_ERROR, "只能删除已撤回或已拒绝的申请");
+
+        this.removeById(requestId);
+
+        ApprovalRecord approvalRecord = approvalService.lambdaQuery()
+                .eq(ApprovalRecord::getBusinessType, BusinessTypeEnum.OVERTIME.getValue())
+                .eq(ApprovalRecord::getBusinessId, requestId)
+                .one();
+        if (approvalRecord != null) {
+            approvalDetailService.lambdaUpdate()
+                    .eq(ApprovalDetail::getRecordId, approvalRecord.getId())
+                    .remove();
+            approvalService.removeById(approvalRecord.getId());
+        }
     }
 
     private Employee getEmployee(Long userId) {

@@ -152,7 +152,6 @@ public class MakeupPunchServiceImpl extends ServiceImpl<MakeupPunchMapper, Makeu
         Employee emp = getEmployee(userId);
         List<MakeupPunch> list = this.lambdaQuery()
                 .eq(MakeupPunch::getEmployeeId, emp.getId())
-                .ne(MakeupPunch::getStatus, ApprovalStatusEnum.CANCELLED.getValue())
                 .orderByDesc(MakeupPunch::getCreateTime)
                 .list();
 
@@ -279,6 +278,29 @@ public class MakeupPunchServiceImpl extends ServiceImpl<MakeupPunchMapper, Makeu
                 detail.setOperateTime(new Date());
                 approvalDetailService.updateById(detail);
             }
+        }
+    }
+
+    @Override
+    public void delete(Long requestId, Long userId) {
+        MakeupPunch request = this.getById(requestId);
+        ThrowUtils.throwIf(request == null, ErrorCode.NOT_FOUND_ERROR, "补卡申请不存在");
+        ThrowUtils.throwIf(!Objects.equals(request.getUserId(), userId), ErrorCode.NO_AUTH_ERROR);
+        ThrowUtils.throwIf(!Objects.equals(request.getStatus(), ApprovalStatusEnum.CANCELLED.getValue())
+                && !Objects.equals(request.getStatus(), ApprovalStatusEnum.REJECTED.getValue()),
+                ErrorCode.OPERATION_ERROR, "只能删除已撤回或已拒绝的申请");
+
+        this.removeById(requestId);
+
+        ApprovalRecord approvalRecord = approvalService.lambdaQuery()
+                .eq(ApprovalRecord::getBusinessType, BusinessTypeEnum.PATCH_CLOCK.getValue())
+                .eq(ApprovalRecord::getBusinessId, requestId)
+                .one();
+        if (approvalRecord != null) {
+            approvalDetailService.lambdaUpdate()
+                    .eq(ApprovalDetail::getRecordId, approvalRecord.getId())
+                    .remove();
+            approvalService.removeById(approvalRecord.getId());
         }
     }
 

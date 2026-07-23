@@ -36,4 +36,8 @@ public interface MakeupPunchService extends IService<MakeupPunch> {
      * 撤回补卡申请
      */
     void cancel(Long requestId, Long userId);
+    /**
+     * 删除补卡申请（仅已撤回/已拒绝）
+     */
+    void delete(Long requestId, Long userId);
 }

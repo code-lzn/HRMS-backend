@@ -112,6 +112,27 @@ public class LeaveController {
     }
 
     /**
+     * 重新提交请假申请
+     */
+    @PostMapping("/resubmit/{id}")
+    public BaseResponse<Boolean> resubmit(@ApiParam(value = "请假ID", required = true) @PathVariable Long id,
+                                           HttpServletRequest request) {
+        User loginUser = userService.getLoginUser(request);
+        leaveService.resubmit(id, loginUser.getId());
+        return ResultUtils.success(true);
+    }
+
+    /**
+     * 删除请假申请（仅已撤回/已拒绝）
+     */
+    @DeleteMapping("/{id}")
+    public BaseResponse<Boolean> delete(@PathVariable Long id, HttpServletRequest request) {
+        User loginUser = userService.getLoginUser(request);
+        leaveService.delete(id, loginUser.getId());
+        return ResultUtils.success(true);
+    }
+
+    /**
      * 查看审批进度
      */
     @GetMapping("/{id}/progress")
