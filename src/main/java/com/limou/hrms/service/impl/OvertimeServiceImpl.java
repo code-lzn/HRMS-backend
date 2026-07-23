@@ -88,6 +88,7 @@ public class OvertimeServiceImpl extends ServiceImpl<OvertimeRecordMapper, Overt
         Employee emp = getEmployee(userId);
         List<OvertimeRecord> list = this.lambdaQuery()
                 .eq(OvertimeRecord::getEmployeeId, emp.getId())
+                .ne(OvertimeRecord::getStatus, ApprovalStatusEnum.CANCELLED.getValue())
                 .orderByDesc(OvertimeRecord::getCreateTime)
                 .list();
         return list.stream().map(r -> convertToVO(r, emp)).collect(Collectors.toList());

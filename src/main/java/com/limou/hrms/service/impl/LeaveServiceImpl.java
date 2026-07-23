@@ -179,6 +179,7 @@ public class LeaveServiceImpl extends ServiceImpl<LeaveMapper, Leave>
         Employee emp = getEmployee(userId);
         List<Leave> list = this.lambdaQuery()
                 .eq(Leave::getEmployeeId, emp.getId())
+                .ne(Leave::getStatus, ApprovalStatusEnum.CANCELLED.getValue())
                 .orderByDesc(Leave::getCreateTime)
                 .list();
 

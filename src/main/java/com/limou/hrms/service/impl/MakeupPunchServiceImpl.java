@@ -129,6 +129,7 @@ public class MakeupPunchServiceImpl extends ServiceImpl<MakeupPunchMapper, Makeu
         Employee emp = getEmployee(userId);
         List<MakeupPunch> list = this.lambdaQuery()
                 .eq(MakeupPunch::getEmployeeId, emp.getId())
+                .ne(MakeupPunch::getStatus, ApprovalStatusEnum.CANCELLED.getValue())
                 .orderByDesc(MakeupPunch::getCreateTime)
                 .list();
 
