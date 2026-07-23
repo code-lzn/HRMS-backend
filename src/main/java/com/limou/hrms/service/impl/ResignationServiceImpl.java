@@ -63,6 +63,7 @@ public class ResignationServiceImpl extends ServiceImpl<HrResignationMapper, HrR
         ThrowUtils.throwIf(request.getResignDate() == null
                         || request.getResignDate().before(new Date()),
                 ErrorCode.PARAMS_ERROR, "离职日期必须 >= 今天");
+        checkDuplicateEmployeeId(request.getEmployeeId());
 
         HrResignation entity = new HrResignation();
         entity.setEmployeeId(request.getEmployeeId());
@@ -488,6 +489,13 @@ public class ResignationServiceImpl extends ServiceImpl<HrResignationMapper, HrR
                 ErrorCode.PARAMS_ERROR, "详细说明不能为空");
         ThrowUtils.throwIf(req.getHandoverPersonId() == null,
                 ErrorCode.PARAMS_ERROR, "工作交接人不能为空");
+    }
+
+    private void checkDuplicateEmployeeId(Long employeeId) {
+        long count = lambdaQuery()
+                .eq(HrResignation::getEmployeeId, employeeId)
+                .count();
+        ThrowUtils.throwIf(count > 0, ErrorCode.OPERATION_ERROR, "该员工已存在离职申请，不可重复提交");
     }
 
     private String generateBusinessNo() {

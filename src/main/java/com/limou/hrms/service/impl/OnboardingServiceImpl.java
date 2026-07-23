@@ -64,6 +64,8 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
     @Transactional(rollbackFor = Exception.class)
     public HrOnboarding addOnboarding(OnboardingAddRequest request, Long hrEmployeeId, boolean submitNow) {
         validateRequest(request);
+        checkDuplicateIdCard(request.getIdCard());
+        checkDuplicatePhone(request.getPhone());
         HrOnboarding entity = new HrOnboarding();
         BeanUtils.copyProperties(request, entity);
         entity.setOperatorId(hrEmployeeId);
@@ -597,6 +599,33 @@ public class OnboardingServiceImpl extends ServiceImpl<HrOnboardingMapper, HrOnb
         ThrowUtils.throwIf(req.getHireDate() == null, ErrorCode.PARAMS_ERROR, "预定入职日期不能为空");
         ThrowUtils.throwIf(!StringUtils.hasText(req.getEmploymentType()), ErrorCode.PARAMS_ERROR, "录用类型不能为空");
         ThrowUtils.throwIf(req.getDirectReportId() == null, ErrorCode.PARAMS_ERROR, "直接汇报人不能为空");
+        ThrowUtils.throwIf(req.getBaseSalary() == null, ErrorCode.PARAMS_ERROR, "基本工资不能为空");
+    }
+
+    private void checkDuplicateIdCard(String idCard) {
+        if (!StringUtils.hasText(idCard)) {
+            return;
+        }
+        long count = lambdaQuery()
+                .eq(HrOnboarding::getIdCard, idCard)
+                .count();
+        ThrowUtils.throwIf(count > 0, ErrorCode.OPERATION_ERROR, "该身份证号已存在入职申请，不可重复提交");
+    }
+
+    private void checkDuplicatePhone(String phone) {
+        if (!StringUtils.hasText(phone)) {
+            return;
+        }
+        long onboardingCount = lambdaQuery()
+                .eq(HrOnboarding::getPhone, phone)
+                .count();
+        ThrowUtils.throwIf(onboardingCount > 0, ErrorCode.OPERATION_ERROR, "该手机号已存在入职申请，不可重复提交");
+
+        long employeeCount = employeeMapper.selectCount(
+                new LambdaQueryWrapper<Employee>()
+                        .eq(Employee::getPhone, phone)
+        );
+        ThrowUtils.throwIf(employeeCount > 0, ErrorCode.OPERATION_ERROR, "该手机号已被员工使用，不可重复提交");
     }
 
     private String generateBusinessNo() {

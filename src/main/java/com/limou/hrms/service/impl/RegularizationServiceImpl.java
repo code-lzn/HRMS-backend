@@ -70,6 +70,7 @@ public class RegularizationServiceImpl extends ServiceImpl<HrRegularizationMappe
         ThrowUtils.throwIf(emp == null, ErrorCode.NOT_FOUND_ERROR, "员工不存在");
         ThrowUtils.throwIf(!Objects.equals(emp.getStatus(), EmployeeStatus.PROBATION.getCode()),
                 ErrorCode.OPERATION_ERROR, "只有试用期员工可发起转正");
+        checkDuplicateEmployeeId(request.getEmployeeId());
 
         Date probationEnd = calcProbationEndDate(emp);
 
@@ -493,6 +494,13 @@ public class RegularizationServiceImpl extends ServiceImpl<HrRegularizationMappe
     private void validateRequest(RegularizationAddRequest req) {
         ThrowUtils.throwIf(req.getEmployeeId() == null, ErrorCode.PARAMS_ERROR, "员工不能为空");
         ThrowUtils.throwIf(!StringUtils.hasText(req.getEvaluation()), ErrorCode.PARAMS_ERROR, "试用期表现评价不能为空");
+    }
+
+    private void checkDuplicateEmployeeId(Long employeeId) {
+        long count = lambdaQuery()
+                .eq(HrRegularization::getEmployeeId, employeeId)
+                .count();
+        ThrowUtils.throwIf(count > 0, ErrorCode.OPERATION_ERROR, "该员工已存在转正申请，不可重复提交");
     }
 
     private String generateBusinessNo() {

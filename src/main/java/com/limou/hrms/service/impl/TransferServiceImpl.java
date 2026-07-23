@@ -70,6 +70,7 @@ public class TransferServiceImpl extends ServiceImpl<HrTransferMapper, HrTransfe
 
         ThrowUtils.throwIf(request.getToDeptId().equals(emp.getDepartmentId()),
                 ErrorCode.OPERATION_ERROR, "新部门与当前部门相同");
+        checkDuplicateEmployeeId(request.getEmployeeId());
 
         HrTransfer entity = new HrTransfer();
         entity.setEmployeeId(request.getEmployeeId());
@@ -478,6 +479,13 @@ public class TransferServiceImpl extends ServiceImpl<HrTransferMapper, HrTransfe
         ThrowUtils.throwIf(req.getToPositionId() == null, ErrorCode.PARAMS_ERROR, "新职位不能为空");
         ThrowUtils.throwIf(!StringUtils.hasText(req.getEmploymentType()), ErrorCode.PARAMS_ERROR, "入职类型不能为空");
         ThrowUtils.throwIf(!StringUtils.hasText(req.getReason()), ErrorCode.PARAMS_ERROR, "调岗原因不能为空");
+    }
+
+    private void checkDuplicateEmployeeId(Long employeeId) {
+        long count = lambdaQuery()
+                .eq(HrTransfer::getEmployeeId, employeeId)
+                .count();
+        ThrowUtils.throwIf(count > 0, ErrorCode.OPERATION_ERROR, "该员工已存在调岗申请，不可重复提交");
     }
 
     private String generateBusinessNo() {
