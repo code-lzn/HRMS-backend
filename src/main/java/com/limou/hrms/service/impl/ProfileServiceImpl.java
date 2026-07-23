@@ -378,6 +378,13 @@ public class ProfileServiceImpl implements ProfileService {
 
         Long userId = loginUser.getId();
 
+        // 校验手机号是否已被其他用户占用
+        if (userMapper.selectCount(
+                new QueryWrapper<User>().eq("user_account", phone)
+                        .ne("id", userId)) > 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "该手机号已被注册");
+        }
+
         // 频率限制：60 秒内不可重复发送
         String limitKey = String.format(PHONE_VERIFY_LIMIT_KEY, userId);
         if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(limitKey))) {

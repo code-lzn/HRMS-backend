@@ -160,6 +160,12 @@ public class OnboardingServiceImpl
         }
         validateFieldsComplete(app);
 
+        // 校验手机号是否已被注册
+        if (userMapper.selectCount(
+                new QueryWrapper<User>().eq("user_account", app.getPhone())) > 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "该手机号已被注册，请更换手机号");
+        }
+
         // 创建审批实例（由 OnboardingNodeBuilder 构建节点链）
         ApprovalInstance instance = approvalFlowService.createInstance(
                 ApprovalBizType.ONBOARDING, app.getId(), app.getApplicantId());
