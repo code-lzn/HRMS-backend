@@ -225,8 +225,20 @@ public class SalaryBizServiceImpl implements SalaryBizService {
     public void doCalculateBatch(Long batchId) {
         SalaryBatch batch = salaryBatchMapper.selectById(batchId);
         ThrowUtils.throwIf(batch == null, ErrorCode.NOT_FOUND_ERROR, "批次不存在");
-        ThrowUtils.throwIf(!"DRAFT".equals(batch.getStatus()) && !"CALCULATING".equals(batch.getStatus()),
+        // 允许 DRAFT / CALCULATING / PENDING_CONFIRM / REJECTED 状态重算
+        ThrowUtils.throwIf(
+                !"DRAFT".equals(batch.getStatus())
+                && !"CALCULATING".equals(batch.getStatus())
+                && !"PENDING_CONFIRM".equals(batch.getStatus())
+                && !"REJECTED".equals(batch.getStatus()),
                 ErrorCode.OPERATION_ERROR, "当前状态不允许计算");
+
+        // 重算时清除旧明细和当月个税累计
+        if ("PENDING_CONFIRM".equals(batch.getStatus()) || "REJECTED".equals(batch.getStatus())) {
+            salarySlipMapper.delete(new LambdaQueryWrapper<SalarySlip>()
+                    .eq(SalarySlip::getBatchId, batchId));
+            log.info("重算前清除旧明细: batchId={}", batchId);
+        }
 
         // 更新状态为计算中
         batch.setStatus("CALCULATING");
@@ -239,12 +251,77 @@ public class SalaryBizServiceImpl implements SalaryBizService {
                         .eq(Employee::getIsDeleted, 0)
                         .in(Employee::getStatus, Arrays.asList(1, 2)) // 试用期+正式
         );
+        if (employees.isEmpty()) {
+            batch.setStatus("PENDING_CONFIRM");
+            batch.setTotalEmployeeCount(0);
+            batch.setUpdatedAt(new Date());
+            salaryBatchMapper.updateById(batch);
+            return;
+        }
+        List<Long> empIds = employees.stream().map(Employee::getId).collect(Collectors.toList());
 
         // 解析核算月份
         String[] parts = batch.getSalaryMonth().split("-");
         int year = Integer.parseInt(parts[0]);
         int month = Integer.parseInt(parts[1]);
 
+        // 计算月份时间范围
+        Calendar cal = Calendar.getInstance();
+        cal.set(year, month - 1, 1, 0, 0, 0);
+        Date monthStart = cal.getTime();
+        cal.set(year, month - 1, cal.getActualMaximum(Calendar.DAY_OF_MONTH), 23, 59, 59);
+        Date monthEnd = cal.getTime();
+
+        // ====== 批量查询：一次性拉取全部数据，避免 N+1 ======
+
+        // 薪资档案
+        Map<Long, EmpSalaryProfile> profileMap = empSalaryProfileMapper.selectList(
+                new LambdaQueryWrapper<EmpSalaryProfile>()
+                        .in(EmpSalaryProfile::getEmployeeId, empIds)
+                        .eq(EmpSalaryProfile::getIsDeleted, 0)
+        ).stream().collect(Collectors.toMap(EmpSalaryProfile::getEmployeeId, p -> p, (a, b) -> a));
+
+        // 考勤记录（整月）
+        List<Attendance> monthAttendances = attendanceMapper.selectList(
+                new LambdaQueryWrapper<Attendance>()
+                        .in(Attendance::getEmployeeId, empIds)
+                        .ge(Attendance::getAttendanceDate, monthStart)
+                        .le(Attendance::getAttendanceDate, monthEnd)
+                        .eq(Attendance::getIsDeleted, 0)
+        );
+        Map<Long, List<Attendance>> attendanceByEmp = monthAttendances.stream()
+                .collect(Collectors.groupingBy(Attendance::getEmployeeId));
+
+        // 请假记录（整月，已通过）
+        List<Leave> monthLeaves = leaveMapper.selectList(
+                new LambdaQueryWrapper<Leave>()
+                        .in(Leave::getEmployeeId, empIds)
+                        .eq(Leave::getStatus, 1)
+                        .eq(Leave::getIsDeleted, 0)
+                        .ge(Leave::getStartDate, monthStart)
+                        .le(Leave::getEndDate, monthEnd)
+        );
+        Map<Long, List<Leave>> leavesByEmp = monthLeaves.stream()
+                .collect(Collectors.groupingBy(Leave::getEmployeeId));
+
+        // 加班记录（整月，已通过）
+        List<OvertimeRecord> monthOvertimes = overtimeRecordMapper.selectList(
+                new LambdaQueryWrapper<OvertimeRecord>()
+                        .in(OvertimeRecord::getEmployeeId, empIds)
+                        .eq(OvertimeRecord::getStatus, ApprovalStatusEnum.APPROVED.getValue())
+                        .ge(OvertimeRecord::getOvertimeDate, monthStart)
+                        .le(OvertimeRecord::getOvertimeDate, monthEnd)
+        );
+        Map<Long, List<OvertimeRecord>> overtimeByEmp = monthOvertimes.stream()
+                .collect(Collectors.groupingBy(OvertimeRecord::getEmployeeId));
+
+        // 上月工资条（用于异常检测）
+        Map<Long, SalarySlip> lastMonthSlipMap = buildLastMonthSlipMap(year, month, empIds);
+
+        // 月应出勤天数
+        BigDecimal monthWorkDays = BigDecimal.valueOf(getMonthWorkDays(year, month));
+
+        // ====== 逐员工计算（循环内只做内存计算，不查DB） ======
         BigDecimal totalGross = BigDecimal.ZERO;
         BigDecimal totalDeduction = BigDecimal.ZERO;
         BigDecimal totalNet = BigDecimal.ZERO;
@@ -252,7 +329,14 @@ public class SalaryBizServiceImpl implements SalaryBizService {
 
         for (Employee emp : employees) {
             try {
-                SalarySlip slip = calculateEmployeeSalary(emp, batchId, year, month);
+                EmpSalaryProfile profile = profileMap.get(emp.getId());
+                List<Attendance> attList = attendanceByEmp.getOrDefault(emp.getId(), Collections.emptyList());
+                List<Leave> leaveList = leavesByEmp.getOrDefault(emp.getId(), Collections.emptyList());
+                List<OvertimeRecord> otList = overtimeByEmp.getOrDefault(emp.getId(), Collections.emptyList());
+                SalarySlip lastMonthSlip = lastMonthSlipMap.get(emp.getId());
+
+                SalarySlip slip = calculateEmployeeSalaryFast(emp, batchId, year, month,
+                        profile, attList, leaveList, otList, lastMonthSlip, monthWorkDays);
                 salarySlipMapper.insert(slip);
                 totalGross = totalGross.add(slip.getGrossSalary());
                 totalDeduction = totalDeduction.add(slip.getTotalDeduction());
@@ -260,11 +344,10 @@ public class SalaryBizServiceImpl implements SalaryBizService {
                 successCount++;
             } catch (Exception e) {
                 log.error("计算员工薪资失败: employeeId={}, error={}", emp.getId(), e.getMessage());
-                // 写入阻断记录
                 SalarySlip slip = new SalarySlip();
                 slip.setBatchId(batchId);
                 slip.setEmployeeId(emp.getId());
-                slip.setHasAnomaly(2); // 红色阻断
+                slip.setHasAnomaly(2);
                 slip.setAnomalyReason("计算失败: " + e.getMessage());
                 slip.setGrossSalary(BigDecimal.ZERO);
                 slip.setTotalDeduction(BigDecimal.ZERO);
@@ -289,15 +372,22 @@ public class SalaryBizServiceImpl implements SalaryBizService {
     }
 
     /**
-     * 计算单个员工的薪资
+     * 计算员工薪资（内存计算版，数据已批量加载）
+     *
+     * @param profile      薪资档案（null=未设置）
+     * @param attList      当月考勤列表
+     * @param leaveList    当月请假列表
+     * @param otList       当月加班列表
+     * @param lastMonthSlip 上月工资条
+     * @param monthWorkDays 月应出勤天数
      */
-    private SalarySlip calculateEmployeeSalary(Employee emp, Long batchId, int year, int month) {
-        // 1. 查薪资档案
-        EmpSalaryProfile profile = empSalaryProfileMapper.selectOne(
-                new LambdaQueryWrapper<EmpSalaryProfile>()
-                        .eq(EmpSalaryProfile::getEmployeeId, emp.getId())
-                        .eq(EmpSalaryProfile::getIsDeleted, 0)
-        );
+    private SalarySlip calculateEmployeeSalaryFast(Employee emp, Long batchId, int year, int month,
+                                                    EmpSalaryProfile profile,
+                                                    List<Attendance> attList,
+                                                    List<Leave> leaveList,
+                                                    List<OvertimeRecord> otList,
+                                                    SalarySlip lastMonthSlip,
+                                                    BigDecimal monthWorkDays) {
         if (profile == null) {
             SalarySlip slip = new SalarySlip();
             slip.setBatchId(batchId);
@@ -312,46 +402,70 @@ public class SalaryBizServiceImpl implements SalaryBizService {
             return slip;
         }
 
-        // 2. 试用期比例
+        // 试用期比例
         boolean isProbation = emp.getStatus() != null && emp.getStatus() == 1;
         BigDecimal probationRatio = profile.getProbationSalaryRatio() != null
                 ? profile.getProbationSalaryRatio() : BigDecimal.ONE;
         BigDecimal effectiveRatio = isProbation ? probationRatio : BigDecimal.ONE;
 
-        // 3. 基本工资（试用期调整）
+        // 出勤比率：实际出勤天数（正常+迟到+早退）/ 月应出勤天数
+        long actualDays = attList.stream()
+                .filter(a -> a.getStatus() != null && (a.getStatus() == 0 || a.getStatus() == 1 || a.getStatus() == 2))
+                .count();
+        BigDecimal attendanceRatio = actualDays > 0
+                ? BigDecimal.valueOf(actualDays).divide(monthWorkDays, 4, RoundingMode.HALF_UP)
+                : BigDecimal.ONE; // 无考勤记录默认全勤
+        // 上限1.0（出勤最多100%）
+        if (attendanceRatio.compareTo(BigDecimal.ONE) > 0) {
+            attendanceRatio = BigDecimal.ONE;
+        }
+
+        // 基本工资 = 档案基数 × 试用期比例 × 出勤比率
         BigDecimal baseSalary = profile.getBaseSalary() != null
-                ? profile.getBaseSalary().multiply(effectiveRatio).setScale(2, RoundingMode.HALF_UP)
+                ? profile.getBaseSalary().multiply(effectiveRatio).multiply(attendanceRatio)
+                        .setScale(2, RoundingMode.HALF_UP)
                 : BigDecimal.ZERO;
 
-        // 4. 岗位津贴（试用期调整）
+        // 岗位津贴 = 津贴基数 × 试用期比例 × 出勤比率
         BigDecimal allowance = profile.getAllowanceBase() != null
-                ? profile.getAllowanceBase().multiply(effectiveRatio).setScale(2, RoundingMode.HALF_UP)
+                ? profile.getAllowanceBase().multiply(effectiveRatio).multiply(attendanceRatio)
+                        .setScale(2, RoundingMode.HALF_UP)
                 : BigDecimal.ZERO;
 
-        // 5. 绩效奖金（变动收入，默认按基数×1.0计算，后续可对接绩效系统）
+        // 绩效奖金（变动收入）
         BigDecimal performanceBonus = profile.getPerformanceBase() != null
                 ? profile.getPerformanceBase().setScale(2, RoundingMode.HALF_UP)
                 : BigDecimal.ZERO;
 
-        // 6. 加班费：对接加班审批记录，小时工资 × 1.5倍 × 时长
-        BigDecimal overtimeHours = sumOvertimeHours(emp.getId(), year, month);
-        BigDecimal hourlyRate = baseSalary.divide(WORK_DAYS, 2, RoundingMode.HALF_UP)
-                .divide(WORK_HOURS, 2, RoundingMode.HALF_UP);
+        // 加班费：汇总已通过加班小时 → 小时工资 × 1.5 × 时长
+        BigDecimal overtimeHours = otList.stream()
+                .map(r -> r.getOvertimeHours() != null ? r.getOvertimeHours() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal hourlyRate = profile.getBaseSalary() != null
+                ? profile.getBaseSalary().divide(WORK_DAYS, 4, RoundingMode.HALF_UP)
+                        .divide(WORK_HOURS, 4, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
         BigDecimal overtimePay = hourlyRate.multiply(BigDecimal.valueOf(1.5))
                 .multiply(overtimeHours).setScale(2, RoundingMode.HALF_UP);
 
-        // 7. 考勤扣款：迟到
-        int lateCount = countAttendanceStatus(emp.getId(), year, month, 1); // status=1=迟到
+        // 迟到扣款：统计 status=1 的次数
+        long lateCount = attList.stream()
+                .filter(a -> a.getStatus() != null && a.getStatus() == 1)
+                .count();
         BigDecimal lateDeduction = LATE_FINE.multiply(BigDecimal.valueOf(lateCount))
                 .setScale(2, RoundingMode.HALF_UP);
 
-        // 8. 考勤扣款：请假
-        BigDecimal leaveDays = sumLeaveDays(emp.getId(), year, month);
-        BigDecimal dailySalary = baseSalary.divide(WORK_DAYS, 2, RoundingMode.HALF_UP);
+        // 请假扣款：汇总已通过请假天数 × 日工资
+        BigDecimal leaveDays = leaveList.stream()
+                .map(l -> l.getTotalDays() != null ? l.getTotalDays() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal dailySalary = profile.getBaseSalary() != null
+                ? profile.getBaseSalary().divide(WORK_DAYS, 2, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
         BigDecimal leaveDeduction = dailySalary.multiply(leaveDays)
                 .setScale(2, RoundingMode.HALF_UP);
 
-        // 9. 社保三险（基数×比例）
+        // 社保三险（基数 × 比例）
         BigDecimal ssBase = profile.getSocialInsuranceBase() != null
                 ? profile.getSocialInsuranceBase() : BigDecimal.ZERO;
         BigDecimal socialPension = ssBase.multiply(BigDecimal.valueOf(0.08))
@@ -362,32 +476,37 @@ public class SalaryBizServiceImpl implements SalaryBizService {
                 .setScale(2, RoundingMode.HALF_UP);
         BigDecimal totalSS = socialPension.add(socialMedical).add(socialUnemployment);
 
-        // 10. 公积金（基数×12%）
+        // 公积金（基数 × 12%）
         BigDecimal hfBase = profile.getHousingFundBase() != null
                 ? profile.getHousingFundBase() : BigDecimal.ZERO;
         BigDecimal housingFund = hfBase.multiply(BigDecimal.valueOf(0.12))
                 .setScale(2, RoundingMode.HALF_UP);
 
-        // 11. 应发工资
+        // 应发工资
         BigDecimal grossSalary = baseSalary.add(allowance).add(performanceBonus)
                 .add(overtimePay).subtract(lateDeduction).subtract(leaveDeduction)
                 .max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
 
-        // 12. 个税（累计预扣法）
+        // 个税（累计预扣法）
+        // 重算时清除当月个税累计
+        SalTaxCumulative existedTax = salTaxCumulativeService.getByEmployeeYearMonth(emp.getId(), year, month);
+        if (existedTax != null) {
+            salTaxCumulativeService.removeById(existedTax.getId());
+        }
         BigDecimal incomeTax = salTaxCumulativeService.calculateMonthlyTax(
                 emp.getId(), year, month, grossSalary, totalSS, housingFund);
 
-        // 13. 应扣合计
-        BigDecimal totalDeduction = totalSS.add(housingFund).add(incomeTax)
+        // 应扣合计
+        BigDecimal totalDeductions = totalSS.add(housingFund).add(incomeTax)
                 .add(lateDeduction).add(leaveDeduction)
                 .setScale(2, RoundingMode.HALF_UP);
 
-        // 14. 实发
+        // 实发
         BigDecimal netSalary = grossSalary.subtract(totalSS).subtract(housingFund)
                 .subtract(incomeTax).max(BigDecimal.ZERO)
                 .setScale(2, RoundingMode.HALF_UP);
 
-        // 15. 异常检测
+        // 异常检测
         int hasAnomaly = 0;
         StringBuilder anomalyReason = new StringBuilder();
 
@@ -401,8 +520,7 @@ public class SalaryBizServiceImpl implements SalaryBizService {
             hasAnomaly = Math.max(hasAnomaly, 1);
             anomalyReason.append("当月加班超过50小时; ");
         }
-        // 变动>30% → 红色预警（需有上月对比）
-        SalarySlip lastMonthSlip = findLastMonthSlip(emp.getId(), year, month);
+        // 变动>30% → 红色预警
         if (lastMonthSlip != null && lastMonthSlip.getNetSalary().compareTo(BigDecimal.ZERO) > 0) {
             BigDecimal change = netSalary.subtract(lastMonthSlip.getNetSalary())
                     .abs().divide(lastMonthSlip.getNetSalary(), 2, RoundingMode.HALF_UP);
@@ -411,8 +529,13 @@ public class SalaryBizServiceImpl implements SalaryBizService {
                 anomalyReason.append("薪资较上月变动超过30%; ");
             }
         }
+        // 出勤<60% → 黄色预警
+        if (attendanceRatio.compareTo(BigDecimal.valueOf(0.6)) < 0) {
+            hasAnomaly = Math.max(hasAnomaly, 1);
+            anomalyReason.append("当月出勤率不足60%; ");
+        }
 
-        // 16. 组装明细
+        // 组装明细
         SalarySlip slip = new SalarySlip();
         slip.setBatchId(batchId);
         slip.setEmployeeId(emp.getId());
@@ -428,7 +551,7 @@ public class SalaryBizServiceImpl implements SalaryBizService {
         slip.setHousingFund(housingFund);
         slip.setIncomeTax(incomeTax);
         slip.setGrossSalary(grossSalary);
-        slip.setTotalDeduction(totalDeduction);
+        slip.setTotalDeduction(totalDeductions);
         slip.setNetSalary(netSalary);
         slip.setHasAnomaly(hasAnomaly);
         slip.setAnomalyReason(anomalyReason.length() > 0 ? anomalyReason.toString() : null);
@@ -438,6 +561,26 @@ public class SalaryBizServiceImpl implements SalaryBizService {
         slip.setUpdatedAt(new Date());
 
         return slip;
+    }
+
+    /** 获取月应出勤天数（简单算法：21.75天/月） */
+    private int getMonthWorkDays(int year, int month) {
+        return 21; // 默认21个工作日（实际可按节假日日历计算）
+    }
+
+    /** 批量构建上月工资条 Map */
+    private Map<Long, SalarySlip> buildLastMonthSlipMap(int year, int month, List<Long> empIds) {
+        int lastMonth = month - 1, lastYear = year;
+        if (lastMonth == 0) { lastMonth = 12; lastYear--; }
+        String lastSalaryMonth = String.format("%04d-%02d", lastYear, lastMonth);
+        SalaryBatch lastBatch = salaryBatchMapper.selectOne(
+                new LambdaQueryWrapper<SalaryBatch>().eq(SalaryBatch::getSalaryMonth, lastSalaryMonth));
+        if (lastBatch == null) return Collections.emptyMap();
+        return salarySlipMapper.selectList(
+                new LambdaQueryWrapper<SalarySlip>()
+                        .eq(SalarySlip::getBatchId, lastBatch.getId())
+                        .in(SalarySlip::getEmployeeId, empIds)
+        ).stream().collect(Collectors.toMap(SalarySlip::getEmployeeId, s -> s, (a, b) -> a));
     }
 
     @Override
@@ -754,111 +897,6 @@ public class SalaryBizServiceImpl implements SalaryBizService {
     }
 
     // ==================== 内部辅助方法 ====================
-
-    /**
-     * 统计某月考勤状态次数
-     */
-    private int countAttendanceStatus(Long employeeId, int year, int month, int status) {
-        Calendar cal = Calendar.getInstance();
-        cal.set(year, month - 1, 1, 0, 0, 0);
-        Date startDate = cal.getTime();
-        cal.set(year, month - 1, cal.getActualMaximum(Calendar.DAY_OF_MONTH), 23, 59, 59);
-        Date endDate = cal.getTime();
-
-        Long count = attendanceMapper.selectCount(
-                new LambdaQueryWrapper<Attendance>()
-                        .eq(Attendance::getEmployeeId, employeeId)
-                        .eq(Attendance::getStatus, status)
-                        .eq(Attendance::getIsDeleted, 0)
-                        .ge(Attendance::getAttendanceDate, startDate)
-                        .le(Attendance::getAttendanceDate, endDate)
-        );
-        return count != null ? count.intValue() : 0;
-    }
-
-    /**
-     * 汇总某月请假天数
-     */
-    private BigDecimal sumLeaveDays(Long employeeId, int year, int month) {
-        Calendar cal = Calendar.getInstance();
-        cal.set(year, month - 1, 1, 0, 0, 0);
-        Date startDate = cal.getTime();
-        cal.set(year, month - 1, cal.getActualMaximum(Calendar.DAY_OF_MONTH), 23, 59, 59);
-        Date endDate = cal.getTime();
-
-        List<Leave> leaves = leaveMapper.selectList(
-                new LambdaQueryWrapper<Leave>()
-                        .eq(Leave::getEmployeeId, employeeId)
-                        .eq(Leave::getStatus, 1) // 已通过
-                        .eq(Leave::getIsDeleted, 0)
-                        .ge(Leave::getStartDate, startDate)
-                        .le(Leave::getEndDate, endDate)
-        );
-
-        BigDecimal total = BigDecimal.ZERO;
-        if (leaves != null) {
-            for (Leave leave : leaves) {
-                if (leave.getTotalDays() != null) {
-                    total = total.add(leave.getTotalDays());
-                }
-            }
-        }
-        return total;
-    }
-
-    /**
-     * 汇总某月加班总时长（仅已通过的加班记录）
-     */
-    private BigDecimal sumOvertimeHours(Long employeeId, int year, int month) {
-        Calendar cal = Calendar.getInstance();
-        cal.set(year, month - 1, 1, 0, 0, 0);
-        Date startDate = cal.getTime();
-        cal.set(year, month - 1, cal.getActualMaximum(Calendar.DAY_OF_MONTH), 23, 59, 59);
-        Date endDate = cal.getTime();
-
-        List<OvertimeRecord> records = overtimeRecordMapper.selectList(
-                new LambdaQueryWrapper<OvertimeRecord>()
-                        .eq(OvertimeRecord::getEmployeeId, employeeId)
-                        .eq(OvertimeRecord::getStatus, ApprovalStatusEnum.APPROVED.getValue())
-                        .ge(OvertimeRecord::getOvertimeDate, startDate)
-                        .le(OvertimeRecord::getOvertimeDate, endDate)
-        );
-
-        BigDecimal total = BigDecimal.ZERO;
-        if (records != null) {
-            for (OvertimeRecord record : records) {
-                if (record.getOvertimeHours() != null) {
-                    total = total.add(record.getOvertimeHours());
-                }
-            }
-        }
-        return total;
-    }
-
-    /**
-     * 找上月工资条（用于异常检测）
-     */
-    private SalarySlip findLastMonthSlip(Long employeeId, int year, int month) {
-        int lastMonth = month - 1;
-        int lastYear = year;
-        if (lastMonth == 0) {
-            lastMonth = 12;
-            lastYear--;
-        }
-        String lastSalaryMonth = String.format("%04d-%02d", lastYear, lastMonth);
-
-        // 找到上月批次
-        SalaryBatch lastBatch = salaryBatchMapper.selectOne(
-                new LambdaQueryWrapper<SalaryBatch>().eq(SalaryBatch::getSalaryMonth, lastSalaryMonth)
-        );
-        if (lastBatch == null) return null;
-
-        return salarySlipMapper.selectOne(
-                new LambdaQueryWrapper<SalarySlip>()
-                        .eq(SalarySlip::getBatchId, lastBatch.getId())
-                        .eq(SalarySlip::getEmployeeId, employeeId)
-        );
-    }
 
     private SalaryBatchVO toBatchVO(SalaryBatch batch) {
         SalaryBatchVO vo = new SalaryBatchVO();
