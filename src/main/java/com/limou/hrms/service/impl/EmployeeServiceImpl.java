@@ -49,6 +49,7 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
     private final EmployeeSalaryMapper salaryMapper;
     private final EmployeeNoSequenceMapper noSequenceMapper;
     private final EmployeeChangeLogMapper employeeChangeLogMapper;
+    private final SalaryAccountMapper salaryAccountMapper;
     private final AesUtil aesUtil;
 
     private static final String SALT = "limou";
@@ -305,21 +306,29 @@ public class EmployeeServiceImpl extends ServiceImpl<EmployeeMapper, Employee> i
 
         // 7. 构建薪资信息（仅 HR/ADMIN/FINANCE 可见）
         if (role == UserRoleEnum.HR || role == UserRoleEnum.ADMIN || role == UserRoleEnum.FINANCE) {
-            if (salaryInfo != null) {
-                EmployeeSalary salary = salaryMapper.selectOne(
-                        Wrappers.<EmployeeSalary>lambdaQuery()
-                                .eq(EmployeeSalary::getEmployeeId, id));
-                String bankAccount = salaryInfo.getBankAccount();
+            List<EmployeeSalary> salaries = salaryMapper.selectList(
+                    Wrappers.<EmployeeSalary>lambdaQuery()
+                            .eq(EmployeeSalary::getEmployeeId, id)
+                            .orderByDesc(EmployeeSalary::getEffectiveDate));
+            EmployeeSalary salary = salaries.isEmpty() ? null : salaries.get(0);
+            if (salary != null) {
+                String bankAccount = salaryInfo != null ? salaryInfo.getBankAccount() : null;
+                String salaryAccountName = null;
+                if (salaryInfo != null && salaryInfo.getSalaryAccountId() != null) {
+                    SalaryAccount account = salaryAccountMapper.selectById(salaryInfo.getSalaryAccountId());
+                    salaryAccountName = account != null ? account.getName() : null;
+                }
                 builder.salaryInfo(SalaryInfoVO.builder()
-                        .contractType(salaryInfo.getContractType())
-                        .contractTypeDesc(resolveContractTypeDesc(salaryInfo.getContractType()))
-                        .contractExpireDate(salaryInfo.getContractExpireDate() != null
+                        .contractType(salaryInfo != null ? salaryInfo.getContractType() : null)
+                        .contractTypeDesc(salaryInfo != null ? resolveContractTypeDesc(salaryInfo.getContractType()) : null)
+                        .contractExpireDate(salaryInfo != null && salaryInfo.getContractExpireDate() != null
                                 ? salaryInfo.getContractExpireDate().toString() : null)
-                        .probationRatio(salaryInfo.getProbationRatio())
-                        .salaryAccountId(salaryInfo.getSalaryAccountId())
-                        .baseSalary(salary != null ? salary.getBaseSalary() : null)
+                        .probationRatio(salaryInfo != null ? salaryInfo.getProbationRatio() : null)
+                        .salaryAccountId(salaryInfo != null ? salaryInfo.getSalaryAccountId() : null)
+                        .salaryAccountName(salaryAccountName)
+                        .baseSalary(salary.getBaseSalary())
                         .bankAccount(maskBankAccount(bankAccount, role))
-                        .bankName(salaryInfo.getBankName())
+                        .bankName(salaryInfo != null ? salaryInfo.getBankName() : null)
                         .build());
             }
         }
