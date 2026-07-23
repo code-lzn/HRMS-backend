@@ -77,7 +77,7 @@ public class AttendanceStatsServiceImpl implements AttendanceStatsService {
             if (st == null) continue;
             switch (st) {
                 case 0: normalDays++; break;
-                case 1: lateDays++; break;
+                case 1: case 10: lateDays++; break;          // 迟到/严重迟到
                 case 2: earlyDays++; break;
                 case 3: missingDays++; break;
                 case 4: leaveDays++; break;
@@ -283,7 +283,7 @@ public class AttendanceStatsServiceImpl implements AttendanceStatsService {
                     int attendanceDays = 0;
                     for (Attendance r : records) {
                         int status = r.getStatus() != null ? r.getStatus() : 0;
-                        if (status == 0 || status == 1 || status == 2 || status == 9) {
+                        if (status == 0 || status == 1 || status == 2 || status == 9 || status == 10) {
                             attendanceDays++;
                         }
                     }
@@ -298,7 +298,7 @@ public class AttendanceStatsServiceImpl implements AttendanceStatsService {
                 int attendanceDays = 0;
                 for (Attendance r : records) {
                     int status = r.getStatus() != null ? r.getStatus() : 0;
-                    if (status == 0 || status == 1 || status == 2 || status == 9) {
+                    if (status == 0 || status == 1 || status == 2 || status == 9 || status == 10) {
                         attendanceDays++;
                     }
                 }
@@ -383,7 +383,7 @@ public class AttendanceStatsServiceImpl implements AttendanceStatsService {
         List<Attendance> records = attendanceService.lambdaQuery()
                 .ge(Attendance::getAttendanceDate, DateUtil.formatDate(monthStart))
                 .le(Attendance::getAttendanceDate, DateUtil.formatDate(monthEnd))
-                .in(Attendance::getStatus, Arrays.asList(1, 2))
+                .in(Attendance::getStatus, Arrays.asList(1, 2, 10))
                 .in(deptEmpIds != null, Attendance::getEmployeeId, deptEmpIds)
                 .list();
 
@@ -476,7 +476,7 @@ public class AttendanceStatsServiceImpl implements AttendanceStatsService {
                 int status = r.getStatus() != null ? r.getStatus() : 0;
                 switch (status) {
                     case 0: stats[0]++; break;
-                    case 1: case 9: stats[1]++; break;
+                    case 1: case 9: case 10: stats[1]++; break;
                     case 2: stats[2]++; break;
                     case 3: case 6: case 7: stats[3]++; break;
                     case 4: stats[4]++; break;

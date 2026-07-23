@@ -6,6 +6,7 @@ import com.limou.hrms.model.dto.transfer.TransferAddRequest;
 import com.limou.hrms.model.entity.HrTransfer;
 import com.limou.hrms.model.vo.TransferVO;
 
+import java.util.Date;
 import java.util.List;
 
 public interface TransferService extends IService<HrTransfer> {
@@ -28,4 +29,19 @@ public interface TransferService extends IService<HrTransfer> {
 
     /** 获取各状态统计数量 */
     java.util.Map<String, Long> getStats();
+
+    /** 撤回审批中的调岗申请（仅第一级审批前） */
+    void revokeTransfer(Long id, Long hrEmployeeId);
+
+    /** 放弃已批准的调岗申请 */
+    void abandonTransfer(Long id, Long hrEmployeeId);
+
+    /** 确认调岗生效（执行实际调岗操作） */
+    void confirmTransfer(Long id, Long hrEmployeeId);
+
+    /** 修改调岗生效日期 */
+    void updateTransferDate(Long id, Date newDate, Long hrEmployeeId);
+
+    /** 重新发起已拒绝的调岗申请 */
+    void resubmitTransfer(Long id, Long hrEmployeeId);
 }

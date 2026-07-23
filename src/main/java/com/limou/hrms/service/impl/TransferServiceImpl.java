@@ -1,6 +1,7 @@
 package com.limou.hrms.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -50,6 +51,10 @@ public class TransferServiceImpl extends ServiceImpl<HrTransferMapper, HrTransfe
     private SalChangeLogMapper salChangeLogMapper;
     @Resource
     private ApprovalFlowMapper approvalFlowMapper;
+    @Resource
+    private ApprovalDetailMapper approvalDetailMapper;
+    @Resource
+    private ApprovalRecordMapper approvalRecordMapper;
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -166,6 +171,18 @@ public class TransferServiceImpl extends ServiceImpl<HrTransferMapper, HrTransfe
         Page<HrTransfer> entityPage = page(new Page<>(page, size), wrapper);
         List<HrTransfer> records = entityPage.getRecords();
         Map<Long, Employee> empMap = batchLoadEmployees(records);
+
+        Set<Long> recordIds = records.stream().map(HrTransfer::getRecordId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, String> rejectionMap = new HashMap<>();
+        if (!recordIds.isEmpty()) {
+            List<ApprovalDetail> rejectedDetails = approvalDetailMapper.selectList(
+                    new LambdaQueryWrapper<ApprovalDetail>()
+                            .in(ApprovalDetail::getRecordId, recordIds)
+                            .eq(ApprovalDetail::getAction, "REJECT"));
+            for (ApprovalDetail d : rejectedDetails) {
+                if (d.getComment() != null) rejectionMap.put(d.getRecordId(), d.getComment());
+            }
+        }
         records = records.stream()
                 .filter(r -> {
                     Employee emp = empMap.get(r.getEmployeeId());
@@ -174,7 +191,7 @@ public class TransferServiceImpl extends ServiceImpl<HrTransferMapper, HrTransfe
                 .collect(Collectors.toList());
         Page<TransferVO> voPage = new Page<>(entityPage.getCurrent(), entityPage.getSize(), entityPage.getTotal());
         voPage.setRecords(records.stream()
-                .map(e -> convertToVO(e, keyword, empMap))
+                .map(e -> convertToVO(e, keyword, empMap, rejectionMap))
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList()));
         return voPage;
@@ -185,7 +202,7 @@ public class TransferServiceImpl extends ServiceImpl<HrTransferMapper, HrTransfe
         HrTransfer entity = getById(id);
         ThrowUtils.throwIf(entity == null, ErrorCode.NOT_FOUND_ERROR);
         Map<Long, Employee> empMap = batchLoadEmployees(Collections.singletonList(entity));
-        return convertToVO(entity, null, empMap);
+        return convertToVO(entity, null, empMap, Collections.emptyMap());
     }
 
     @Override
@@ -199,7 +216,83 @@ public class TransferServiceImpl extends ServiceImpl<HrTransferMapper, HrTransfe
         updateById(entity);
 
         Employee emp = employeeMapper.selectById(entity.getEmployeeId());
-        if (emp == null) return;
+        insertMutationLog(entity, emp, "APPROVED");
+        log.info("调岗审批通过: id={}, employeeId={}", entity.getId(), entity.getEmployeeId());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void onApprovalRejected(Long businessId) {
+        HrTransfer entity = getById(businessId);
+        if (entity == null) return;
+        entity.setStatus("REJECTED");
+        updateById(entity);
+
+        Employee emp = employeeMapper.selectById(entity.getEmployeeId());
+        insertMutationLog(entity, emp, "REJECTED");
+        log.info("调岗审批拒绝: id={}, employeeId={}", entity.getId(), entity.getEmployeeId());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void revokeTransfer(Long id, Long hrEmployeeId) {
+        HrTransfer entity = getById(id);
+        ThrowUtils.throwIf(entity == null, ErrorCode.NOT_FOUND_ERROR);
+        ThrowUtils.throwIf(entity.getRecordId() == null, ErrorCode.OPERATION_ERROR, "该申请未提交审批");
+
+        ApprovalRecord record = approvalService.getById(entity.getRecordId());
+        ThrowUtils.throwIf(record == null || !"APPROVING".equals(record.getStatus()),
+                ErrorCode.OPERATION_ERROR, "只有审批中的申请可撤回");
+        ThrowUtils.throwIf(record.getCurrentStep() == null || record.getCurrentStep() > 1,
+                ErrorCode.OPERATION_ERROR, "仅第一级审批前可撤回");
+
+        update(new LambdaUpdateWrapper<HrTransfer>()
+                .set(HrTransfer::getRecordId, null)
+                .set(HrTransfer::getStatus, "DRAFT")
+                .eq(HrTransfer::getId, id));
+
+        approvalDetailMapper.delete(new LambdaQueryWrapper<ApprovalDetail>()
+                .eq(ApprovalDetail::getRecordId, record.getId()));
+        approvalRecordMapper.deleteById(record.getId());
+        log.info("调岗申请已撤回: id={}, employeeId={}", entity.getId(), entity.getEmployeeId());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void abandonTransfer(Long id, Long hrEmployeeId) {
+        HrTransfer entity = getById(id);
+        ThrowUtils.throwIf(entity == null, ErrorCode.NOT_FOUND_ERROR);
+        ThrowUtils.throwIf(entity.getRecordId() == null, ErrorCode.OPERATION_ERROR, "该申请未提交审批");
+
+        ApprovalRecord record = approvalRecordMapper.selectById(entity.getRecordId());
+        ThrowUtils.throwIf(record == null || !"APPROVED".equals(record.getStatus()),
+                ErrorCode.OPERATION_ERROR, "只有审批通过的申请可放弃");
+
+        record.setStatus("CANCELLED");
+        record.setFinishedAt(new Date());
+        approvalRecordMapper.updateById(record);
+
+        entity.setStatus("CANCELLED");
+        updateById(entity);
+
+        Employee emp = employeeMapper.selectById(entity.getEmployeeId());
+        insertMutationLog(entity, emp, "CANCELLED");
+        log.info("调岗申请已放弃: id={}, employeeId={}", entity.getId(), entity.getEmployeeId());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void confirmTransfer(Long id, Long hrEmployeeId) {
+        HrTransfer entity = getById(id);
+        ThrowUtils.throwIf(entity == null, ErrorCode.NOT_FOUND_ERROR);
+        ThrowUtils.throwIf(entity.getRecordId() == null, ErrorCode.OPERATION_ERROR, "该申请未提交审批");
+
+        ApprovalRecord record = approvalRecordMapper.selectById(entity.getRecordId());
+        ThrowUtils.throwIf(record == null || !"APPROVED".equals(record.getStatus()),
+                ErrorCode.OPERATION_ERROR, "只有审批通过的申请可确认调岗");
+
+        Employee emp = employeeMapper.selectById(entity.getEmployeeId());
+        ThrowUtils.throwIf(emp == null, ErrorCode.NOT_FOUND_ERROR, "员工不存在");
 
         List<EmployeeChangeLog> changeLogs = new ArrayList<>();
         Date now = new Date();
@@ -208,7 +301,7 @@ public class TransferServiceImpl extends ServiceImpl<HrTransferMapper, HrTransfe
             String oldDeptName = getDeptName(emp.getDepartmentId());
             String newDeptName = getDeptName(entity.getTargetDeptId());
             changeLogs.add(buildChangeLog(emp.getId(), "departmentId",
-                    oldDeptName, newDeptName, entity.getOperatorId()));
+                    oldDeptName, newDeptName, hrEmployeeId));
             emp.setDepartmentId(entity.getTargetDeptId());
         }
 
@@ -216,7 +309,7 @@ public class TransferServiceImpl extends ServiceImpl<HrTransferMapper, HrTransfe
             String oldPos = getPosName(emp.getPositionId());
             String newPos = getPosName(entity.getTargetPositionId());
             changeLogs.add(buildChangeLog(emp.getId(), "positionId",
-                    oldPos, newPos, entity.getOperatorId()));
+                    oldPos, newPos, hrEmployeeId));
             emp.setPositionId(entity.getTargetPositionId());
         }
 
@@ -229,13 +322,13 @@ public class TransferServiceImpl extends ServiceImpl<HrTransferMapper, HrTransfe
             if (detail != null) {
                 if (entity.getToRankCode() != null && !entity.getToRankCode().equals(detail.getJobLevel())) {
                     changeLogs.add(buildChangeLog(emp.getId(), "jobLevel",
-                            detail.getJobLevel(), entity.getToRankCode(), entity.getOperatorId()));
+                            detail.getJobLevel(), entity.getToRankCode(), hrEmployeeId));
                     detail.setJobLevel(entity.getToRankCode());
                 }
                 if (entity.getToReporterId() != null && !entity.getToReporterId().equals(detail.getDirectReportId())) {
                     changeLogs.add(buildChangeLog(emp.getId(), "directReportId",
                             getEmployeeName(detail.getDirectReportId()),
-                            getEmployeeName(entity.getToReporterId()), entity.getOperatorId()));
+                            getEmployeeName(entity.getToReporterId()), hrEmployeeId));
                     detail.setDirectReportId(entity.getToReporterId());
                 }
                 employeeDetailMapper.updateById(detail);
@@ -262,32 +355,64 @@ public class TransferServiceImpl extends ServiceImpl<HrTransferMapper, HrTransfe
                 salLog.setOldValue(oldValue);
                 salLog.setNewValue(toJsonString(profile));
                 salLog.setEffectiveDate(entity.getTransferDate() != null ? entity.getTransferDate() : now);
-                salLog.setOperatorId(entity.getOperatorId());
+                salLog.setOperatorId(hrEmployeeId);
                 salLog.setRemark("调岗调薪");
                 salChangeLogMapper.insert(salLog);
             }
         }
 
-        insertMutationLog(entity, emp, "APPROVED");
-        log.info("调岗审批通过: id={}, employeeId={}", entity.getId(), entity.getEmployeeId());
+        entity.setStatus("EFFECTIVE");
+        entity.setTransferDate(entity.getTransferDate() != null ? entity.getTransferDate() : now);
+        updateById(entity);
+
+        insertMutationLog(entity, emp, "EFFECTIVE");
+        log.info("调岗已确认生效: id={}, employeeId={}", entity.getId(), entity.getEmployeeId());
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void onApprovalRejected(Long businessId) {
-        HrTransfer entity = getById(businessId);
-        if (entity == null) return;
-        entity.setStatus("REJECTED");
-        updateById(entity);
+    public void updateTransferDate(Long id, Date newDate, Long hrEmployeeId) {
+        ThrowUtils.throwIf(newDate == null, ErrorCode.PARAMS_ERROR, "调岗日期不能为空");
+        HrTransfer entity = getById(id);
+        ThrowUtils.throwIf(entity == null, ErrorCode.NOT_FOUND_ERROR);
+        ThrowUtils.throwIf(entity.getRecordId() == null, ErrorCode.OPERATION_ERROR, "该申请未提交审批");
 
-        Employee emp = employeeMapper.selectById(entity.getEmployeeId());
-        insertMutationLog(entity, emp, "REJECTED");
-        log.info("调岗审批拒绝: id={}, employeeId={}", entity.getId(), entity.getEmployeeId());
+        ApprovalRecord record = approvalRecordMapper.selectById(entity.getRecordId());
+        ThrowUtils.throwIf(record == null || !"APPROVED".equals(record.getStatus()),
+                ErrorCode.OPERATION_ERROR, "只有审批通过的申请可修改调岗日期");
+
+        entity.setTransferDate(newDate);
+        updateById(entity);
+        log.info("调岗日期已修改: id={}, employeeId={}, newDate={}", entity.getId(), entity.getEmployeeId(), newDate);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void resubmitTransfer(Long id, Long hrEmployeeId) {
+        HrTransfer entity = getById(id);
+        ThrowUtils.throwIf(entity == null, ErrorCode.NOT_FOUND_ERROR);
+        ThrowUtils.throwIf(entity.getRecordId() == null, ErrorCode.OPERATION_ERROR, "该申请未提交审批");
+
+        ApprovalRecord record = approvalRecordMapper.selectById(entity.getRecordId());
+        ThrowUtils.throwIf(record == null || !"REJECTED".equals(record.getStatus()),
+                ErrorCode.OPERATION_ERROR, "只有已拒绝的申请可重新发起");
+
+        approvalDetailMapper.delete(new LambdaQueryWrapper<ApprovalDetail>()
+                .eq(ApprovalDetail::getRecordId, record.getId()));
+        approvalRecordMapper.deleteById(record.getId());
+
+        update(new LambdaUpdateWrapper<HrTransfer>()
+                .set(HrTransfer::getRecordId, null)
+                .eq(HrTransfer::getId, id));
+
+        submitForApproval(entity.getId(), hrEmployeeId);
+        log.info("调岗申请重新发起: id={}, employeeId={}", entity.getId(), entity.getEmployeeId());
     }
 
     // ========== 私有方法 ==========
 
-    private TransferVO convertToVO(HrTransfer e, String keyword, Map<Long, Employee> empMap) {
+    private TransferVO convertToVO(HrTransfer e, String keyword, Map<Long, Employee> empMap,
+                                      Map<Long, String> rejectionMap) {
         TransferVO vo = new TransferVO();
         BeanUtils.copyProperties(e, vo);
         vo.setFromDeptId(e.getSourceDeptId());
@@ -321,6 +446,9 @@ public class TransferServiceImpl extends ServiceImpl<HrTransferMapper, HrTransfe
             if (record != null) {
                 vo.setApprovalStatus(record.getStatus());
                 vo.setApprovalProgress(record.getCurrentStep() + "/" + record.getTotalSteps());
+                if ("REJECTED".equals(record.getStatus()) && rejectionMap != null) {
+                    vo.setRejectionReason(rejectionMap.get(e.getRecordId()));
+                }
             }
         }
         if (StringUtils.hasText(keyword) && vo.getEmployeeName() != null

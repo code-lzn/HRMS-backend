@@ -129,21 +129,20 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
             if (!isAmLeave) {
                 int workStartHour = AttendanceConstant.DEFAULT_WORK_START_HOUR;
                 int workStartMinute = 0;
-                int lateGrace = AttendanceConstant.LATE_GRACE_MINUTES;
+                int lateThreshold = AttendanceConstant.LATE_GRACE_MINUTES;
                 if (group != null && group.getWorkStartTime() != null) {
                     workStartHour = DateUtil.hour(group.getWorkStartTime(), true);
                     workStartMinute = DateUtil.minute(group.getWorkStartTime());
-                    lateGrace = group.getLateThreshold() != null ? group.getLateThreshold() : lateGrace;
+                    lateThreshold = group.getLateThreshold() != null ? group.getLateThreshold() : lateThreshold;
                 }
 
                 int workStartTotal = workStartHour * 60 + workStartMinute;
-                int thresholdMinutes = workStartTotal + lateGrace;
-                if (hour * 60 + minute > thresholdMinutes) {
-                    record.setStatus(AttendanceStatusEnum.LATE.getValue());
-                    record.setLateMinutes(hour * 60 + minute - workStartTotal);
-                } else if (Objects.equals(record.getStatus(), AttendanceStatusEnum.LATE.getValue())) {
-                    record.setStatus(AttendanceStatusEnum.NORMAL.getValue());
-                    record.setLateMinutes(null);
+                int lateMinutes = hour * 60 + minute - workStartTotal;
+                if (lateMinutes > 0) {
+                    record.setLateMinutes(lateMinutes);
+                    record.setStatus(lateMinutes > lateThreshold
+                            ? AttendanceStatusEnum.SEVERE_LATE.getValue()
+                            : AttendanceStatusEnum.LATE.getValue());
                 }
             }
         } else {
@@ -171,7 +170,8 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
 
                 if (earlyMinutes > earlyThreshold) {
                     record.setEarlyMinutes(earlyMinutes);
-                    if (Objects.equals(record.getStatus(), AttendanceStatusEnum.LATE.getValue())) {
+                    if (Objects.equals(record.getStatus(), AttendanceStatusEnum.LATE.getValue())
+                            || Objects.equals(record.getStatus(), AttendanceStatusEnum.SEVERE_LATE.getValue())) {
                         record.setStatus(AttendanceStatusEnum.LATE_AND_EARLY.getValue());
                     } else {
                         record.setStatus(AttendanceStatusEnum.LEAVE_EARLY.getValue());
@@ -477,7 +477,9 @@ public class AttendanceServiceImpl extends ServiceImpl<AttendanceMapper, Attenda
 
         List<Attendance> records = this.lambdaQuery()
                 .eq(Attendance::getAttendanceDate, today)
-                .eq(Attendance::getStatus, AttendanceStatusEnum.LATE.getValue())
+                .in(Attendance::getStatus, Arrays.asList(
+                        AttendanceStatusEnum.LATE.getValue(),
+                        AttendanceStatusEnum.SEVERE_LATE.getValue()))
                 .isNull(Attendance::getPunchInTime)
                 .isNull(Attendance::getPunchOutTime)
                 .list();

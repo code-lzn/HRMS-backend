@@ -16,6 +16,8 @@ import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 
@@ -82,6 +84,48 @@ public class TransferController {
     public BaseResponse<Void> delete(@PathVariable Long id, HttpServletRequest httpReq) {
         Long hrEmployeeId = getLoginEmployeeId(httpReq);
         transferService.deleteTransfer(id, hrEmployeeId);
+        return ResultUtils.success(null);
+    }
+
+    @PostMapping("/{id}/revoke")
+    public BaseResponse<Void> revoke(@PathVariable Long id, HttpServletRequest httpReq) {
+        Long hrEmployeeId = getLoginEmployeeId(httpReq);
+        transferService.revokeTransfer(id, hrEmployeeId);
+        return ResultUtils.success(null);
+    }
+
+    @PostMapping("/{id}/abandon")
+    public BaseResponse<Void> abandon(@PathVariable Long id, HttpServletRequest httpReq) {
+        Long hrEmployeeId = getLoginEmployeeId(httpReq);
+        transferService.abandonTransfer(id, hrEmployeeId);
+        return ResultUtils.success(null);
+    }
+
+    @PostMapping("/{id}/confirm")
+    public BaseResponse<Void> confirm(@PathVariable Long id, HttpServletRequest httpReq) {
+        Long hrEmployeeId = getLoginEmployeeId(httpReq);
+        transferService.confirmTransfer(id, hrEmployeeId);
+        return ResultUtils.success(null);
+    }
+
+    @PutMapping("/{id}/transfer-date")
+    public BaseResponse<Void> updateTransferDate(@PathVariable Long id,
+                                                  @RequestParam String date,
+                                                  HttpServletRequest httpReq) {
+        Long hrEmployeeId = getLoginEmployeeId(httpReq);
+        try {
+            Date newDate = new SimpleDateFormat("yyyy-MM-dd").parse(date);
+            transferService.updateTransferDate(id, newDate, hrEmployeeId);
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "日期格式错误");
+        }
+        return ResultUtils.success(null);
+    }
+
+    @PostMapping("/{id}/resubmit")
+    public BaseResponse<Void> resubmit(@PathVariable Long id, HttpServletRequest httpReq) {
+        Long hrEmployeeId = getLoginEmployeeId(httpReq);
+        transferService.resubmitTransfer(id, hrEmployeeId);
         return ResultUtils.success(null);
     }
 

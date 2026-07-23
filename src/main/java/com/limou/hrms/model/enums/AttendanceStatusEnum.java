@@ -21,7 +21,8 @@ public enum AttendanceStatusEnum {
     MISS_IN(6, "上班缺卡"),
     MISS_OUT(7, "下班缺卡"),
     REST(8, "休息"),
-    LATE_AND_EARLY(9, "迟到&早退");
+    LATE_AND_EARLY(9, "迟到&早退"),
+    SEVERE_LATE(10, "严重迟到");
 
     private final Integer value;
 

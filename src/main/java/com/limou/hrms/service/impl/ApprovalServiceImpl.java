@@ -362,14 +362,12 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
 
         // 创建审批明细节点
         Employee applicant = employeeService.getById(applicantEmployeeId);
+        List<ApprovalDetail> details = new ArrayList<>();
+        Set<Long> approverIdSet = new HashSet<>();
         for (int i = 0; i < nodes.size(); i++) {
             ApprovalFlowNode node = nodes.get(i);
             Long approverId = resolveApprover(node, applicant, targetDepartmentId);
-            String approverName = null;
-            if (approverId != null) {
-                Employee approver = employeeService.getById(approverId);
-                approverName = approver != null ? approver.getEmployeeName() : null;
-            }
+            if (approverId != null) approverIdSet.add(approverId);
 
             ApprovalDetail detail = new ApprovalDetail();
             detail.setRecordId(record.getId());
@@ -377,11 +375,16 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
             detail.setNodeName(node.getNodeName());
             detail.setStepOrder(node.getNodeOrder());
             detail.setApproverId(approverId);
-            detail.setApproverName(approverName);
             detail.setAction(ApprovalActionEnum.PENDING.getValue());
             detail.setIsDelegated(0);
-            approvalDetailService.save(detail);
+            details.add(detail);
         }
+
+        Map<Long, String> nameMap = batchLoadNames(approverIdSet);
+        for (ApprovalDetail detail : details) {
+            detail.setApproverName(nameMap.get(detail.getApproverId()));
+        }
+        approvalDetailService.saveBatch(details);
 
         return record;
     }
@@ -417,6 +420,8 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
         this.save(record);
 
         Employee applicant = employeeService.getById(applicantEmployeeId);
+        List<ApprovalDetail> details = new ArrayList<>();
+        Set<Long> approverIdSet = new HashSet<>();
         for (int i = 0; i < nodes.size(); i++) {
             ApprovalFlowNode node = nodes.get(i);
             Long approverId = null;
@@ -425,22 +430,24 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
             } else {
                 approverId = resolveApprover(node, applicant, targetDepartmentId);
             }
-            String approverName = null;
-            if (approverId != null) {
-                Employee approver = employeeService.getById(approverId);
-                approverName = approver != null ? approver.getEmployeeName() : null;
-            }
+            if (approverId != null) approverIdSet.add(approverId);
+
             ApprovalDetail detail = new ApprovalDetail();
             detail.setRecordId(record.getId());
             detail.setNodeId(node.getId());
             detail.setNodeName(node.getNodeName());
             detail.setStepOrder(node.getNodeOrder());
             detail.setApproverId(approverId);
-            detail.setApproverName(approverName);
             detail.setAction(ApprovalActionEnum.PENDING.getValue());
             detail.setIsDelegated(0);
-            approvalDetailService.save(detail);
+            details.add(detail);
         }
+
+        Map<Long, String> nameMap = batchLoadNames(approverIdSet);
+        for (ApprovalDetail detail : details) {
+            detail.setApproverName(nameMap.get(detail.getApproverId()));
+        }
+        approvalDetailService.saveBatch(details);
 
         return record;
     }
@@ -471,29 +478,41 @@ public class ApprovalServiceImpl extends ServiceImpl<ApprovalRecordMapper, Appro
         this.save(record);
 
         Employee applicant = employeeService.getById(applicantEmployeeId);
+        List<ApprovalDetail> details = new ArrayList<>();
+        Set<Long> approverIdSet = new HashSet<>();
         for (ApprovalFlowNode node : nodes) {
             Long approverId = resolveApprover(node, applicant);
-            String approverName = null;
-            if (approverId != null) {
-                Employee approver = employeeService.getById(approverId);
-                approverName = approver != null ? approver.getEmployeeName() : null;
-            }
+            if (approverId != null) approverIdSet.add(approverId);
+
             ApprovalDetail detail = new ApprovalDetail();
             detail.setRecordId(record.getId());
             detail.setNodeId(node.getId());
             detail.setNodeName(node.getNodeName());
             detail.setStepOrder(node.getNodeOrder());
             detail.setApproverId(approverId);
-            detail.setApproverName(approverName);
             detail.setAction(ApprovalActionEnum.PENDING.getValue());
             detail.setIsDelegated(0);
-            approvalDetailService.save(detail);
+            details.add(detail);
         }
+
+        Map<Long, String> nameMap = batchLoadNames(approverIdSet);
+        for (ApprovalDetail detail : details) {
+            detail.setApproverName(nameMap.get(detail.getApproverId()));
+        }
+        approvalDetailService.saveBatch(details);
 
         return record;
     }
 
     // ========== 私有方法 ==========
+
+    private Map<Long, String> batchLoadNames(Set<Long> employeeIds) {
+        if (employeeIds.isEmpty()) return Collections.emptyMap();
+        return employeeService.lambdaQuery()
+                .in(Employee::getId, employeeIds)
+                .list().stream()
+                .collect(Collectors.toMap(Employee::getId, Employee::getEmployeeName, (a, b) -> a));
+    }
 
     private ApprovalDetail validateAndGetDetail(Long detailId, Long employeeId) {
         ApprovalDetail detail = approvalDetailService.getById(detailId);
