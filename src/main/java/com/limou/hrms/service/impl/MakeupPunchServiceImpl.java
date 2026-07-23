@@ -5,12 +5,14 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.constant.AttendanceConstant;
 import com.limou.hrms.exception.ThrowUtils;
+import com.limou.hrms.mapper.LeaveMapper;
 import com.limou.hrms.mapper.MakeupPunchMapper;
 import com.limou.hrms.model.entity.ApprovalDetail;
 import com.limou.hrms.model.entity.ApprovalRecord;
 import com.limou.hrms.model.entity.Attendance;
 import com.limou.hrms.model.entity.AttendanceGroup;
 import com.limou.hrms.model.entity.Employee;
+import com.limou.hrms.model.entity.Leave;
 import com.limou.hrms.model.entity.MakeupPunch;
 import com.limou.hrms.model.enums.*;
 import com.limou.hrms.model.vo.MakeupPunchProgressVO;
@@ -56,6 +58,9 @@ public class MakeupPunchServiceImpl extends ServiceImpl<MakeupPunchMapper, Makeu
     @Resource
     private ApprovalDetailService approvalDetailService;
 
+    @Resource
+    private LeaveMapper leaveMapper;
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public MakeupPunchVO apply(Long userId, String punchDate, Integer punchType,
@@ -65,6 +70,24 @@ public class MakeupPunchServiceImpl extends ServiceImpl<MakeupPunchMapper, Makeu
         // 不能补卡未来的日期
         ThrowUtils.throwIf(punchDate.compareTo(DateUtil.formatDate(new Date())) > 0,
                 ErrorCode.PARAMS_ERROR, "不能补卡未来的日期");
+
+        // 当天考勤正常则无需补卡
+        Attendance todayAttendance = attendanceService.lambdaQuery()
+                .eq(Attendance::getEmployeeId, emp.getId())
+                .eq(Attendance::getAttendanceDate, DateUtil.parseDate(punchDate))
+                .one();
+        ThrowUtils.throwIf(todayAttendance != null
+                        && Objects.equals(todayAttendance.getStatus(), AttendanceStatusEnum.NORMAL.getValue()),
+                ErrorCode.OPERATION_ERROR, "当天打卡记录正常，无需补卡");
+
+        // 请假当天不能申请补卡
+        long leaveCount = leaveMapper.selectCount(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Leave>()
+                        .eq(Leave::getEmployeeId, emp.getId())
+                        .in(Leave::getStatus, ApprovalStatusEnum.PENDING.getValue(), ApprovalStatusEnum.APPROVED.getValue())
+                        .le(Leave::getStartDate, DateUtil.parseDate(punchDate))
+                        .ge(Leave::getEndDate, DateUtil.parseDate(punchDate)));
+        ThrowUtils.throwIf(leaveCount > 0, ErrorCode.OPERATION_ERROR, "当天已有请假申请，不能申请补卡");
 
         // 每月最多2次补卡
         String month = punchDate.substring(0, 7);

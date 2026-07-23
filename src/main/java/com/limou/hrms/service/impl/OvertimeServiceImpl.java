@@ -4,10 +4,12 @@ import cn.hutool.core.date.DateUtil;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.limou.hrms.common.ErrorCode;
 import com.limou.hrms.exception.ThrowUtils;
+import com.limou.hrms.mapper.LeaveMapper;
 import com.limou.hrms.mapper.OvertimeRecordMapper;
 import com.limou.hrms.model.entity.ApprovalDetail;
 import com.limou.hrms.model.entity.ApprovalRecord;
 import com.limou.hrms.model.entity.Employee;
+import com.limou.hrms.model.entity.Leave;
 import com.limou.hrms.model.entity.OvertimeRecord;
 import com.limou.hrms.model.enums.ApprovalActionEnum;
 import com.limou.hrms.model.enums.ApprovalRecordStatusEnum;
@@ -50,6 +52,9 @@ public class OvertimeServiceImpl extends ServiceImpl<OvertimeRecordMapper, Overt
     @Resource
     private ApprovalDetailService approvalDetailService;
 
+    @Resource
+    private LeaveMapper leaveMapper;
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public OvertimeVO apply(Long userId, String overtimeDate, String startTime, String endTime,
@@ -61,6 +66,15 @@ public class OvertimeServiceImpl extends ServiceImpl<OvertimeRecordMapper, Overt
         ThrowUtils.throwIf(start.after(end), ErrorCode.PARAMS_ERROR, "开始时间不能晚于结束时间");
         ThrowUtils.throwIf(overtimeHours == null || overtimeHours <= 0,
                 ErrorCode.PARAMS_ERROR, "加班时长必须大于0");
+
+        // 请假当天不能申请加班
+        long leaveCount = leaveMapper.selectCount(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Leave>()
+                        .eq(Leave::getEmployeeId, emp.getId())
+                        .in(Leave::getStatus, ApprovalStatusEnum.PENDING.getValue(), ApprovalStatusEnum.APPROVED.getValue())
+                        .le(Leave::getStartDate, DateUtil.parseDate(overtimeDate))
+                        .ge(Leave::getEndDate, DateUtil.parseDate(overtimeDate)));
+        ThrowUtils.throwIf(leaveCount > 0, ErrorCode.OPERATION_ERROR, "当天已有请假申请，不能申请加班");
 
         OvertimeRecord record = new OvertimeRecord();
         record.setEmployeeId(emp.getId());
